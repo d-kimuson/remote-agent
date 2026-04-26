@@ -1,0 +1,24 @@
+defaults:
+  changed: untracked,unstaged,staged,branch:main
+  target: all
+checks:
+  - name: oxfmt
+    match: \.(m|c)?(j|t)sx?$
+    group: format
+    command: pnpm exec oxfmt --write --no-error-on-unmatched-pattern {{ ctx.CHANGED_FILES }}
+  - name: oxlint
+    match: \.(m|c)?(j|t)sx?$
+    group: lint
+    command: pnpm exec oxlint --type-aware --fix {{ ctx.CHANGED_FILES }}
+  - name: typecheck
+    match: \.(m|c)?tsx?$
+    group: typecheck
+    command: pnpm exec tsc --noEmit
+  - name: typecheck-tsgo
+    match: \.(m|c)?tsx?$
+    group: typecheck
+    command: pnpm exec tsgo --noEmit
+  - name: vitest
+    match: \.(m|c)?(j|t)sx?$
+    group: test
+    command: pnpm exec vitest related --run --passWithNoTests {{ ctx.CHANGED_FILES }}

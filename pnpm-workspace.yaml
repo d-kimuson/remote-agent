@@ -1,0 +1,5 @@
+catalogMode: manual
+engineStrict: true
+saveExact: true
+
+minimumReleaseAge: 7200
