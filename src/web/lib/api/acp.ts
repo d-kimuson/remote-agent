@@ -2,16 +2,23 @@ import { parse } from "valibot";
 
 import {
   appInfoSchema,
+  filesystemTreeResponseSchema,
   messageResponseSchema,
+  projectResponseSchema,
+  projectsResponseSchema,
   sessionResponseSchema,
   sessionsResponseSchema,
   type AppInfo,
+  type CreateProjectRequest,
   type CreateSessionRequest,
+  type FilesystemTreeResponse,
   type MessageResponse,
+  type ProjectResponse,
+  type ProjectsResponse,
   type SessionResponse,
   type SessionsResponse,
   type UpdateSessionRequest,
-} from "@/shared/acp";
+} from "../../../shared/acp.ts";
 
 const readResponseBody = async (
   response: Response,
@@ -63,6 +70,53 @@ export const fetchAppInfo = async (): Promise<AppInfo> => {
     appInfoSchema,
     await sendJson("/api/info", {
       method: "GET",
+    }),
+  );
+};
+
+export const fetchFilesystemTree = async (root?: string): Promise<FilesystemTreeResponse> => {
+  const searchParams = new URLSearchParams();
+  if (root !== undefined && root.length > 0) {
+    searchParams.set("root", root);
+  }
+
+  return parse(
+    filesystemTreeResponseSchema,
+    await sendJson(`/api/filesystem/tree?${searchParams.toString()}`, {
+      method: "GET",
+    }),
+  );
+};
+
+export const fetchProjects = async (): Promise<ProjectsResponse> => {
+  return parse(
+    projectsResponseSchema,
+    await sendJson("/api/projects", {
+      method: "GET",
+    }),
+  );
+};
+
+export const fetchProject = async (projectId: string): Promise<ProjectResponse> => {
+  return parse(
+    projectResponseSchema,
+    await sendJson(`/api/projects/${projectId}`, {
+      method: "GET",
+    }),
+  );
+};
+
+export const createProjectRequest = async (
+  request: CreateProjectRequest,
+): Promise<ProjectResponse> => {
+  return parse(
+    projectResponseSchema,
+    await sendJson("/api/projects", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(request),
     }),
   );
 };

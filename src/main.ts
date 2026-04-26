@@ -1,3 +1,6 @@
-import { startServer } from "./server/server";
+import { envService } from "./server/env.ts";
+import { startServer } from "./server/server.ts";
 
-startServer();
+startServer({
+  port: envService.getEnv("PORT"),
+});

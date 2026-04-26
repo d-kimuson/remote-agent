@@ -1,0 +1,14 @@
+{
+  "projects": [
+    {
+      "id": "acp-playground",
+      "name": "acp-playground",
+      "workingDirectory": "/home/kaito/repos/acp-playground"
+    },
+    {
+      "id": "gatecheck",
+      "name": "gatecheck",
+      "workingDirectory": "/home/kaito/repos/gatecheck"
+    }
+  ]
+}

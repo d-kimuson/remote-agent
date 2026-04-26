@@ -1,5 +1,5 @@
 import { serve } from "@hono/node-server";
-import { honoApp } from "./app";
+import { honoApp } from "./app.ts";
 
 type ServerOptions = {
   port?: number;

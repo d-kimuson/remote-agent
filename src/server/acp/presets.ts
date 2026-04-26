@@ -9,11 +9,18 @@ export const agentPresets = [
     args: [],
   },
   {
-    id: "codex-cli",
-    label: "Codex CLI",
+    id: "codex",
+    label: "Codex",
     description: "Official Codex ACP adapter via npx @zed-industries/codex-acp.",
     command: "npx",
     args: ["-y", "@zed-industries/codex-acp"],
+  },
+  {
+    id: "pi",
+    label: "Pi",
+    description: "Pi coding agent ACP command installed locally as pi.",
+    command: "pi",
+    args: ["--acp"],
   },
   {
     id: "gemini-cli",

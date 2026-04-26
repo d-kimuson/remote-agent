@@ -39,6 +39,7 @@ export type ModelOption = InferOutput<typeof modelOptionSchema>;
 
 export const sessionSummarySchema = object({
   sessionId: pipe(string(), trim()),
+  projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),
   command: pipe(string(), trim()),
   args: array(pipe(string(), trim())),
@@ -80,12 +81,64 @@ export type RawEvent = InferOutput<typeof rawEventSchema>;
 export const appInfoSchema = object({
   appName: pipe(string(), trim()),
   workingDirectory: pipe(string(), trim()),
+  projectsFilePath: pipe(string(), trim()),
   agentPresets: array(agentPresetSchema),
 });
 
 export type AppInfo = InferOutput<typeof appInfoSchema>;
 
+export const filesystemEntrySchema = object({
+  name: pipe(string(), trim()),
+  path: pipe(string(), trim()),
+  kind: union([literal("directory"), literal("file")]),
+  children: optional(
+    array(
+      object({
+        name: pipe(string(), trim()),
+        path: pipe(string(), trim()),
+        kind: union([literal("directory"), literal("file")]),
+      }),
+    ),
+  ),
+});
+
+export type FilesystemEntry = InferOutput<typeof filesystemEntrySchema>;
+
+export const filesystemTreeResponseSchema = object({
+  root: filesystemEntrySchema,
+});
+
+export type FilesystemTreeResponse = InferOutput<typeof filesystemTreeResponseSchema>;
+
+export const projectSchema = object({
+  id: pipe(string(), trim()),
+  name: pipe(string(), trim()),
+  workingDirectory: pipe(string(), trim()),
+});
+
+export type Project = InferOutput<typeof projectSchema>;
+
+export const createProjectRequestSchema = object({
+  name: pipe(string(), trim()),
+  workingDirectory: pipe(string(), trim()),
+});
+
+export type CreateProjectRequest = InferOutput<typeof createProjectRequestSchema>;
+
+export const projectResponseSchema = object({
+  project: projectSchema,
+});
+
+export type ProjectResponse = InferOutput<typeof projectResponseSchema>;
+
+export const projectsResponseSchema = object({
+  projects: array(projectSchema),
+});
+
+export type ProjectsResponse = InferOutput<typeof projectsResponseSchema>;
+
 export const createSessionRequestSchema = object({
+  projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),
   command: nullable(optional(pipe(string(), trim()))),
   argsText: optional(string()),

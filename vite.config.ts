@@ -23,7 +23,7 @@ export default defineConfig({
   server: {
     port: 33333,
     proxy: {
-      "/api": "http://localhost:8989",
+      "/api": process.env["SERVER_BASE_URL"] ?? "//acp-hono.localhost",
     },
     watch: {
       ignored: ["**/routeTree.gen.ts"],

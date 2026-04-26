@@ -8,12 +8,13 @@ import type {
   RawEvent,
   SessionSummary,
   UpdateSessionRequest,
-} from "@/shared/acp";
-import { resolveCommandPath } from "@/server/acp/command-path";
-import { normalizeRawEvent } from "@/server/acp/raw-event.pure";
+} from "../../shared/acp.ts";
+import { resolveCommandPath } from "./command-path.ts";
+import { normalizeRawEvent } from "./raw-event.pure.ts";
 
 type SessionEntry = {
   readonly createdAt: string;
+  readonly projectId: string | null;
   readonly presetId: string | null;
   readonly command: string;
   readonly args: readonly string[];
@@ -46,6 +47,7 @@ const mapModels = (response: NewSessionResponse): SessionSummary["availableModel
 
 const createSessionSummary = ({
   createdAt,
+  projectId,
   presetId,
   command,
   args,
@@ -53,6 +55,7 @@ const createSessionSummary = ({
   response,
 }: {
   readonly createdAt: string;
+  readonly projectId: string | null;
   readonly presetId: string | null;
   readonly command: string;
   readonly args: readonly string[];
@@ -61,6 +64,7 @@ const createSessionSummary = ({
 }): SessionSummary => {
   return {
     sessionId: response.sessionId,
+    projectId,
     presetId,
     command,
     args: [...args],
@@ -78,11 +82,13 @@ export const listSessions = (): readonly SessionSummary[] => {
 };
 
 export const createSession = async ({
+  projectId,
   preset,
   command,
   args,
   cwd,
 }: {
+  readonly projectId: string | null;
   readonly preset: AgentPreset | null;
   readonly command: string;
   readonly args: readonly string[];
@@ -109,6 +115,7 @@ export const createSession = async ({
   const createdAt = new Date().toISOString();
   const session = createSessionSummary({
     createdAt,
+    projectId,
     presetId: preset?.id ?? null,
     command,
     args,
@@ -118,6 +125,7 @@ export const createSession = async ({
 
   sessionStore.set(session.sessionId, {
     createdAt,
+    projectId,
     presetId: preset?.id ?? null,
     command,
     args,
