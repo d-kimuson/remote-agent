@@ -143,3 +143,9 @@ vite.config.ts.timestamp-*
 .vite/
 
 .direnv/
+
+# claude
+.claude/settings.local.json
+
+# docs
+docs/tmp/*

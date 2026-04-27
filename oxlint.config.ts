@@ -227,6 +227,53 @@ export default defineConfig({
     // ] // グローバル Date の使用を禁止（依存性注入されたファクトリーを使用）
   },
   overrides: [
+    /* Layer isolation */
+    {
+      // web → server の参照を禁止。型は shared/ 経由で公開する
+      // 生 fetch を禁止。honoClient (src/web/lib/api/client.ts) 経由でアクセスする
+      files: ["src/web/**"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: ["**/server/**"],
+            paths: [
+              {
+                name: "@tanstack/react-query",
+                importNames: ["useQuery"],
+                message: "Use useSuspenseQuery instead of useQuery in web.",
+              },
+            ],
+          },
+        ],
+        "no-restricted-globals": [
+          "error",
+          {
+            name: "fetch",
+            message: "Use honoClient from src/web/lib/api/client.ts instead of raw fetch.",
+          },
+        ],
+      },
+    },
+    {
+      // client.ts 自身は fetch を使ってよい（honoClient の実装）
+      files: ["src/web/lib/api/client.ts"],
+      rules: {
+        "no-restricted-globals": "off",
+      },
+    },
+    {
+      // server → web の参照を禁止。@/ エイリアス import も禁止（相対 import を使う）
+      files: ["src/server/**"],
+      rules: {
+        "no-restricted-imports": [
+          "error",
+          {
+            patterns: ["**/web/**", "@/*"],
+          },
+        ],
+      },
+    },
     {
       files: ["**/*.{test,spec}.?([mc])[jt]s?(x)"],
       rules: {
@@ -307,7 +354,7 @@ export default defineConfig({
   ],
   settings: {
     "jsx-a11y": {
-      polymorphicPropName: null,
+      polymorphicPropName: undefined,
       components: {},
       attributes: {},
     },
@@ -337,6 +384,7 @@ export default defineConfig({
   },
   globals: {},
   ignorePatterns: [
+    "**/.claude/**",
     "**/dist/**",
     "**/build/**",
     "**/out/**",
