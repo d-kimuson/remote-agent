@@ -71,6 +71,11 @@ import {
 import { ChatRawEvents } from "./chat-raw-events.tsx";
 import { LoadSessionDialog } from "./load-session-dialog.tsx";
 import {
+  filterDisplayableRawEvents,
+  shouldDisplayTranscriptMessage,
+} from "./transcript-display.pure.ts";
+import { mergeToolCallResultMessages } from "./transcript-tool-merge.pure.ts";
+import {
   agentModelCatalogQueryKey,
   appInfoQueryKey,
   projectQueryKey,
@@ -83,35 +88,35 @@ import { createChatMessage, type TranscriptMap } from "./types.ts";
 /** 既存セッションからモデル/モード一覧を借りられないときの Select 用プレースホルダー（送信時は undefined を送る） */
 const DRAFT_FALLBACK_SELECT_VALUE = "__acp_agent_default__";
 
-const formatCreatedAt = (createdAt: string): string =>
+/** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
+const CONVERSATION_COLUMN_CLASS = "w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl";
+
+const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat("ja-JP", {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
-  }).format(new Date(createdAt));
-
-const transcriptMessageLabel = (message: ChatMessage): string => {
-  if (message.role === "user") {
-    return "user";
-  }
-  const k: ChatMessageKind = message.kind ?? "legacy_assistant_turn";
-  return k === "legacy_assistant_turn" ? "assistant" : k;
-};
+  }).format(new Date(iso));
 
 const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
+  const displayEvents = filterDisplayableRawEvents(message.rawEvents);
   if (message.role === "user") {
-    return <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>;
+    return <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>;
   }
-  const k = message.kind ?? "legacy_assistant_turn";
+  const k: ChatMessageKind = message.kind ?? "legacy_assistant_turn";
   if (k === "legacy_assistant_turn") {
     return (
-      <>
-        {message.rawEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
+      <div className="flex w-full flex-col gap-3">
+        {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
         {message.text.length > 0 ? (
-          <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+          <div className="w-full px-0.5 sm:px-1">
+            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground [text-wrap:pretty]">
+              {message.text}
+            </p>
+          </div>
         ) : null}
-      </>
+      </div>
     );
   }
   if (k === "reasoning" && message.text.length > 0) {
@@ -121,23 +126,21 @@ const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message 
   }
   if (k === "assistant_text" || k === "tool_input") {
     return message.text.length > 0 ? (
-      <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{message.text}</p>
     ) : null;
   }
   if (k === "tool_call" || k === "tool_result" || k === "tool_error") {
-    return message.rawEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null;
+    return displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null;
   }
   return (
-    <>
+    <div className="flex flex-col gap-2">
       {message.text.length > 0 ? (
-        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs text-muted-foreground">
+        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/40 bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
           {message.text}
         </pre>
       ) : null}
-      {message.rawEvents.length > 0 ? (
-        <ChatRawEvents className="mt-2" events={message.rawEvents} />
-      ) : null}
-    </>
+      {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
+    </div>
   );
 };
 
@@ -319,6 +322,11 @@ export const ProjectChatPage: FC<{
     : selectedSession.sessionId;
 
   const transcript = transcripts[activeTranscriptKey] ?? [];
+  const mergedForDisplay = mergeToolCallResultMessages(transcript);
+  const visibleTranscript = mergedForDisplay.filter((message) => {
+    const d = filterDisplayableRawEvents(message.rawEvents);
+    return shouldDisplayTranscriptMessage(message, d);
+  });
   const projectUrl = `/projects/${projectId}`;
 
   const navigateToSession = (nextSessionId: string | null) => {
@@ -710,7 +718,7 @@ export const ProjectChatPage: FC<{
 
   const headerSubtitle = shouldUseDraftSession
     ? draftSession.label
-    : `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatCreatedAt(selectedSession.createdAt)}`;
+    : `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatDateTime(selectedSession.createdAt)}`;
 
   const firstUserTextInTranscript = (targetSessionId: string) =>
     transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
@@ -804,7 +812,7 @@ export const ProjectChatPage: FC<{
                 {sessionEntries.map((entry) => (
                   <SessionListItem
                     footerLeft={
-                      entry.kind === "draft" ? "Draft" : formatCreatedAt(entry.session.createdAt)
+                      entry.kind === "draft" ? "Draft" : formatDateTime(entry.session.createdAt)
                     }
                     key={entry.kind === "draft" ? "draft" : entry.session.sessionId}
                     listTitle={
@@ -859,44 +867,79 @@ export const ProjectChatPage: FC<{
                 </Button>
               </div>
             )}
-            <ScrollArea className="min-h-0 flex-1 bg-muted/10">
-              <div className="space-y-4 p-4">
-                {transcript.length === 0 ? (
-                  <div className="rounded-lg border border-dashed px-5 py-10 text-center">
-                    <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground" />
-                    <p className="text-sm font-medium">No messages</p>
+            <ScrollArea className="min-h-0 flex-1 bg-[color-mix(in_oklab,var(--muted)_12%,var(--background))]">
+              <div className="space-y-6 px-3 py-5 md:px-5">
+                {transcript.length === 0 && !isAwaitingAssistantResponse ? (
+                  <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/60 bg-card/30 px-6 py-12 text-center">
+                    <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
+                    <p className="text-sm font-medium text-foreground/90">No messages</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      下の欄に入力して会話を始められます
+                    </p>
+                  </div>
+                ) : null}
+                {transcript.length > 0 &&
+                visibleTranscript.length === 0 &&
+                !isAwaitingAssistantResponse ? (
+                  <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/50 bg-card/20 px-6 py-8 text-center text-sm text-muted-foreground">
+                    表示できるメッセージがありません（内部メタのみの可能性）
                   </div>
                 ) : null}
 
-                {transcript.map((message) => (
-                  <div
-                    className={cn(
-                      "max-w-[90%] rounded-lg border px-4 py-3",
-                      message.role === "user"
-                        ? "ml-auto border-primary/20 bg-primary text-primary-foreground"
-                        : "bg-background/95",
-                    )}
-                    key={message.id}
-                  >
-                    <div className="mb-2 flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-medium tracking-[0.18em] uppercase opacity-70">
-                        {transcriptMessageLabel(message)}
-                      </p>
+                {visibleTranscript.map((message) => {
+                  const isUser = message.role === "user";
+                  return (
+                    <div
+                      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+                      key={message.id}
+                    >
+                      <div
+                        className={cn(
+                          "flex min-w-0 flex-col gap-1",
+                          CONVERSATION_COLUMN_CLASS,
+                          isUser ? "items-stretch" : "items-stretch",
+                        )}
+                      >
+                        <time
+                          className={cn(
+                            "select-none text-xs tabular-nums text-muted-foreground",
+                            isUser ? "w-full pr-0.5 text-right" : "w-full pl-0.5 text-left",
+                          )}
+                          dateTime={message.createdAt}
+                        >
+                          {formatDateTime(message.createdAt)}
+                        </time>
+                        {isUser ? (
+                          <div className="w-full rounded-2xl border border-border/60 bg-slate-50 px-3 py-3 text-foreground shadow-sm dark:bg-slate-900/50">
+                            <TranscriptMessageBody message={message} />
+                          </div>
+                        ) : (
+                          <div className="w-full min-w-0 text-card-foreground">
+                            <TranscriptMessageBody message={message} />
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <TranscriptMessageBody message={message} />
-                  </div>
-                ))}
+                  );
+                })}
 
                 {isAwaitingAssistantResponse ? (
                   <div
-                    className="max-w-[90%] rounded-lg border border-dashed border-muted-foreground/25 bg-muted/30 px-4 py-3"
+                    className={cn(
+                      "flex w-full min-w-0 flex-col",
+                      CONVERSATION_COLUMN_CLASS,
+                      "pl-0.5",
+                    )}
                     role="status"
                   >
-                    <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
-                      <Loader2 aria-hidden className="size-4 shrink-0 animate-spin" />
+                    <div className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-border/50 bg-card/50 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                      <Loader2
+                        aria-hidden
+                        className="size-4 shrink-0 animate-spin text-muted-foreground"
+                      />
                       <span>
                         <span className="font-medium text-foreground">{thinkingModelLabel}</span>
-                        <span> is thinking…</span>
+                        <span> が考えています…</span>
                       </span>
                     </div>
                   </div>

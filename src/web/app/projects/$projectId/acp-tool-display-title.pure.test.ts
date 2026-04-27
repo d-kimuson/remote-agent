@@ -1,0 +1,43 @@
+import { describe, expect, test } from "vitest";
+
+import { resolveAcpToolCardTitle } from "./acp-tool-display-title.pure.ts";
+
+describe("resolveAcpToolCardTitle", () => {
+  test("dynamic ツール名のとき input JSON の toolName を出す", () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: "toolCall",
+          toolCallId: "1",
+          toolName: "acp.acp_provider_agent_dynamic_tool",
+          inputText: JSON.stringify({ toolName: "read_file", toolCallId: "1", args: {} }),
+          rawText: "",
+        },
+        result: {
+          type: "toolResult",
+          toolCallId: "1",
+          toolName: "acp.acp_provider_agent_dynamic_tool",
+          outputText: "ok",
+          rawText: "",
+        },
+        error: null,
+      }),
+    ).toBe("read_file");
+  });
+
+  test("内訳が取れないときは外側の toolName", () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: "toolCall",
+          toolCallId: "1",
+          toolName: "my_tool",
+          inputText: "not json",
+          rawText: "",
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe("my_tool");
+  });
+});
