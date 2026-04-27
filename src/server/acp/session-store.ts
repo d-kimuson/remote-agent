@@ -32,6 +32,7 @@ import { sessionMessagesTable, sessionsTable } from "../db/schema.ts";
 import { buildPromptWithAttachments } from "./prompt-attachments.pure.ts";
 import { agentPresets } from "./presets.ts";
 import { resolveCommandPath } from "./command-path.ts";
+import { emitAcpSse } from "./sse-broadcast.ts";
 import {
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
@@ -234,6 +235,7 @@ export const createSessionStore = ({
       availableModesJson: JSON.stringify(session.availableModes),
       availableModelsJson: JSON.stringify(session.availableModels),
     });
+    emitAcpSse({ type: "session_updated", sessionId: session.sessionId });
   };
 
   const getSessionEntry = (sessionId: string): SessionEntry => {
@@ -305,6 +307,7 @@ export const createSessionStore = ({
       metadataJson: message.metadataJson ?? "{}",
       updatedAt: updated,
     });
+    emitAcpSse({ type: "session_messages_updated", sessionId });
   };
 
   const buildMessage = ({
@@ -367,6 +370,7 @@ export const createSessionStore = ({
             eq(sessionMessagesTable.streamPartId, input.streamPartId),
           ),
         );
+      emitAcpSse({ type: "session_messages_updated", sessionId: input.sessionId });
     },
   };
 
@@ -732,6 +736,7 @@ export const createSessionStore = ({
     }
 
     await database.db.delete(sessionsTable).where(eq(sessionsTable.sessionId, sessionId));
+    emitAcpSse({ type: "session_removed", sessionId });
     return true;
   };
 

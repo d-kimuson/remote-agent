@@ -6,6 +6,7 @@ import {
   number,
   object,
   optional,
+  parse,
   pipe,
   string,
   trim,
@@ -396,3 +397,28 @@ export const sessionMessagesResponseSchema = object({
 });
 
 export type SessionMessagesResponse = InferOutput<typeof sessionMessagesResponseSchema>;
+
+/**
+ * ACP セッション通知（SSE `data:` 1 行＝ 1 件の JSON テキスト）。共有スキーマで型を揃える。
+ */
+export const acpSseEventSchema = union([
+  object({
+    type: literal("session_updated"),
+    sessionId: pipe(string(), trim()),
+  }),
+  object({
+    type: literal("session_messages_updated"),
+    sessionId: pipe(string(), trim()),
+  }),
+  object({
+    type: literal("session_removed"),
+    sessionId: pipe(string(), trim()),
+  }),
+]);
+
+export type AcpSseEvent = InferOutput<typeof acpSseEventSchema>;
+
+export const parseAcpSseEventJson = (line: string): AcpSseEvent => {
+  const data: unknown = JSON.parse(line);
+  return parse(acpSseEventSchema, data);
+};

@@ -33,6 +33,7 @@ import {
   sendPrompt,
   updateSession,
 } from "./session-store.ts";
+import { subscribeAcpSse } from "./sse-broadcast.ts";
 
 const deleteSessionResponseSchema = object({
   ok: boolean(),
@@ -108,6 +109,39 @@ const resolveCodexResumeCommand = (presetId: string | null | undefined) => {
 };
 
 export const acpRoutes = new Hono()
+  .get(
+    "/sse",
+    describeRoute({
+      summary: "Subscribe to ACP session updates (Server-Sent Events, JSON in each data line)",
+      responses: { 200: { description: "Event stream" } },
+    }),
+    (c) => {
+      const stream = new TransformStream<Uint8Array, Uint8Array>();
+      const writer = stream.writable.getWriter();
+      const encoder = new TextEncoder();
+      const write = (chunk: string) => {
+        return writer.write(encoder.encode(chunk));
+      };
+      const unsubscribe = subscribeAcpSse((line) => {
+        void write(`data: ${line}\n\n`);
+      });
+      const close = () => {
+        unsubscribe();
+        return writer.close().catch(() => undefined);
+      };
+      c.req.raw.signal.addEventListener("abort", () => {
+        void close();
+      });
+      return c.newResponse(stream.readable, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+          "X-Accel-Buffering": "no",
+        },
+      });
+    },
+  )
   .get(
     "/agent/model-catalog",
     describeRoute({

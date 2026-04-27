@@ -30,6 +30,17 @@ describe("acpRoutes", () => {
     });
   });
 
+  test("exposes ACP session SSE with event-stream content type", async () => {
+    const ac = new AbortController();
+    setTimeout(() => {
+      ac.abort();
+    }, 0);
+    const response = await honoApp.request("/api/acp/sse", { signal: ac.signal });
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/event-stream");
+  });
+
   test("rejects session creation requests for non-Codex presets", async () => {
     const response = await honoApp.request("/api/acp/sessions", {
       method: "POST",

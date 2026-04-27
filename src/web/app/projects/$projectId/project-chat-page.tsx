@@ -173,14 +173,14 @@ const SessionMessagesHydrator: FC<{
   readonly sessionId: string;
   readonly onHydrated: (sessionId: string, messages: readonly ChatMessage[]) => void;
 }> = ({ sessionId, onHydrated }) => {
-  const { data } = useSuspenseQuery({
+  const { data, dataUpdatedAt } = useSuspenseQuery({
     queryKey: sessionMessagesQueryKey(sessionId),
     queryFn: () => fetchSessionMessages(sessionId),
   });
 
   useEffect(() => {
     onHydrated(sessionId, data.messages);
-  }, [data.messages, onHydrated, sessionId]);
+  }, [data.messages, dataUpdatedAt, onHydrated, sessionId]);
 
   return null;
 };
@@ -318,22 +318,6 @@ export const ProjectChatPage: FC<{
     ? draftSessionTranscriptKey
     : selectedSession.sessionId;
 
-  const handleMessagesHydrated = useCallback(
-    (targetSessionId: string, messages: readonly ChatMessage[]) => {
-      setTranscripts((current) => {
-        if (current[targetSessionId] !== undefined) {
-          return current;
-        }
-
-        return {
-          ...current,
-          [targetSessionId]: messages.map((message) => ({ ...message })),
-        };
-      });
-    },
-    [],
-  );
-
   const transcript = transcripts[activeTranscriptKey] ?? [];
   const projectUrl = `/projects/${projectId}`;
 
@@ -415,6 +399,27 @@ export const ProjectChatPage: FC<{
     uploadAttachmentsMutation.isPending;
   const isAwaitingAssistantResponse =
     createSessionMutation.isPending || sendPromptMutation.isPending;
+  const handleMessagesHydrated = useCallback(
+    (targetSessionId: string, messages: readonly ChatMessage[]) => {
+      setTranscripts((current) => {
+        const local = current[targetSessionId] ?? [];
+        if (local.length === 0) {
+          return {
+            ...current,
+            [targetSessionId]: messages.map((message) => ({ ...message })),
+          };
+        }
+        if (messages.length === 0 && isAwaitingAssistantResponse) {
+          return current;
+        }
+        return {
+          ...current,
+          [targetSessionId]: messages.map((message) => ({ ...message })),
+        };
+      });
+    },
+    [isAwaitingAssistantResponse],
+  );
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
   const canSend = buildPromptText(prompt, attachmentNames).length > 0 && !isSending;
 
@@ -660,31 +665,6 @@ export const ProjectChatPage: FC<{
       });
 
       upsertSessionInCache(response.session);
-      const assistantSegmentMessages = response.assistantSegmentMessages;
-      if (assistantSegmentMessages !== undefined && assistantSegmentMessages.length > 0) {
-        setTranscripts((current) => {
-          return assistantSegmentMessages.reduce(
-            (transcripts, nextMessage) =>
-              appendTranscriptMessage({
-                message: nextMessage,
-                transcriptKey: resolvedActiveSessionId,
-                transcripts,
-              }),
-            current,
-          );
-        });
-      } else {
-        setTranscripts((current) =>
-          appendTranscriptMessage({
-            message: createChatMessage("assistant", response.text, response.rawEvents, {
-              kind: "legacy_assistant_turn",
-            }),
-            transcriptKey: resolvedActiveSessionId,
-            transcripts: current,
-          }),
-        );
-      }
-
       if (document.visibilityState === "hidden") {
         void showAssistantResponseNotification({
           projectId: project.id,
