@@ -30,6 +30,7 @@ import type {
   SessionsResponse,
   UploadedAttachment,
 } from "../../../../shared/acp.ts";
+import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
 import { Badge } from "../../../components/ui/badge.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
@@ -102,7 +103,7 @@ const formatDateTime = (iso: string): string =>
 const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
   if (message.role === "user") {
-    return <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.text}</p>;
+    return <ChatMarkdown>{message.text}</ChatMarkdown>;
   }
   const k: ChatMessageKind = message.kind ?? "legacy_assistant_turn";
   if (k === "legacy_assistant_turn") {
@@ -110,10 +111,8 @@ const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message 
       <div className="flex w-full flex-col gap-3">
         {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
         {message.text.length > 0 ? (
-          <div className="w-full px-0.5 sm:px-1">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground [text-wrap:pretty]">
-              {message.text}
-            </p>
+          <div className="w-full px-0.5 text-foreground sm:px-1">
+            <ChatMarkdown>{message.text}</ChatMarkdown>
           </div>
         ) : null}
       </div>
@@ -126,7 +125,9 @@ const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message 
   }
   if (k === "assistant_text" || k === "tool_input") {
     return message.text.length > 0 ? (
-      <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground">{message.text}</p>
+      <div className="text-foreground">
+        <ChatMarkdown>{message.text}</ChatMarkdown>
+      </div>
     ) : null;
   }
   if (k === "tool_call" || k === "tool_result" || k === "tool_error") {
@@ -236,11 +237,27 @@ export const ProjectChatPage: FC<{
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     [projectId, sessionsData.sessions],
   );
+  /** サイドバー用は `projectSessions` だが、URL の `session-id` との対応づけは全セッションから行う。 */
   const selectedSession =
     sessionId === null
       ? null
-      : (projectSessions.find((session) => session.sessionId === sessionId) ?? null);
-  const shouldUseDraftSession = selectedSession === null;
+      : (projectSessions.find((s) => s.sessionId === sessionId) ??
+        sessionsData.sessions.find((s) => s.sessionId === sessionId) ??
+        null);
+  const shouldUseDraftSession = sessionId === null;
+  const sessionsInSidebar = useMemo(() => {
+    if (sessionId === null) {
+      return projectSessions;
+    }
+    if (projectSessions.some((s) => s.sessionId === sessionId)) {
+      return projectSessions;
+    }
+    const detached = sessionsData.sessions.find((s) => s.sessionId === sessionId);
+    if (detached === undefined) {
+      return projectSessions;
+    }
+    return [detached, ...projectSessions];
+  }, [projectSessions, sessionId, sessionsData.sessions]);
   const activePresetId = draftPresetId.length > 0 ? draftPresetId : preferredPresetId;
   const draftSession = useMemo(
     () =>
@@ -255,9 +272,9 @@ export const ProjectChatPage: FC<{
     () =>
       buildSessionEntries({
         draftSession,
-        sessions: projectSessions,
+        sessions: sessionsInSidebar,
       }),
-    [draftSession, projectSessions],
+    [draftSession, sessionsInSidebar],
   );
   const modelModeTemplateSession = useMemo((): SessionSummary | null => {
     const inProject = projectSessions.find((entry) => entry.presetId === activePresetId);
@@ -317,9 +334,7 @@ export const ProjectChatPage: FC<{
   const draftModelSourceHasList = draftModelModeListSource.availableModels.length > 0;
   const draftModeSourceHasList = draftModelModeListSource.availableModes.length > 0;
 
-  const activeTranscriptKey = shouldUseDraftSession
-    ? draftSessionTranscriptKey
-    : selectedSession.sessionId;
+  const activeTranscriptKey = shouldUseDraftSession ? draftSessionTranscriptKey : sessionId;
 
   const transcript = transcripts[activeTranscriptKey] ?? [];
   const mergedForDisplay = mergeToolCallResultMessages(transcript);
@@ -329,10 +344,13 @@ export const ProjectChatPage: FC<{
   });
   const projectUrl = `/projects/${projectId}`;
 
-  const navigateToSession = (nextSessionId: string | null) => {
+  const navigateToSession = (
+    nextSessionId: string | null,
+    options: { readonly replace?: boolean } = {},
+  ) => {
     void navigate({
       search: { "session-id": nextSessionId ?? undefined },
-      replace: false,
+      replace: options.replace === true,
     });
   };
 
@@ -418,6 +436,14 @@ export const ProjectChatPage: FC<{
           };
         }
         if (messages.length === 0 && isAwaitingAssistantResponse) {
+          return current;
+        }
+        /**
+         * 送信中に SSE 由来の再取得で、新メッセージ行が未コミットの古いスナップショット
+         * （本より短い行数）が届くと、ここで上書きすると履歴を全部失ったように見える。
+         * 行は append-only の前提なので、短い取得ではローカルより退けない。
+         */
+        if (local.length > 0 && messages.length < local.length) {
           return current;
         }
         return {
@@ -576,9 +602,12 @@ export const ProjectChatPage: FC<{
       updatedAt,
     });
 
-    upsertSessionInCache(response.session);
+    upsertSessionInCache({
+      ...response.session,
+      sessionId: targetSessionId,
+    });
     setIsLoadSessionDialogOpen(false);
-    navigateToSession(response.session.sessionId);
+    navigateToSession(targetSessionId, { replace: true });
     void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
   };
 
@@ -611,7 +640,7 @@ export const ProjectChatPage: FC<{
     );
 
     const sessionForTuning = selectedSession;
-    let activeSessionId = selectedSession?.sessionId ?? null;
+    let activeSessionId = sessionId;
 
     try {
       if (activeSessionId === null) {
@@ -690,6 +719,7 @@ export const ProjectChatPage: FC<{
       });
       setPendingTuningModelId(null);
       setPendingTuningModeId(null);
+      setAttachedFiles([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to send prompt";
       setPrompt(previousPrompt);
@@ -718,7 +748,11 @@ export const ProjectChatPage: FC<{
 
   const headerSubtitle = shouldUseDraftSession
     ? draftSession.label
-    : `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatDateTime(selectedSession.createdAt)}`;
+    : selectedSession !== null
+      ? `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatDateTime(selectedSession.createdAt)}`
+      : sessionId !== null
+        ? `Session ${sessionId}`
+        : "";
 
   const firstUserTextInTranscript = (targetSessionId: string) =>
     transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
@@ -844,27 +878,33 @@ export const ProjectChatPage: FC<{
           </aside>
 
           <div className="flex min-h-0 flex-col rounded-lg border bg-background">
-            {shouldUseDraftSession || selectedSession === null ? null : (
+            {shouldUseDraftSession ? null : (
               <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
                 <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
-                  {resolveSessionListTitle(
-                    selectedSession,
-                    firstUserTextInTranscript(selectedSession.sessionId),
-                  )}
+                  {selectedSession !== null
+                    ? resolveSessionListTitle(
+                        selectedSession,
+                        firstUserTextInTranscript(selectedSession.sessionId),
+                      )
+                    : sessionId !== null
+                      ? (firstUserTextInTranscript(sessionId) ?? sessionId)
+                      : ""}
                 </h2>
-                <Button
-                  aria-label="Close session"
-                  className="shrink-0"
-                  disabled={closeSessionMutation.isPending}
-                  onClick={() => {
-                    void handleCloseSession(selectedSession.sessionId);
-                  }}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <Trash2 className="size-4" />
-                </Button>
+                {sessionId !== null ? (
+                  <Button
+                    aria-label="Close session"
+                    className="shrink-0"
+                    disabled={closeSessionMutation.isPending}
+                    onClick={() => {
+                      void handleCloseSession(sessionId);
+                    }}
+                    size="icon"
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                ) : null}
               </div>
             )}
             <ScrollArea className="min-h-0 flex-1 bg-[color-mix(in_oklab,var(--muted)_12%,var(--background))]">
@@ -1090,7 +1130,7 @@ export const ProjectChatPage: FC<{
                         </Select>
                       </div>
                     </>
-                  ) : (
+                  ) : selectedSession !== null ? (
                     <>
                       <div className="min-w-44 flex-1 sm:flex-none">
                         <Select
@@ -1146,7 +1186,7 @@ export const ProjectChatPage: FC<{
                         </Select>
                       </div>
                     </>
-                  )}
+                  ) : null}
 
                   <Button
                     onClick={() => {

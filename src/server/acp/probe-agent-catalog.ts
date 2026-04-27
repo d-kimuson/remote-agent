@@ -47,7 +47,8 @@ export const probeAgentModelCatalog = async (options: {
   });
 
   try {
-    const response = await provider.initSession();
+    provider.languageModel();
+    const response = await provider.initSession(provider.tools ?? {});
     const models = buildModelOptionsFromResponse(response);
     const modes = buildModeOptionsFromResponse(response);
     return {

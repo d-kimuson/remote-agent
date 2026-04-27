@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 
 import type { AgentPreset, RawEvent, SessionSummary } from "@/shared/acp";
+import { ChatMarkdown } from "@/web/components/chat-markdown";
 import { Badge } from "@/web/components/ui/badge";
 import { Button } from "@/web/components/ui/button";
 import {
@@ -638,7 +639,9 @@ const ACPPlaygroundPage: FC = () => {
                           )}
                           {message.role}
                         </div>
-                        <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
+                        <ChatMarkdown tone={message.role === "user" ? "onPrimary" : "default"}>
+                          {message.text}
+                        </ChatMarkdown>
                       </div>
                     ))
                   )}

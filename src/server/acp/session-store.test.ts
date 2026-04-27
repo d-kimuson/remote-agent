@@ -2,10 +2,12 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
+import type { ACPProvider } from "@mcpc-tech/acp-ai-provider";
 import { afterEach, describe, expect, test } from "vitest";
 
 import type { AgentPreset } from "../../shared/acp.ts";
 import { createDatabase } from "../db/sqlite.ts";
+import { sessionMessagesTable } from "../db/schema.ts";
 import { createSessionStore } from "./session-store.ts";
 
 const codexPreset: AgentPreset = {
@@ -14,6 +16,13 @@ const codexPreset: AgentPreset = {
   description: "test preset",
   command: "npx",
   args: ["-y", "@zed-industries/codex-acp"],
+};
+
+const stubLanguageModel: ACPProvider["languageModel"] = (): ReturnType<
+  ACPProvider["languageModel"]
+> => {
+  /* oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; full ACPLanguageModel is supplied by the real provider in production */
+  return {} as ReturnType<ACPProvider["languageModel"]>;
 };
 
 const disposableClients: { close: () => void }[] = [];
@@ -49,9 +58,7 @@ describe("createSessionStore", () => {
               availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
             },
           }),
-        languageModel: () => {
-          throw new Error("not used in this test");
-        },
+        languageModel: stubLanguageModel,
         setMode: async () => {},
         setModel: async () => {},
         tools: {},
@@ -128,9 +135,7 @@ describe("createSessionStore", () => {
               ],
             },
           }),
-        languageModel: () => {
-          throw new Error("not used in this test");
-        },
+        languageModel: stubLanguageModel,
         setMode: async () => {},
         setModel: async () => {},
         tools: {},
@@ -190,9 +195,7 @@ describe("createSessionStore", () => {
               availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
             },
           }),
-        languageModel: () => {
-          throw new Error("not used in this test");
-        },
+        languageModel: stubLanguageModel,
         setMode: async () => {},
         setModel: async () => {},
         tools: {},
@@ -255,9 +258,7 @@ describe("createSessionStore", () => {
               availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
             },
           }),
-        languageModel: () => {
-          throw new Error("not used in this test");
-        },
+        languageModel: stubLanguageModel,
         setMode: async () => {},
         setModel: async () => {},
         tools: {},
@@ -312,9 +313,7 @@ describe("createSessionStore", () => {
                 availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
               },
             }),
-          languageModel: () => {
-            throw new Error("not used in this test");
-          },
+          languageModel: stubLanguageModel,
           setMode: async () => {},
           setModel: async () => {},
           tools: {},
@@ -355,6 +354,195 @@ describe("createSessionStore", () => {
         title: "Recovered Session",
         updatedAt: "2026-04-27T00:00:00.000Z",
         isActive: false,
+      }),
+    ]);
+  });
+
+  test("loadSession preserves createdAt and origin when rehydrating from the database", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: "session-1",
+            modes: {
+              currentModeId: "balanced",
+              availableModes: [{ id: "balanced", name: "Balanced" }],
+            },
+            models: {
+              currentModelId: "gpt-5-codex",
+              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+    });
+
+    const created = await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+    });
+    const createdAtBefore = created.createdAt;
+
+    const database2 = createDatabase(databasePath);
+    disposableClients.push(database2.client);
+
+    const storeAfterRestart = createSessionStore({
+      database: database2,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: ({ existingSessionId }) => {
+        expect(existingSessionId).toBe("session-1");
+
+        return {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: "ignored",
+              modes: {
+                currentModeId: "balanced",
+                availableModes: [{ id: "balanced", name: "Balanced" }],
+              },
+              models: {
+                currentModelId: "gpt-5-codex",
+                availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              },
+            }),
+          languageModel: stubLanguageModel,
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+      },
+    });
+
+    const loaded = await storeAfterRestart.loadSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "session-1",
+      title: null,
+      updatedAt: null,
+    });
+
+    expect(loaded.createdAt).toBe(createdAtBefore);
+    expect(loaded.origin).toBe("new");
+  });
+
+  test("loadSession keeps existing session_messages (persistSession must not delete sessions row)", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: "session-1",
+            modes: {
+              currentModeId: "balanced",
+              availableModes: [{ id: "balanced", name: "Balanced" }],
+            },
+            models: {
+              currentModelId: "gpt-5-codex",
+              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+    });
+
+    await database.db.insert(sessionMessagesTable).values({
+      id: "message-row-1",
+      sessionId: "session-1",
+      role: "user",
+      text: "prior turn",
+      rawEventsJson: "[]",
+      createdAt: "2026-04-27T10:00:00.000Z",
+      messageKind: "user",
+      streamPartId: null,
+      metadataJson: "{}",
+      updatedAt: "2026-04-27T10:00:00.000Z",
+    });
+
+    const database2 = createDatabase(databasePath);
+    disposableClients.push(database2.client);
+
+    const store2 = createSessionStore({
+      database: database2,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: ({ existingSessionId }) => {
+        expect(existingSessionId).toBe("session-1");
+        return {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: "ignored",
+              modes: {
+                currentModeId: "balanced",
+                availableModes: [{ id: "balanced", name: "Balanced" }],
+              },
+              models: {
+                currentModelId: "gpt-5-codex",
+                availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              },
+            }),
+          languageModel: stubLanguageModel,
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+      },
+    });
+
+    await store2.loadSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "session-1",
+      title: null,
+      updatedAt: null,
+    });
+
+    const messages = await store2.listMessages("session-1");
+    expect(messages).toEqual([
+      expect.objectContaining({
+        id: "message-row-1",
+        role: "user",
+        text: "prior turn",
       }),
     ]);
   });

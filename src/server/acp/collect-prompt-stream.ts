@@ -91,6 +91,10 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
   const aggregatedRawEvents: RawEvent[] = [];
   const assistantSegmentMessages: ChatMessage[] = [];
 
+  /** 同一 `sessionId` 内の複数回 `streamText` でも SDK の part.id が再利用され得るため、永続化キーにターンを混ぜる。 */
+  const streamTurnId = crypto.randomUUID();
+  const streamPartIdForRow = (rawStreamId: string): string => `${streamTurnId}::${rawStreamId}`;
+
   const streamBuffers = new Map<string, string>();
   const streamMessageIds = new Map<string, string>();
 
@@ -142,7 +146,8 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
     switch (part.type) {
       case "text-start": {
         const id = crypto.randomUUID();
-        streamMessageIds.set(part.id, id);
+        const partRowId = streamPartIdForRow(part.id);
+        streamMessageIds.set(partRowId, id);
         streamBuffers.set(streamBufferKey("text", part.id), "");
         await insertRow({
           id,
@@ -150,7 +155,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
           messageKind: "assistant_text",
           text: "",
           rawEvents: [],
-          streamPartId: part.id,
+          streamPartId: partRowId,
           metadataJson: stringifyForPersistence({ providerMetadata: part.providerMetadata }),
           createdAt: now(),
           updatedAt: now(),
@@ -163,14 +168,14 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
         const next = prev + part.text;
         streamBuffers.set(key, next);
         aggregatedText.value += part.text;
-        await updateStreamRow(part.id, { text: next, rawEvents: [] });
+        await updateStreamRow(streamPartIdForRow(part.id), { text: next, rawEvents: [] });
         break;
       }
       case "text-end": {
         const key = streamBufferKey("text", part.id);
         const finalText = streamBuffers.get(key) ?? "";
         streamBuffers.delete(key);
-        await updateStreamRow(part.id, {
+        await updateStreamRow(streamPartIdForRow(part.id), {
           text: finalText,
           rawEvents: [],
           metadataJson: stringifyForPersistence({
@@ -182,7 +187,8 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
       }
       case "reasoning-start": {
         const id = crypto.randomUUID();
-        streamMessageIds.set(part.id, id);
+        const partRowId = streamPartIdForRow(part.id);
+        streamMessageIds.set(partRowId, id);
         streamBuffers.set(streamBufferKey("reasoning", part.id), "");
         await insertRow({
           id,
@@ -190,7 +196,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
           messageKind: "reasoning",
           text: "",
           rawEvents: [],
-          streamPartId: part.id,
+          streamPartId: partRowId,
           metadataJson: stringifyForPersistence({ providerMetadata: part.providerMetadata }),
           createdAt: now(),
           updatedAt: now(),
@@ -202,7 +208,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
         const prev = streamBuffers.get(key) ?? "";
         const next = prev + part.text;
         streamBuffers.set(key, next);
-        await updateStreamRow(part.id, {
+        await updateStreamRow(streamPartIdForRow(part.id), {
           text: next,
           rawEvents: [],
         });
@@ -215,7 +221,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
         if (merged.length > 0) {
           aggregatedRawEvents.push({ type: "reasoning", text: merged, rawText: merged });
         }
-        await updateStreamRow(part.id, {
+        await updateStreamRow(streamPartIdForRow(part.id), {
           text: merged,
           rawEvents:
             merged.length > 0 ? [{ type: "reasoning", text: merged, rawText: merged }] : [],
@@ -228,7 +234,8 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
       }
       case "tool-input-start": {
         const id = crypto.randomUUID();
-        streamMessageIds.set(part.id, id);
+        const partRowId = streamPartIdForRow(part.id);
+        streamMessageIds.set(partRowId, id);
         streamBuffers.set(streamBufferKey("tool_input", part.id), "");
         await insertRow({
           id,
@@ -236,7 +243,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
           messageKind: "tool_input",
           text: "",
           rawEvents: [],
-          streamPartId: part.id,
+          streamPartId: partRowId,
           metadataJson: stringifyForPersistence({
             toolName: part.toolName,
             providerExecuted: part.providerExecuted,
@@ -254,7 +261,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
         const prev = streamBuffers.get(key) ?? "";
         const next = prev + part.delta;
         streamBuffers.set(key, next);
-        await updateStreamRow(part.id, { text: next, rawEvents: [] });
+        await updateStreamRow(streamPartIdForRow(part.id), { text: next, rawEvents: [] });
         break;
       }
       case "tool-input-end": {
@@ -267,7 +274,7 @@ export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
           text: merged,
           rawText: merged,
         });
-        await updateStreamRow(part.id, {
+        await updateStreamRow(streamPartIdForRow(part.id), {
           text: merged,
           rawEvents: [],
           metadataJson: stringifyForPersistence({

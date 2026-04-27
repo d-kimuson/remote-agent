@@ -11,6 +11,7 @@ import {
   modeOptionSchema,
   modelOptionSchema,
   rawEventSchema,
+  sessionOriginSchema,
   sessionSummarySchema,
   type AgentPreset,
   type ChatMessage,
@@ -48,6 +49,20 @@ type SessionProvider = Pick<
   ACPProvider,
   "cleanup" | "initSession" | "languageModel" | "setMode" | "setModel" | "tools"
 >;
+
+/**
+ * `acp-ai-provider` の `startSession` は、未接続のツール用 MCP を後から付与すると
+ * `if (this.sessionId && toolsAdded) { this.connection.newSession(...) }` で
+ * 既存の ACP セッション（`loadSession` 済みを含む）を捨てて新規セッションに置き換える。
+ * 初回 `initSession` から `streamText` と同じ `tools` を渡し、1 本目の `startSession` で
+ * プロキシ付き mcp をセッションに乗せる（node_modules/@mcpc-tech/acp-ai-provider/index.mjs 参照）。
+ */
+const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSessionResponse> => {
+  /** `ACPProvider.get tools` は `this.model` 未生成だと常に undefined（@mcpc-tech/acp-ai-provider） */
+  provider.languageModel();
+  const tools = (provider.tools ?? {}) as NonNullable<Parameters<ACPProvider["initSession"]>[0]>;
+  return await provider.initSession(tools);
+};
 
 type SessionEntry = {
   provider: SessionProvider;
@@ -218,23 +233,43 @@ export const createSessionStore = ({
   const runtimeSessions = new Map<string, SessionEntry>();
 
   const persistSession = async (session: SessionSummary): Promise<void> => {
-    await database.db.delete(sessionsTable).where(eq(sessionsTable.sessionId, session.sessionId));
-    await database.db.insert(sessionsTable).values({
-      sessionId: session.sessionId,
-      origin: session.origin,
-      projectId: session.projectId,
-      presetId: session.presetId,
-      command: session.command,
-      argsJson: JSON.stringify(session.args),
-      cwd: session.cwd,
-      createdAt: session.createdAt,
-      title: session.title,
-      updatedAt: session.updatedAt,
-      currentModeId: session.currentModeId,
-      currentModelId: session.currentModelId,
-      availableModesJson: JSON.stringify(session.availableModes),
-      availableModelsJson: JSON.stringify(session.availableModels),
-    });
+    // DELETE+INSERT だと session_messages が CASCADE で全消去されるため upsert にする。
+    await database.db
+      .insert(sessionsTable)
+      .values({
+        sessionId: session.sessionId,
+        origin: session.origin,
+        projectId: session.projectId,
+        presetId: session.presetId,
+        command: session.command,
+        argsJson: JSON.stringify(session.args),
+        cwd: session.cwd,
+        createdAt: session.createdAt,
+        title: session.title,
+        updatedAt: session.updatedAt,
+        currentModeId: session.currentModeId,
+        currentModelId: session.currentModelId,
+        availableModesJson: JSON.stringify(session.availableModes),
+        availableModelsJson: JSON.stringify(session.availableModels),
+      })
+      .onConflictDoUpdate({
+        target: sessionsTable.sessionId,
+        set: {
+          origin: session.origin,
+          projectId: session.projectId,
+          presetId: session.presetId,
+          command: session.command,
+          argsJson: JSON.stringify(session.args),
+          cwd: session.cwd,
+          createdAt: session.createdAt,
+          title: session.title,
+          updatedAt: session.updatedAt,
+          currentModeId: session.currentModeId,
+          currentModelId: session.currentModelId,
+          availableModesJson: JSON.stringify(session.availableModes),
+          availableModelsJson: JSON.stringify(session.availableModels),
+        },
+      });
     emitAcpSse({ type: "session_updated", sessionId: session.sessionId });
   };
 
@@ -404,7 +439,7 @@ export const createSessionStore = ({
       cwd,
     });
 
-    const response = await provider.initSession();
+    const response = await initAcpProviderSession(provider);
     const createdAt = new Date().toISOString();
     let session = createSessionSummary({
       origin: "new",
@@ -477,6 +512,12 @@ export const createSessionStore = ({
       return activeEntry.session;
     }
 
+    const [existingRow] = await database.db
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.sessionId, sessionId))
+      .limit(1);
+
     const resolvedCommandPath = await resolveCommand(command);
     if (resolvedCommandPath === null) {
       throw new Error(
@@ -490,10 +531,13 @@ export const createSessionStore = ({
       cwd,
       existingSessionId: sessionId,
     });
-    const response = await provider.initSession();
-    const createdAt = new Date().toISOString();
+    const response = await initAcpProviderSession(provider);
+    const createdAt = existingRow?.createdAt ?? new Date().toISOString();
+    const origin =
+      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : "loaded";
+    const effectiveUpdatedAt = updatedAt ?? existingRow?.updatedAt ?? null;
     const session = createSessionSummary({
-      origin: "loaded",
+      origin,
       createdAt,
       projectId,
       presetId: preset.id,
@@ -502,12 +546,18 @@ export const createSessionStore = ({
       cwd,
       title,
       firstUserMessagePreview: null,
-      updatedAt: updatedAt ?? createdAt,
+      updatedAt: effectiveUpdatedAt ?? createdAt,
       response: {
         ...response,
         sessionId,
       },
     });
+
+    if (session.sessionId !== sessionId) {
+      throw new Error(
+        `loadSession: internal bug — summary sessionId (${session.sessionId}) !== requested (${sessionId})`,
+      );
+    }
 
     runtimeSessions.set(session.sessionId, {
       provider,
