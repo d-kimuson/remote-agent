@@ -7,7 +7,7 @@
     "build": "run-s build:web typecheck",
     "build:web": "vite build",
     "dev": "run-p dev:web dev:server",
-    "dev:server": "portless --name 'acp-hono' node --watch src/main.ts",
+    "dev:server": "portless --name 'acp-hono' node --watch src/server/main.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get acp-hono) portless --name 'acp-vite' vite",
     "fix": "run-p fix:*",
     "fix:oxfmt": "oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern",
