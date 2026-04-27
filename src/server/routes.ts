@@ -5,6 +5,7 @@ import { parse } from "valibot";
 import { appInfoSchema } from "../shared/acp.ts";
 import { acpRoutes } from "./acp/routes.ts";
 import { agentPresets } from "./acp/presets.ts";
+import { attachmentRoutes } from "./attachments/routes.ts";
 import { filesystemRoutes } from "./filesystem/routes.ts";
 import { jsonResponse } from "./hono-utils.ts";
 import { getProjectsFilePath } from "./project-store.ts";
@@ -27,6 +28,7 @@ export const routes = new Hono()
       return c.json(response);
     },
   )
+  .route("/attachments", attachmentRoutes)
   .route("/filesystem", filesystemRoutes)
   .route("/projects", projectRoutes)
   .route("/acp", acpRoutes);

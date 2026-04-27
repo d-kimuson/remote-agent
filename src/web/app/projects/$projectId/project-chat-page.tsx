@@ -1,18 +1,27 @@
-import { Link } from "@tanstack/react-router";
-import { useMutation, useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Paperclip, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useState, type FC } from "react";
+import { Link, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import {
+  ArrowLeft,
+  History as HistoryIcon,
+  MessageSquareDashed,
+  Loader2,
+  Paperclip,
+  Plus,
+  RefreshCw,
+  Send,
+  Settings,
+  Trash2,
+} from "lucide-react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type FC } from "react";
 
+import type {
+  ChatMessage,
+  SessionSummary,
+  SessionsResponse,
+  UploadedAttachment,
+} from "../../../../shared/acp.ts";
 import { Badge } from "../../../components/ui/badge.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../../components/ui/card.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
 import {
   Select,
@@ -27,24 +36,79 @@ import {
   deleteSessionRequest,
   fetchAppInfo,
   fetchProject,
+  fetchResumableSessions,
+  fetchSessionMessages,
   fetchSessions,
+  loadSessionRequest,
   sendPromptRequest,
   updateSessionRequest,
+  uploadAttachmentsRequest,
 } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
+import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
 import { AttachFilesDialog } from "./attach-files-dialog.tsx";
-import { CreateSessionDialog } from "./create-session-dialog.tsx";
+import {
+  appendTranscriptMessage,
+  buildDraftSession,
+  buildPromptText,
+  buildSessionEntries,
+  defaultPresetId,
+  draftSessionTranscriptKey,
+  moveTranscript,
+  resolveSessionListTitle,
+} from "./chat-state.pure.ts";
+import { ChatRawEvents } from "./chat-raw-events.tsx";
+import { LoadSessionDialog } from "./load-session-dialog.tsx";
 import {
   appInfoQueryKey,
   projectQueryKey,
-  selectedSessionFrom,
+  sessionMessagesQueryKey,
   sessionsQueryKey,
 } from "./queries.ts";
 import { SessionListItem } from "./session-list-item.tsx";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
 
-export const ProjectChatPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
+/** 既存セッションからモデル/モード一覧を借りられないときの Select 用プレースホルダー（送信時は undefined を送る） */
+const DRAFT_FALLBACK_SELECT_VALUE = "__acp_agent_default__";
+
+const formatCreatedAt = (createdAt: string): string =>
+  new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(createdAt));
+
+const presetLabelFrom = ({
+  presetId,
+  presets,
+}: {
+  readonly presetId: string | null | undefined;
+  readonly presets: readonly { readonly id: string; readonly label: string }[];
+}): string => presets.find((preset) => preset.id === presetId)?.label ?? presetId ?? "custom";
+
+const SessionMessagesHydrator: FC<{
+  readonly sessionId: string;
+  readonly onHydrated: (sessionId: string, messages: readonly ChatMessage[]) => void;
+}> = ({ sessionId, onHydrated }) => {
+  const { data } = useSuspenseQuery({
+    queryKey: sessionMessagesQueryKey(sessionId),
+    queryFn: () => fetchSessionMessages(sessionId),
+  });
+
+  useEffect(() => {
+    onHydrated(sessionId, data.messages);
+  }, [data.messages, onHydrated, sessionId]);
+
+  return null;
+};
+
+export const ProjectChatPage: FC<{
+  readonly projectId: string;
+  readonly sessionId: string | null;
+}> = ({ projectId, sessionId }) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate({ from: "/projects/$projectId" });
 
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
@@ -60,255 +124,858 @@ export const ProjectChatPage: FC<{ readonly projectId: string }> = ({ projectId 
   });
 
   const project = projectData.project;
+  const preferredPresetId = defaultPresetId(appInfoData.agentPresets);
 
-  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const [draftPresetId, setDraftPresetId] = useState("");
+  const [draftModelId, setDraftModelId] = useState<string | null>(null);
+  const [draftModeId, setDraftModeId] = useState<string | null>(null);
+  const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
+  const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
   const [prompt, setPrompt] = useState("");
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
-  const [attachedFiles, setAttachedFiles] = useState<readonly string[]>([]);
-  const [isCreateSessionDialogOpen, setIsCreateSessionDialogOpen] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [isAttachDialogOpen, setIsAttachDialogOpen] = useState(false);
-  const [newSessionPresetId, setNewSessionPresetId] = useState("codex");
+  const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
 
   const projectSessions = useMemo(
-    () => sessionsData.sessions.filter((session) => session.projectId === projectId),
+    () =>
+      sessionsData.sessions
+        .filter((session) => session.projectId === projectId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
     [projectId, sessionsData.sessions],
   );
-  const selectedSession = selectedSessionFrom(projectSessions, selectedSessionId);
-  const transcript = selectedSession === null ? [] : (transcripts[selectedSession.sessionId] ?? []);
+  const selectedSession =
+    sessionId === null
+      ? null
+      : (projectSessions.find((session) => session.sessionId === sessionId) ?? null);
+  const shouldUseDraftSession = selectedSession === null;
+  const activePresetId = draftPresetId.length > 0 ? draftPresetId : preferredPresetId;
+  const draftSession = useMemo(
+    () =>
+      buildDraftSession({
+        cwd: project.workingDirectory,
+        presetId: activePresetId,
+        presets: appInfoData.agentPresets,
+      }),
+    [activePresetId, appInfoData.agentPresets, project.workingDirectory],
+  );
+  const sessionEntries = useMemo(
+    () =>
+      buildSessionEntries({
+        draftSession,
+        sessions: projectSessions,
+      }),
+    [draftSession, projectSessions],
+  );
+  const modelModeTemplateSession = useMemo((): SessionSummary | null => {
+    const inProject = projectSessions.find((entry) => entry.presetId === activePresetId);
+    if (inProject !== undefined) {
+      return inProject;
+    }
+    if (projectSessions[0] !== undefined) {
+      return projectSessions[0];
+    }
+    return (
+      sessionsData.sessions.find((entry) => entry.presetId === activePresetId) ??
+      sessionsData.sessions[0] ??
+      null
+    );
+  }, [activePresetId, projectSessions, sessionsData.sessions]);
+
+  const draftModelSourceHasList =
+    modelModeTemplateSession !== null && modelModeTemplateSession.availableModels.length > 0;
+  const draftModeSourceHasList =
+    modelModeTemplateSession !== null && modelModeTemplateSession.availableModes.length > 0;
+
+  const activeTranscriptKey = shouldUseDraftSession
+    ? draftSessionTranscriptKey
+    : selectedSession.sessionId;
+
+  const handleMessagesHydrated = useCallback(
+    (targetSessionId: string, messages: readonly ChatMessage[]) => {
+      setTranscripts((current) => {
+        if (current[targetSessionId] !== undefined) {
+          return current;
+        }
+
+        return {
+          ...current,
+          [targetSessionId]: messages.map((message) => ({ ...message })),
+        };
+      });
+    },
+    [],
+  );
+
+  const transcript = transcripts[activeTranscriptKey] ?? [];
+  const projectUrl = `/projects/${projectId}`;
+
+  const navigateToSession = (nextSessionId: string | null) => {
+    void navigate({
+      search: { "session-id": nextSessionId ?? undefined },
+      replace: false,
+    });
+  };
 
   useEffect(() => {
-    if (selectedSessionId !== null) {
-      return;
-    }
+    setDraftModelId(null);
+    setDraftModeId(null);
+  }, [activePresetId]);
 
-    if (projectSessions.length > 0) {
-      setSelectedSessionId(projectSessions[0]?.sessionId ?? null);
-    }
-  }, [projectSessions, selectedSessionId]);
+  useEffect(() => {
+    setPendingTuningModelId(null);
+    setPendingTuningModeId(null);
+  }, [selectedSession?.sessionId]);
 
   const createSessionMutation = useMutation({
     mutationFn: createSessionRequest,
-    onSuccess: async (response) => {
-      await queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-      setSelectedSessionId(response.session.sessionId);
-      setIsCreateSessionDialogOpen(false);
-    },
   });
 
   const updateSessionMutation = useMutation({
     mutationFn: ({
-      sessionId,
+      sessionId: targetSessionId,
       modelId,
       modeId,
     }: {
       readonly sessionId: string;
       readonly modelId?: string | null;
       readonly modeId?: string | null;
-    }) => updateSessionRequest(sessionId, { modelId, modeId }),
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-    },
+    }) => updateSessionRequest(targetSessionId, { modelId, modeId }),
   });
 
   const closeSessionMutation = useMutation({
     mutationFn: deleteSessionRequest,
-    onSuccess: async (_, sessionId) => {
-      await queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-      setSelectedSessionId((current) => (current === sessionId ? null : current));
-    },
+  });
+
+  const loadSessionMutation = useMutation({
+    mutationFn: loadSessionRequest,
+  });
+
+  const discoverResumableSessionsMutation = useMutation({
+    mutationFn: fetchResumableSessions,
   });
 
   const sendPromptMutation = useMutation({
     mutationFn: ({
-      sessionId,
+      attachmentIds,
+      modeId: tuningModeId,
+      modelId: tuningModelId,
+      sessionId: targetSessionId,
       nextPrompt,
     }: {
+      readonly attachmentIds: readonly string[];
       readonly sessionId: string;
       readonly nextPrompt: string;
-    }) => sendPromptRequest(sessionId, nextPrompt),
+      readonly modelId?: string | null;
+      readonly modeId?: string | null;
+    }) =>
+      sendPromptRequest(targetSessionId, {
+        attachmentIds,
+        modeId: tuningModeId,
+        modelId: tuningModelId,
+        prompt: nextPrompt,
+      }),
   });
 
-  const handleCreateSession = () => {
-    createSessionMutation.mutate({
-      projectId: project.id,
-      presetId: newSessionPresetId,
-      command: null,
-      argsText: "",
+  const uploadAttachmentsMutation = useMutation({
+    mutationFn: uploadAttachmentsRequest,
+  });
+
+  const isSending =
+    createSessionMutation.isPending ||
+    sendPromptMutation.isPending ||
+    updateSessionMutation.isPending ||
+    uploadAttachmentsMutation.isPending;
+  const isAwaitingAssistantResponse =
+    createSessionMutation.isPending || sendPromptMutation.isPending;
+  const attachmentNames = attachedFiles.map((attachment) => attachment.name);
+  const canSend = buildPromptText(prompt, attachmentNames).length > 0 && !isSending;
+
+  const thinkingModelLabel = useMemo((): string => {
+    if (modelModeTemplateSession === null) {
+      return "Model";
+    }
+    if (shouldUseDraftSession) {
+      if (!draftModelSourceHasList) {
+        return "Model";
+      }
+      const id =
+        draftModelId ??
+        modelModeTemplateSession.currentModelId ??
+        modelModeTemplateSession.availableModels[0]?.id;
+      const found =
+        id !== undefined
+          ? modelModeTemplateSession.availableModels.find((m) => m.id === id)
+          : undefined;
+      return found?.name ?? id ?? "Model";
+    }
+    if (selectedSession !== null) {
+      const id = selectedSession.currentModelId;
+      const found =
+        id !== undefined ? selectedSession.availableModels.find((m) => m.id === id) : undefined;
+      return found?.name ?? id ?? "Model";
+    }
+    return "Model";
+  }, [
+    draftModelId,
+    draftModelSourceHasList,
+    modelModeTemplateSession,
+    selectedSession,
+    shouldUseDraftSession,
+  ]);
+
+  const setSessionsData = (updater: (sessions: readonly SessionSummary[]) => SessionSummary[]) => {
+    queryClient.setQueryData<SessionsResponse>(sessionsQueryKey, (current) =>
+      current === undefined
+        ? current
+        : {
+            sessions: updater(current.sessions),
+          },
+    );
+  };
+
+  const upsertSessionInCache = (session: SessionSummary) => {
+    setSessionsData((sessions) =>
+      sessions.some((entry) => entry.sessionId === session.sessionId)
+        ? sessions.map((entry) => (entry.sessionId === session.sessionId ? session : entry))
+        : [session, ...sessions],
+    );
+  };
+
+  const handleAttachFiles = async (files: readonly File[]) => {
+    const response = await uploadAttachmentsMutation.mutateAsync(files);
+    setAttachedFiles((current) => [...current, ...response.attachments]);
+  };
+
+  const handleRemoveFile = (attachmentId: string) => {
+    setAttachedFiles((current) =>
+      current.filter((attachment) => attachment.attachmentId !== attachmentId),
+    );
+  };
+
+  const handleSelectExistingSession = (nextSessionId: string) => {
+    navigateToSession(nextSessionId);
+  };
+
+  const handleStartDraftSession = () => {
+    navigateToSession(null);
+  };
+
+  const handleUpdateSession = async ({
+    modelId,
+    modeId,
+  }: {
+    readonly modelId?: string | null;
+    readonly modeId?: string | null;
+  }) => {
+    if (selectedSession === null) {
+      return;
+    }
+
+    if (!selectedSession.isActive) {
+      if (modelId !== undefined) {
+        setPendingTuningModelId(modelId);
+      }
+      if (modeId !== undefined) {
+        setPendingTuningModeId(modeId);
+      }
+      return;
+    }
+
+    const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+
+    upsertSessionInCache({
+      ...selectedSession,
+      currentModelId: modelId ?? selectedSession.currentModelId,
+      currentModeId: modeId ?? selectedSession.currentModeId,
+    });
+
+    try {
+      const response = await updateSessionMutation.mutateAsync({
+        sessionId: selectedSession.sessionId,
+        modelId,
+        modeId,
+      });
+      upsertSessionInCache(response.session);
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    } catch {
+      queryClient.setQueryData(sessionsQueryKey, previousSessions);
+    }
+  };
+
+  const handleCloseSession = async (targetSessionId: string) => {
+    const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+
+    setSessionsData((sessions) =>
+      sessions.filter((session) => session.sessionId !== targetSessionId),
+    );
+    if (sessionId === targetSessionId) {
+      navigateToSession(null);
+    }
+
+    try {
+      await closeSessionMutation.mutateAsync(targetSessionId);
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    } catch {
+      queryClient.setQueryData(sessionsQueryKey, previousSessions);
+    }
+  };
+
+  const handleLoadExistingSession = async ({
+    sessionId: targetSessionId,
+    title,
+    updatedAt,
+  }: {
+    readonly sessionId: string;
+    readonly title: string | null;
+    readonly updatedAt: string | null;
+  }) => {
+    const response = await loadSessionMutation.mutateAsync({
+      projectId,
+      presetId: "codex",
+      sessionId: targetSessionId,
+      cwd: project.workingDirectory,
+      title,
+      updatedAt,
+    });
+
+    upsertSessionInCache(response.session);
+    setIsLoadSessionDialogOpen(false);
+    navigateToSession(response.session.sessionId);
+    void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+  };
+
+  const handleOpenLoadSessionDialog = () => {
+    setIsLoadSessionDialogOpen(true);
+    discoverResumableSessionsMutation.mutate({
+      projectId,
+      presetId: "codex",
       cwd: project.workingDirectory,
     });
   };
 
-  const handleToggleFile = (path: string) => {
-    setAttachedFiles((current) =>
-      current.includes(path) ? current.filter((entry) => entry !== path) : [...current, path],
-    );
-  };
-
   const handleSendPrompt = async () => {
-    if (selectedSession === null || prompt.trim().length === 0) {
+    const nextPrompt = buildPromptText(prompt, attachmentNames);
+    if (nextPrompt.length === 0) {
       return;
     }
 
-    const attachmentBlock =
-      attachedFiles.length === 0
-        ? ""
-        : `\n\nAttached files:\n${attachedFiles.map((path) => `- ${path}`).join("\n")}`;
-    const nextPrompt = `${prompt}${attachmentBlock}`;
+    const previousPrompt = prompt;
+    const userMessage = createChatMessage("user", nextPrompt);
+    const initialTranscriptKey = activeTranscriptKey;
 
     setPrompt("");
-    setTranscripts((current) => ({
-      ...current,
-      [selectedSession.sessionId]: [
-        ...(current[selectedSession.sessionId] ?? []),
-        createChatMessage("user", nextPrompt),
-      ],
-    }));
+    setTranscripts((current) =>
+      appendTranscriptMessage({
+        message: userMessage,
+        transcriptKey: initialTranscriptKey,
+        transcripts: current,
+      }),
+    );
+
+    const sessionForTuning = selectedSession;
+    let activeSessionId = selectedSession?.sessionId ?? null;
 
     try {
+      if (activeSessionId === null) {
+        const modelIdForCreate = draftModelSourceHasList
+          ? (draftModelId ??
+            modelModeTemplateSession?.currentModelId ??
+            modelModeTemplateSession?.availableModels[0]?.id ??
+            undefined)
+          : undefined;
+        const modeIdForCreate = draftModeSourceHasList
+          ? (draftModeId ??
+            modelModeTemplateSession?.currentModeId ??
+            modelModeTemplateSession?.availableModes[0]?.id ??
+            undefined)
+          : undefined;
+        const sessionResponse = await createSessionMutation.mutateAsync({
+          projectId: project.id,
+          presetId: draftSession.presetId,
+          command: null,
+          argsText: "",
+          cwd: project.workingDirectory,
+          modelId: modelIdForCreate,
+          modeId: modeIdForCreate,
+        });
+
+        activeSessionId = sessionResponse.session.sessionId;
+        upsertSessionInCache(sessionResponse.session);
+        setTranscripts((current) =>
+          moveTranscript({
+            from: draftSessionTranscriptKey,
+            to: sessionResponse.session.sessionId,
+            transcripts: current,
+          }),
+        );
+        navigateToSession(sessionResponse.session.sessionId);
+      }
+
+      if (activeSessionId === null) {
+        throw new Error("failed to resolve active session");
+      }
+
+      const resolvedActiveSessionId = activeSessionId;
+      const inactiveTuning: { modelId?: string; modeId?: string } = {};
+      if (sessionForTuning !== null && !sessionForTuning.isActive) {
+        const modelEffective = pendingTuningModelId ?? sessionForTuning.currentModelId ?? null;
+        const modeEffective = pendingTuningModeId ?? sessionForTuning.currentModeId ?? null;
+        if (modelEffective !== null && modelEffective.length > 0) {
+          inactiveTuning.modelId = modelEffective;
+        }
+        if (modeEffective !== null && modeEffective.length > 0) {
+          inactiveTuning.modeId = modeEffective;
+        }
+      }
       const response = await sendPromptMutation.mutateAsync({
-        sessionId: selectedSession.sessionId,
+        attachmentIds: attachedFiles.map((attachment) => attachment.attachmentId),
+        sessionId: resolvedActiveSessionId,
         nextPrompt,
+        ...inactiveTuning,
       });
 
-      setTranscripts((current) => ({
-        ...current,
-        [selectedSession.sessionId]: [
-          ...(current[selectedSession.sessionId] ?? []),
-          createChatMessage("assistant", response.text, response.rawEvents),
-        ],
-      }));
+      upsertSessionInCache(response.session);
+      setTranscripts((current) =>
+        appendTranscriptMessage({
+          message: createChatMessage("assistant", response.text, response.rawEvents),
+          transcriptKey: resolvedActiveSessionId,
+          transcripts: current,
+        }),
+      );
+
+      if (document.visibilityState === "hidden") {
+        void showAssistantResponseNotification({
+          projectId: project.id,
+          projectName: project.name,
+          sessionId: resolvedActiveSessionId,
+          text: response.text,
+          timestamp: Date.now(),
+          url: projectUrl,
+        });
+      }
+
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+      void queryClient.invalidateQueries({
+        queryKey: sessionMessagesQueryKey(resolvedActiveSessionId),
+      });
+      setPendingTuningModelId(null);
+      setPendingTuningModeId(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to send prompt";
-      setTranscripts((current) => ({
-        ...current,
-        [selectedSession.sessionId]: [
-          ...(current[selectedSession.sessionId] ?? []),
-          createChatMessage("assistant", `Error: ${message}`),
-        ],
-      }));
+      setPrompt(previousPrompt);
+      setTranscripts((current) =>
+        appendTranscriptMessage({
+          message: createChatMessage("assistant", `Error: ${message}`),
+          transcriptKey: activeSessionId ?? draftSessionTranscriptKey,
+          transcripts: current,
+        }),
+      );
+
+      if (document.visibilityState === "hidden") {
+        void showAssistantResponseNotification({
+          projectId: project.id,
+          projectName: project.name,
+          sessionId: activeSessionId ?? draftSessionTranscriptKey,
+          text: `Error: ${message}`,
+          timestamp: Date.now(),
+          url: projectUrl,
+        });
+      }
     }
   };
 
+  const headerSubtitle = shouldUseDraftSession
+    ? draftSession.label
+    : `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatCreatedAt(selectedSession.createdAt)}`;
+
+  const firstUserTextInTranscript = (targetSessionId: string) =>
+    transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
+
   return (
     <div className="min-h-screen bg-background">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 md:px-6">
-        <header className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-start md:justify-between">
-          <div className="space-y-2">
-            <Link className={cn(buttonVariants({ variant: "outline" }), "w-fit")} to="/projects">
+      {sessionId === null ? null : (
+        <Suspense fallback={null}>
+          <SessionMessagesHydrator
+            key={sessionId}
+            onHydrated={handleMessagesHydrated}
+            sessionId={sessionId}
+          />
+        </Suspense>
+      )}
+      <div className="mx-auto flex h-screen max-w-[1600px] flex-col px-4 py-4 md:px-6">
+        <header className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <Link className={cn(buttonVariants({ variant: "outline", size: "sm" }))} to="/projects">
               <ArrowLeft className="size-4" />
-              Back to projects
+              Projects
             </Link>
-            <div>
-              <h1 className="text-2xl font-semibold tracking-tight">{project.name}</h1>
-              <p className="break-all font-mono text-xs text-muted-foreground">
-                {project.workingDirectory}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
+                <Badge variant={shouldUseDraftSession ? "secondary" : "outline"}>
+                  {shouldUseDraftSession ? "Draft" : "Connected"}
+                </Badge>
+                <Badge variant="outline">{projectSessions.length} sessions</Badge>
+              </div>
+              <p className="truncate font-mono text-xs text-muted-foreground">
+                {project.workingDirectory} · {headerSubtitle}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Badge variant="outline">project: {projectId}</Badge>
-            <Badge variant="secondary">presets: {appInfoData.agentPresets.length}</Badge>
-          </div>
+          <Link
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
+            to="/settings"
+          >
+            <Settings className="size-4" />
+            Settings
+          </Link>
         </header>
 
-        <section className="grid min-h-[calc(100vh-180px)] gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <Card className="min-h-0">
-            <CardHeader>
-              <CardTitle>Chat</CardTitle>
-              <CardDescription>
-                {selectedSession === null
-                  ? "右側から session を作成してください。"
-                  : `${selectedSession.command} / ${selectedSession.sessionId}`}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-              <ScrollArea className="h-[52vh] rounded-lg border">
-                <div className="space-y-4 p-4">
-                  {transcript.length === 0 ? (
-                    <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                      会話履歴はまだありません。
-                    </div>
-                  ) : null}
+        <section className="grid min-h-0 flex-1 gap-4 pt-4 md:grid-cols-[320px_minmax(0,1fr)]">
+          <aside className="flex min-h-0 flex-col rounded-lg border bg-background">
+            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+              <p className="text-sm font-medium">Sessions</p>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => {
+                    void refetchSessions();
+                  }}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <RefreshCw className="size-4" />
+                </Button>
+                <Button
+                  onClick={handleOpenLoadSessionDialog}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <HistoryIcon className="size-4" />
+                </Button>
+                <Button onClick={handleStartDraftSession} size="icon" type="button">
+                  <Plus className="size-4" />
+                </Button>
+              </div>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="space-y-2 p-3">
+                {sessionEntries.length === 0 ? (
+                  <div className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
+                    No sessions yet.
+                  </div>
+                ) : null}
 
-                  {transcript.map((message) => (
-                    <div
-                      className={cn(
-                        "max-w-[85%] rounded-xl border px-4 py-3",
-                        message.role === "user"
-                          ? "ml-auto border-primary bg-primary text-primary-foreground"
-                          : "bg-background",
-                      )}
-                      key={message.id}
-                    >
-                      <p className="mb-1 text-xs font-medium uppercase tracking-wide opacity-70">
+                {sessionEntries.map((entry) => (
+                  <SessionListItem
+                    footerLeft={
+                      entry.kind === "draft" ? "Draft" : formatCreatedAt(entry.session.createdAt)
+                    }
+                    key={entry.kind === "draft" ? "draft" : entry.session.sessionId}
+                    listTitle={
+                      entry.kind === "draft"
+                        ? "New Session"
+                        : resolveSessionListTitle(
+                            entry.session,
+                            firstUserTextInTranscript(entry.session.sessionId),
+                          )
+                    }
+                    onSelect={() => {
+                      if (entry.kind === "draft") {
+                        handleStartDraftSession();
+                        return;
+                      }
+
+                      handleSelectExistingSession(entry.session.sessionId);
+                    }}
+                    selected={
+                      entry.kind === "draft"
+                        ? shouldUseDraftSession
+                        : entry.session.sessionId === selectedSession?.sessionId
+                    }
+                    session={entry}
+                  />
+                ))}
+              </div>
+            </ScrollArea>
+          </aside>
+
+          <div className="flex min-h-0 flex-col rounded-lg border bg-background">
+            {shouldUseDraftSession || selectedSession === null ? null : (
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
+                <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
+                  {resolveSessionListTitle(
+                    selectedSession,
+                    firstUserTextInTranscript(selectedSession.sessionId),
+                  )}
+                </h2>
+                <Button
+                  aria-label="Close session"
+                  className="shrink-0"
+                  disabled={closeSessionMutation.isPending}
+                  onClick={() => {
+                    void handleCloseSession(selectedSession.sessionId);
+                  }}
+                  size="icon"
+                  type="button"
+                  variant="ghost"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
+              </div>
+            )}
+            <ScrollArea className="min-h-0 flex-1 bg-muted/10">
+              <div className="space-y-4 p-4">
+                {transcript.length === 0 ? (
+                  <div className="rounded-lg border border-dashed px-5 py-10 text-center">
+                    <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground" />
+                    <p className="text-sm font-medium">No messages</p>
+                  </div>
+                ) : null}
+
+                {transcript.map((message) => (
+                  <div
+                    className={cn(
+                      "max-w-[90%] rounded-lg border px-4 py-3",
+                      message.role === "user"
+                        ? "ml-auto border-primary/20 bg-primary text-primary-foreground"
+                        : "bg-background/95",
+                    )}
+                    key={message.id}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <p className="text-[11px] font-medium tracking-[0.18em] uppercase opacity-70">
                         {message.role}
                       </p>
-                      <p className="whitespace-pre-wrap text-sm leading-6">{message.text}</p>
                     </div>
-                  ))}
-                </div>
-              </ScrollArea>
-
-              <div className="space-y-3 rounded-lg border p-3">
-                <Textarea
-                  className="min-h-32"
-                  onChange={(event) => {
-                    setPrompt(event.target.value);
-                  }}
-                  placeholder="Type your message"
-                  value={prompt}
-                />
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <div className="min-w-40 flex-1 sm:flex-none">
-                    <Select
-                      onValueChange={(value) => {
-                        if (selectedSession !== null && value !== null) {
-                          void updateSessionMutation.mutateAsync({
-                            sessionId: selectedSession.sessionId,
-                            modelId: value,
-                          });
-                        }
-                      }}
-                      value={selectedSession?.currentModelId ?? undefined}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Model" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(selectedSession?.availableModels ?? []).map((model) => (
-                          <SelectItem key={model.id} value={model.id}>
-                            {model.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    {message.text.length > 0 ? (
+                      <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+                    ) : null}
+                    {message.role === "assistant" && message.rawEvents.length > 0 ? (
+                      <ChatRawEvents events={message.rawEvents} />
+                    ) : null}
                   </div>
+                ))}
 
-                  <div className="min-w-40 flex-1 sm:flex-none">
-                    <Select
-                      onValueChange={(value) => {
-                        if (selectedSession !== null && value !== null) {
-                          void updateSessionMutation.mutateAsync({
-                            sessionId: selectedSession.sessionId,
-                            modeId: value,
-                          });
-                        }
-                      }}
-                      value={selectedSession?.currentModeId ?? undefined}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Effort" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(selectedSession?.availableModes ?? []).map((mode) => (
-                          <SelectItem key={mode.id} value={mode.id}>
-                            {mode.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                {isAwaitingAssistantResponse ? (
+                  <div
+                    className="max-w-[90%] rounded-lg border border-dashed border-muted-foreground/25 bg-muted/30 px-4 py-3"
+                    role="status"
+                  >
+                    <div className="flex items-center gap-2.5 text-sm text-muted-foreground">
+                      <Loader2 aria-hidden className="size-4 shrink-0 animate-spin" />
+                      <span>
+                        <span className="font-medium text-foreground">{thinkingModelLabel}</span>
+                        <span> is thinking…</span>
+                      </span>
+                    </div>
                   </div>
+                ) : null}
+              </div>
+            </ScrollArea>
+
+            <div className="border-t bg-background p-4">
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                {attachedFiles.length === 0 ? (
+                  <span className="text-xs text-muted-foreground">No attached files</span>
+                ) : (
+                  attachedFiles.map((attachment) => (
+                    <Badge key={attachment.attachmentId} variant="outline">
+                      <Paperclip className="size-3" />
+                      {attachment.name}
+                    </Badge>
+                  ))
+                )}
+              </div>
+
+              <Textarea
+                className="min-h-28 resize-none"
+                onChange={(event) => {
+                  setPrompt(event.target.value);
+                }}
+                onKeyDown={(event) => {
+                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+                    event.preventDefault();
+                    if (canSend) {
+                      void handleSendPrompt();
+                    }
+                  }
+                }}
+                placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
+                value={prompt}
+              />
+
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-1 flex-wrap items-center gap-2">
+                  {shouldUseDraftSession ? (
+                    <>
+                      <div className="min-w-44 flex-1 sm:flex-none">
+                        <Select
+                          onValueChange={(value) => {
+                            if (value !== null) {
+                              setDraftPresetId(value);
+                            }
+                          }}
+                          value={activePresetId}
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Provider" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {appInfoData.agentPresets.map((preset) => (
+                              <SelectItem key={preset.id} value={preset.id}>
+                                {preset.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="min-w-44 flex-1 sm:flex-none">
+                        <Select
+                          onValueChange={(value) => {
+                            if (!draftModelSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
+                              return;
+                            }
+                            setDraftModelId(value);
+                          }}
+                          value={
+                            draftModelSourceHasList && modelModeTemplateSession !== null
+                              ? (draftModelId ??
+                                modelModeTemplateSession.currentModelId ??
+                                modelModeTemplateSession.availableModels[0]?.id ??
+                                DRAFT_FALLBACK_SELECT_VALUE)
+                              : DRAFT_FALLBACK_SELECT_VALUE
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            disabled={!draftModelSourceHasList}
+                            title={
+                              !draftModelSourceHasList
+                                ? "どこかのセッションができると、ここにモデル一覧が出ます（初回はエージェント既定で作成されます）"
+                                : undefined
+                            }
+                          >
+                            <SelectValue placeholder="Model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {draftModelSourceHasList && modelModeTemplateSession !== null ? (
+                              modelModeTemplateSession.availableModels.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  {model.name}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
+                                既定（エージェント既定・一覧は初回作成後）
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="min-w-44 flex-1 sm:flex-none">
+                        <Select
+                          onValueChange={(value) => {
+                            if (!draftModeSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
+                              return;
+                            }
+                            setDraftModeId(value);
+                          }}
+                          value={
+                            draftModeSourceHasList && modelModeTemplateSession !== null
+                              ? (draftModeId ??
+                                modelModeTemplateSession.currentModeId ??
+                                modelModeTemplateSession.availableModes[0]?.id ??
+                                DRAFT_FALLBACK_SELECT_VALUE)
+                              : DRAFT_FALLBACK_SELECT_VALUE
+                          }
+                        >
+                          <SelectTrigger
+                            className="w-full"
+                            disabled={!draftModeSourceHasList}
+                            title={
+                              !draftModeSourceHasList
+                                ? "どこかのセッションができると、ここにモード一覧が出ます（初回はエージェント既定で作成されます）"
+                                : undefined
+                            }
+                          >
+                            <SelectValue placeholder="Effort" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {draftModeSourceHasList && modelModeTemplateSession !== null ? (
+                              modelModeTemplateSession.availableModes.map((mode) => (
+                                <SelectItem key={mode.id} value={mode.id}>
+                                  {mode.name}
+                                </SelectItem>
+                              ))
+                            ) : (
+                              <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
+                                既定（エージェント既定・一覧は初回作成後）
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="min-w-44 flex-1 sm:flex-none">
+                        <Select
+                          onValueChange={(value) => {
+                            if (value !== null) {
+                              void handleUpdateSession({ modelId: value });
+                            }
+                          }}
+                          value={
+                            selectedSession.isActive
+                              ? (selectedSession.currentModelId ?? undefined)
+                              : (pendingTuningModelId ??
+                                selectedSession.currentModelId ??
+                                undefined)
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Model" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedSession.availableModels.map((model) => (
+                              <SelectItem key={model.id} value={model.id}>
+                                {model.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="min-w-44 flex-1 sm:flex-none">
+                        <Select
+                          onValueChange={(value) => {
+                            if (value !== null) {
+                              void handleUpdateSession({ modeId: value });
+                            }
+                          }}
+                          value={
+                            selectedSession.isActive
+                              ? (selectedSession.currentModeId ?? undefined)
+                              : (pendingTuningModeId ?? selectedSession.currentModeId ?? undefined)
+                          }
+                        >
+                          <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Effort" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {selectedSession.availableModes.map((mode) => (
+                              <SelectItem key={mode.id} value={mode.id}>
+                                {mode.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </>
+                  )}
 
                   <Button
                     onClick={() => {
@@ -320,121 +987,63 @@ export const ProjectChatPage: FC<{ readonly projectId: string }> = ({ projectId 
                     <Paperclip className="size-4" />
                     Attach
                   </Button>
-
-                  <Button
-                    disabled={selectedSession === null || sendPromptMutation.isPending}
-                    onClick={() => {
-                      void handleSendPrompt();
-                    }}
-                    type="button"
-                  >
-                    <Send className="size-4" />
-                    {sendPromptMutation.isPending ? "Sending..." : "Send"}
-                  </Button>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <Badge variant="outline">provider: {selectedSession?.presetId ?? "none"}</Badge>
-                  {attachedFiles.map((path) => (
-                    <Badge key={path} variant="secondary">
-                      <Paperclip className="size-3" />
-                      {path}
-                    </Badge>
-                  ))}
-                  {attachedFiles.length === 0 ? <span>No attached files</span> : null}
-                </div>
+                <Button
+                  className="min-w-36"
+                  disabled={!canSend}
+                  onClick={() => {
+                    void handleSendPrompt();
+                  }}
+                  type="button"
+                >
+                  <Send className="size-4" />
+                  {isSending ? "Sending..." : shouldUseDraftSession ? "Start session" : "Send"}
+                </Button>
               </div>
-            </CardContent>
-          </Card>
-
-          <Card className="min-h-0">
-            <CardHeader>
-              <CardTitle>Sessions</CardTitle>
-              <CardDescription>右側で session を切り替えます。</CardDescription>
-              <CardAction>
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={() => {
-                      void refetchSessions();
-                    }}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    <RefreshCw className="size-4" />
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      setIsCreateSessionDialogOpen(true);
-                    }}
-                    size="sm"
-                    type="button"
-                  >
-                    <Plus className="size-4" />
-                  </Button>
-                </div>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {projectSessions.length === 0 ? (
-                <div className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">
-                  session がまだありません。
-                </div>
-              ) : null}
-
-              <div className="space-y-2">
-                {projectSessions.map((session) => (
-                  <div className="space-y-2" key={session.sessionId}>
-                    <SessionListItem
-                      onSelect={setSelectedSessionId}
-                      selected={session.sessionId === selectedSession?.sessionId}
-                      session={session}
-                    />
-                    {session.sessionId === selectedSession?.sessionId ? (
-                      <Button
-                        className="w-full"
-                        disabled={closeSessionMutation.isPending}
-                        onClick={() => {
-                          void closeSessionMutation.mutateAsync(session.sessionId);
-                        }}
-                        type="button"
-                        variant="outline"
-                      >
-                        <Trash2 className="size-4" />
-                        Close session
-                      </Button>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+            </div>
+          </div>
         </section>
       </div>
-
-      {isCreateSessionDialogOpen ? (
-        <CreateSessionDialog
-          error={createSessionMutation.error instanceof Error ? createSessionMutation.error : null}
-          isLoading={createSessionMutation.isPending}
-          isProjectReady={true}
-          onClose={() => {
-            setIsCreateSessionDialogOpen(false);
-          }}
-          onCreateSession={handleCreateSession}
-          onPresetIdChange={setNewSessionPresetId}
-          presetId={newSessionPresetId}
-          presets={appInfoData.agentPresets}
-        />
-      ) : null}
 
       {isAttachDialogOpen ? (
         <AttachFilesDialog
           attachedFiles={attachedFiles}
+          error={
+            uploadAttachmentsMutation.error instanceof Error
+              ? uploadAttachmentsMutation.error
+              : null
+          }
+          isUploading={uploadAttachmentsMutation.isPending}
+          onAttachFiles={handleAttachFiles}
           onClose={() => {
             setIsAttachDialogOpen(false);
           }}
-          onToggleFile={handleToggleFile}
-          workingDirectory={project.workingDirectory}
+          onRemoveFile={handleRemoveFile}
+        />
+      ) : null}
+
+      {isLoadSessionDialogOpen ? (
+        <LoadSessionDialog
+          capability={discoverResumableSessionsMutation.data?.capability ?? null}
+          error={
+            discoverResumableSessionsMutation.error instanceof Error
+              ? discoverResumableSessionsMutation.error
+              : null
+          }
+          isLoading={discoverResumableSessionsMutation.isPending}
+          isLoadingSession={loadSessionMutation.isPending}
+          onClose={() => {
+            setIsLoadSessionDialogOpen(false);
+          }}
+          onLoadSession={(session) => {
+            void handleLoadExistingSession({
+              sessionId: session.sessionId,
+              title: session.title ?? null,
+              updatedAt: session.updatedAt ?? null,
+            });
+          }}
+          sessions={discoverResumableSessionsMutation.data?.sessions ?? []}
         />
       ) : null}
     </div>

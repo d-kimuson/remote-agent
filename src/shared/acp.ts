@@ -1,7 +1,9 @@
 import {
   array,
+  boolean,
   literal,
   nullable,
+  number,
   object,
   optional,
   pipe,
@@ -37,14 +39,23 @@ export const modelOptionSchema = object({
 
 export type ModelOption = InferOutput<typeof modelOptionSchema>;
 
+export const sessionOriginSchema = union([literal("new"), literal("loaded")]);
+
+export type SessionOrigin = InferOutput<typeof sessionOriginSchema>;
+
 export const sessionSummarySchema = object({
   sessionId: pipe(string(), trim()),
+  origin: sessionOriginSchema,
   projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),
   command: pipe(string(), trim()),
   args: array(pipe(string(), trim())),
   cwd: pipe(string(), trim()),
   createdAt: pipe(string(), trim()),
+  isActive: boolean(),
+  title: nullable(optional(pipe(string(), trim()))),
+  firstUserMessagePreview: nullable(optional(pipe(string(), trim()))),
+  updatedAt: nullable(optional(pipe(string(), trim()))),
   currentModeId: nullable(optional(pipe(string(), trim()))),
   currentModelId: nullable(optional(pipe(string(), trim()))),
   availableModes: array(modeOptionSchema),
@@ -74,7 +85,45 @@ export const terminalEventSchema = object({
   rawText: pipe(string(), trim()),
 });
 
-export const rawEventSchema = union([planEventSchema, diffEventSchema, terminalEventSchema]);
+export const reasoningEventSchema = object({
+  type: literal("reasoning"),
+  text: string(),
+  rawText: string(),
+});
+
+export const toolCallEventSchema = object({
+  type: literal("toolCall"),
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+  inputText: string(),
+  rawText: string(),
+});
+
+export const toolResultEventSchema = object({
+  type: literal("toolResult"),
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+  outputText: string(),
+  rawText: string(),
+});
+
+export const toolErrorEventSchema = object({
+  type: literal("toolError"),
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+  errorText: string(),
+  rawText: string(),
+});
+
+export const rawEventSchema = union([
+  planEventSchema,
+  diffEventSchema,
+  terminalEventSchema,
+  reasoningEventSchema,
+  toolCallEventSchema,
+  toolResultEventSchema,
+  toolErrorEventSchema,
+]);
 
 export type RawEvent = InferOutput<typeof rawEventSchema>;
 
@@ -110,6 +159,36 @@ export const filesystemTreeResponseSchema = object({
 
 export type FilesystemTreeResponse = InferOutput<typeof filesystemTreeResponseSchema>;
 
+export const directoryEntrySchema = object({
+  name: pipe(string(), trim()),
+  path: pipe(string(), trim()),
+  type: union([literal("directory"), literal("file")]),
+});
+
+export type DirectoryEntry = InferOutput<typeof directoryEntrySchema>;
+
+export const directoryListingResponseSchema = object({
+  entries: array(directoryEntrySchema),
+  currentPath: pipe(string(), trim()),
+});
+
+export type DirectoryListingResponse = InferOutput<typeof directoryListingResponseSchema>;
+
+export const uploadedAttachmentSchema = object({
+  attachmentId: pipe(string(), trim()),
+  name: pipe(string(), trim()),
+  mediaType: pipe(string(), trim()),
+  sizeInBytes: number(),
+});
+
+export type UploadedAttachment = InferOutput<typeof uploadedAttachmentSchema>;
+
+export const uploadAttachmentsResponseSchema = object({
+  attachments: array(uploadedAttachmentSchema),
+});
+
+export type UploadAttachmentsResponse = InferOutput<typeof uploadAttachmentsResponseSchema>;
+
 export const projectSchema = object({
   id: pipe(string(), trim()),
   name: pipe(string(), trim()),
@@ -143,19 +222,72 @@ export const createSessionRequestSchema = object({
   command: nullable(optional(pipe(string(), trim()))),
   argsText: optional(string()),
   cwd: nullable(optional(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
 });
 
 export type CreateSessionRequest = InferOutput<typeof createSessionRequestSchema>;
 
 export const updateSessionRequestSchema = object({
-  modeId: nullable(optional(pipe(string(), trim()))),
-  modelId: nullable(optional(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
 });
 
 export type UpdateSessionRequest = InferOutput<typeof updateSessionRequestSchema>;
 
+export const discoverResumableSessionsRequestSchema = object({
+  projectId: nullable(optional(pipe(string(), trim()))),
+  presetId: nullable(optional(pipe(string(), trim()))),
+  cwd: nullable(optional(pipe(string(), trim()))),
+});
+
+export type DiscoverResumableSessionsRequest = InferOutput<
+  typeof discoverResumableSessionsRequestSchema
+>;
+
+export const resumeCapabilitySchema = object({
+  loadSession: boolean(),
+  listSessions: boolean(),
+  resumeSession: boolean(),
+  canLoadIntoProvider: boolean(),
+  fallbackReason: nullable(optional(pipe(string(), trim()))),
+});
+
+export type ResumeCapability = InferOutput<typeof resumeCapabilitySchema>;
+
+export const resumableSessionCandidateSchema = object({
+  sessionId: pipe(string(), trim()),
+  cwd: pipe(string(), trim()),
+  title: nullable(optional(pipe(string(), trim()))),
+  updatedAt: nullable(optional(pipe(string(), trim()))),
+  loadable: boolean(),
+});
+
+export type ResumableSessionCandidate = InferOutput<typeof resumableSessionCandidateSchema>;
+
+export const resumableSessionsResponseSchema = object({
+  capability: resumeCapabilitySchema,
+  sessions: array(resumableSessionCandidateSchema),
+});
+
+export type ResumableSessionsResponse = InferOutput<typeof resumableSessionsResponseSchema>;
+
+export const loadSessionRequestSchema = object({
+  projectId: nullable(optional(pipe(string(), trim()))),
+  presetId: nullable(optional(pipe(string(), trim()))),
+  sessionId: pipe(string(), trim()),
+  cwd: nullable(optional(pipe(string(), trim()))),
+  title: nullable(optional(pipe(string(), trim()))),
+  updatedAt: nullable(optional(pipe(string(), trim()))),
+});
+
+export type LoadSessionRequest = InferOutput<typeof loadSessionRequestSchema>;
+
 export const sendMessageRequestSchema = object({
   prompt: pipe(string(), trim()),
+  attachmentIds: optional(array(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
 });
 
 export type SendMessageRequest = InferOutput<typeof sendMessageRequestSchema>;
@@ -179,3 +311,23 @@ export const sessionsResponseSchema = object({
 });
 
 export type SessionsResponse = InferOutput<typeof sessionsResponseSchema>;
+
+export const chatMessageRoleSchema = union([literal("user"), literal("assistant")]);
+
+export type ChatMessageRole = InferOutput<typeof chatMessageRoleSchema>;
+
+export const chatMessageSchema = object({
+  id: pipe(string(), trim()),
+  role: chatMessageRoleSchema,
+  text: string(),
+  rawEvents: array(rawEventSchema),
+  createdAt: pipe(string(), trim()),
+});
+
+export type ChatMessage = InferOutput<typeof chatMessageSchema>;
+
+export const sessionMessagesResponseSchema = object({
+  messages: array(chatMessageSchema),
+});
+
+export type SessionMessagesResponse = InferOutput<typeof sessionMessagesResponseSchema>;

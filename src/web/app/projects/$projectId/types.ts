@@ -1,11 +1,6 @@
-import type { RawEvent } from "../../../../shared/acp.ts";
+import type { ChatMessage, RawEvent } from "../../../../shared/acp.ts";
 
-export type ChatMessage = {
-  readonly id: string;
-  readonly role: "user" | "assistant";
-  readonly text: string;
-  readonly rawEvents: readonly RawEvent[];
-};
+export type { ChatMessage } from "../../../../shared/acp.ts";
 
 export type TranscriptMap = Record<string, readonly ChatMessage[]>;
 
@@ -17,5 +12,6 @@ export const createChatMessage = (
   id: crypto.randomUUID(),
   role,
   text,
-  rawEvents,
+  rawEvents: [...rawEvents],
+  createdAt: new Date().toISOString(),
 });

@@ -22,6 +22,8 @@ const customFetch: Fetch = async (input, init) => {
   return response;
 };
 
+export const apiFetch = customFetch;
+
 export const honoClient = hc<RouteType>("/api", {
   fetch: customFetch,
 });

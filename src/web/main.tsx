@@ -1,11 +1,15 @@
+import "@fontsource-variable/geist";
 import { createRouter, RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { QueryClientProviderWrapper } from "./lib/api/QueryClientProviderWrapper";
+import { registerServiceWorker } from "./pwa/register-service-worker.ts";
 import { routeTree } from "./routeTree.gen";
 
 import "./styles.css"; // tailwind css style
+
+registerServiceWorker();
 
 const router = createRouter({
   routeTree,

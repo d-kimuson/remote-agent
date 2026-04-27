@@ -1,6 +1,7 @@
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { stat } from "node:fs/promises";
 import path from "node:path";
 
+import { eq } from "drizzle-orm";
 import { parse } from "valibot";
 
 import {
@@ -9,8 +10,9 @@ import {
   type CreateProjectRequest,
   type Project,
 } from "../shared/acp.ts";
-
-const projectsFilePath = path.resolve(process.cwd(), "projects.local.json");
+import { envService } from "./env.ts";
+import { type AppDatabase, getDefaultDatabase } from "./db/sqlite.ts";
+import { projectsTable } from "./db/schema.ts";
 
 const slugify = (value: string): string => {
   return (
@@ -28,35 +30,6 @@ const createDefaultProject = (): Project => {
     name: path.basename(workingDirectory),
     workingDirectory,
   });
-};
-
-const ensureProjectsFile = async (): Promise<void> => {
-  try {
-    await stat(projectsFilePath);
-  } catch {
-    await mkdir(path.dirname(projectsFilePath), { recursive: true });
-    await writeFile(
-      projectsFilePath,
-      `${JSON.stringify({ projects: [createDefaultProject()] }, null, 2)}\n`,
-      "utf8",
-    );
-  }
-};
-
-const readProjects = async (): Promise<readonly Project[]> => {
-  await ensureProjectsFile();
-  const fileText = await readFile(projectsFilePath, "utf8");
-  const data: unknown = JSON.parse(fileText);
-  const parsed = parse(projectsResponseSchema, data);
-  return parsed.projects;
-};
-
-const writeProjects = async (projects: readonly Project[]): Promise<void> => {
-  await writeFile(
-    projectsFilePath,
-    `${JSON.stringify(parse(projectsResponseSchema, { projects }), null, 2)}\n`,
-    "utf8",
-  );
 };
 
 const assertDirectory = async (workingDirectory: string): Promise<string> => {
@@ -84,36 +57,108 @@ const uniqueProjectId = (projects: readonly Project[], projectName: string): str
   return `${baseId}-${counter}`;
 };
 
-export const getProjectsFilePath = (): string => projectsFilePath;
+const mapProjectRecord = (record: typeof projectsTable.$inferSelect): Project => {
+  return parse(projectSchema, {
+    id: record.id,
+    name: record.name,
+    workingDirectory: record.workingDirectory,
+  });
+};
+
+export const createProjectStore = (database: AppDatabase = getDefaultDatabase()) => {
+  const ensureDefaultProject = async (): Promise<void> => {
+    const existingProjects = await database.db.select().from(projectsTable).limit(1);
+    if (existingProjects.length > 0) {
+      return;
+    }
+
+    const defaultProject = createDefaultProject();
+    await database.db.insert(projectsTable).values({
+      id: defaultProject.id,
+      name: defaultProject.name,
+      workingDirectory: defaultProject.workingDirectory,
+      createdAt: new Date().toISOString(),
+    });
+  };
+
+  const readProjects = async (): Promise<readonly Project[]> => {
+    await ensureDefaultProject();
+    const records = await database.db.select().from(projectsTable);
+    const projects = records.map(mapProjectRecord);
+    return parse(projectsResponseSchema, { projects }).projects;
+  };
+
+  const listProjects = async (): Promise<readonly Project[]> => {
+    return readProjects();
+  };
+
+  const getProject = async (projectId: string): Promise<Project> => {
+    await ensureDefaultProject();
+    const [record] = await database.db
+      .select()
+      .from(projectsTable)
+      .where(eq(projectsTable.id, projectId))
+      .limit(1);
+    if (record === undefined) {
+      throw new Error(`Unknown project: ${projectId}`);
+    }
+
+    return mapProjectRecord(record);
+  };
+
+  const createProject = async (request: CreateProjectRequest): Promise<Project> => {
+    const projects = await readProjects();
+    const workingDirectory = await assertDirectory(request.workingDirectory);
+    const existingProject = projects.find(
+      (project) => project.workingDirectory === workingDirectory,
+    );
+    if (existingProject !== undefined) {
+      return existingProject;
+    }
+
+    const nextProject = parse(projectSchema, {
+      id: uniqueProjectId(projects, request.name),
+      name: request.name,
+      workingDirectory,
+    });
+
+    await database.db.insert(projectsTable).values({
+      id: nextProject.id,
+      name: nextProject.name,
+      workingDirectory: nextProject.workingDirectory,
+      createdAt: new Date().toISOString(),
+    });
+
+    return nextProject;
+  };
+
+  return {
+    storagePath: database.storagePath,
+    listProjects,
+    getProject,
+    createProject,
+  };
+};
+
+let defaultProjectStore: ReturnType<typeof createProjectStore> | undefined = undefined;
+
+const getProjectStore = () => {
+  defaultProjectStore ??= createProjectStore();
+  return defaultProjectStore;
+};
+
+export const getProjectsFilePath = (): string => {
+  return envService.getEnv("ACP_PLAYGROUND_DB_PATH");
+};
 
 export const listProjects = async (): Promise<readonly Project[]> => {
-  return readProjects();
+  return getProjectStore().listProjects();
 };
 
 export const getProject = async (projectId: string): Promise<Project> => {
-  const projects = await readProjects();
-  const project = projects.find((entry) => entry.id === projectId);
-  if (project === undefined) {
-    throw new Error(`Unknown project: ${projectId}`);
-  }
-
-  return project;
+  return getProjectStore().getProject(projectId);
 };
 
 export const createProject = async (request: CreateProjectRequest): Promise<Project> => {
-  const projects = await readProjects();
-  const workingDirectory = await assertDirectory(request.workingDirectory);
-  const existingProject = projects.find((project) => project.workingDirectory === workingDirectory);
-  if (existingProject !== undefined) {
-    return existingProject;
-  }
-
-  const nextProject = parse(projectSchema, {
-    id: uniqueProjectId(projects, request.name),
-    name: request.name,
-    workingDirectory,
-  });
-
-  await writeProjects([...projects, nextProject]);
-  return nextProject;
+  return getProjectStore().createProject(request);
 };

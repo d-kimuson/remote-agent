@@ -2,8 +2,12 @@ import type { SessionSummary } from "../../../../shared/acp.ts";
 
 export const appInfoQueryKey = ["app-info"] as const;
 export const sessionsQueryKey = ["sessions"] as const;
+export const sessionMessagesQueryKey = (sessionId: string) =>
+  ["session-messages", sessionId] as const;
 export const projectQueryKey = (projectId: string) => ["project", projectId] as const;
 export const filesystemTreeQueryKey = (root: string) => ["filesystem-tree", root] as const;
+export const resumableSessionsQueryKey = (projectId: string) =>
+  ["resumable-sessions", projectId] as const;
 
 export const selectedSessionFrom = (
   sessions: readonly SessionSummary[],

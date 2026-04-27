@@ -18,6 +18,9 @@ describe("honoApp", () => {
         "/api/info": {
           get: {},
         },
+        "/api/attachments/ingest": {
+          post: {},
+        },
         "/api/projects": {
           get: {},
           post: {
@@ -41,6 +44,27 @@ describe("honoApp", () => {
               },
             ],
           },
+        },
+        "/api/acp/sessions/discover": {
+          get: {
+            parameters: [
+              {
+                in: "query",
+                name: "projectId",
+              },
+              {
+                in: "query",
+                name: "presetId",
+              },
+              {
+                in: "query",
+                name: "cwd",
+              },
+            ],
+          },
+        },
+        "/api/acp/sessions/load": {
+          post: {},
         },
         "/api/acp/sessions/{sessionId}/messages": {
           post: {},

@@ -1,101 +1,125 @@
-import { Paperclip, X } from "lucide-react";
-import { useState, type FC } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { Paperclip } from "lucide-react";
+import type { ChangeEvent, FC } from "react";
 
-import type { FilesystemEntry } from "../../../../shared/acp.ts";
-import { FilesystemBrowser } from "../../../features/filesystem-browser.tsx";
+import type { UploadedAttachment } from "../../../../shared/acp.ts";
 import { Badge } from "../../../components/ui/badge.tsx";
 import { Button } from "../../../components/ui/button.tsx";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../../../components/ui/card.tsx";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../../../components/ui/dialog.tsx";
 import { Input } from "../../../components/ui/input.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
-import { fetchFilesystemTree } from "../../../lib/api/acp.ts";
+
+const formatSize = (sizeInBytes: number): string => {
+  if (sizeInBytes < 1024) {
+    return `${String(sizeInBytes)} B`;
+  }
+
+  if (sizeInBytes < 1024 * 1024) {
+    return `${(sizeInBytes / 1024).toFixed(1)} KiB`;
+  }
+
+  return `${(sizeInBytes / (1024 * 1024)).toFixed(1)} MiB`;
+};
 
 export const AttachFilesDialog: FC<{
-  readonly attachedFiles: readonly string[];
-  readonly onToggleFile: (path: string) => void;
-  readonly workingDirectory: string | null;
+  readonly attachedFiles: readonly UploadedAttachment[];
+  readonly error: Error | null;
+  readonly isUploading: boolean;
+  readonly onAttachFiles: (files: readonly File[]) => Promise<void>;
   readonly onClose: () => void;
-}> = ({ attachedFiles, onToggleFile, workingDirectory, onClose }) => {
-  const [browserRootPath, setBrowserRootPath] = useState("");
-  const [filesystemRoot, setFilesystemRoot] = useState<FilesystemEntry | null>(null);
+  readonly onRemoveFile: (attachmentId: string) => void;
+}> = ({ attachedFiles, error, isUploading, onAttachFiles, onClose, onRemoveFile }) => {
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const fileList = event.target.files;
+    if (fileList === null || fileList.length === 0) {
+      return;
+    }
 
-  const loadTreeMutation = useMutation({
-    mutationFn: (root: string) => fetchFilesystemTree(root),
-    onSuccess: (data) => {
-      setFilesystemRoot(data.root);
-    },
-  });
-
-  const handleLoad = () => {
-    const root = browserRootPath.length > 0 ? browserRootPath : (workingDirectory ?? "");
-    loadTreeMutation.mutate(root);
+    void onAttachFiles([...fileList]);
+    event.target.value = "";
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <Card className="flex h-[80vh] w-full max-w-3xl flex-col">
-        <CardHeader>
-          <CardTitle>Attach files</CardTitle>
-          <CardDescription>prompt にファイルパスを添付します。</CardDescription>
-          <CardAction>
-            <Button onClick={onClose} size="sm" type="button" variant="outline">
-              <X className="size-4" />
-            </Button>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex min-h-0 flex-1 flex-col gap-4">
-          <div className="flex gap-2">
-            <Input
-              onChange={(event) => {
-                setBrowserRootPath(event.target.value);
-              }}
-              placeholder={workingDirectory ?? "/path/to/project"}
-              value={browserRootPath}
-            />
-            <Button
-              disabled={loadTreeMutation.isPending}
-              onClick={handleLoad}
-              type="button"
-              variant="outline"
-            >
-              Load
-            </Button>
+    <Dialog
+      onOpenChange={(open) => {
+        if (!open) {
+          onClose();
+        }
+      }}
+      open
+    >
+      <DialogContent className="flex max-h-[82vh] max-w-3xl grid-rows-none flex-col">
+        <DialogHeader>
+          <DialogTitle>Attach files</DialogTitle>
+          <DialogDescription>Choose files to include with the next message.</DialogDescription>
+        </DialogHeader>
+        <div className="flex min-h-0 flex-1 flex-col gap-4">
+          <div className="space-y-2">
+            <Input multiple onChange={handleFileChange} type="file" />
           </div>
 
-          <ScrollArea className="min-h-0 flex-1 rounded-lg border p-4">
-            <FilesystemBrowser
-              attachedFiles={attachedFiles}
-              onOpenDirectory={setBrowserRootPath}
-              onToggleFile={onToggleFile}
-              root={filesystemRoot}
-            />
+          <ScrollArea className="min-h-64 rounded-lg border p-4">
+            <div className="space-y-3">
+              {attachedFiles.length === 0 ? (
+                <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
+                  No files attached.
+                </div>
+              ) : null}
+
+              {attachedFiles.map((attachment) => (
+                <div
+                  className="flex items-center justify-between gap-3 rounded-lg border p-3"
+                  key={attachment.attachmentId}
+                >
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <Paperclip className="size-4 shrink-0" />
+                      <p className="truncate text-sm font-medium">{attachment.name}</p>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {attachment.mediaType} / {formatSize(attachment.sizeInBytes)}
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      onRemoveFile(attachment.attachmentId);
+                    }}
+                    size="sm"
+                    type="button"
+                    variant="outline"
+                  >
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
           </ScrollArea>
 
           <div className="flex flex-wrap gap-2">
             {attachedFiles.length === 0 ? <Badge variant="outline">No attached file</Badge> : null}
-            {attachedFiles.map((path) => (
-              <Badge key={path} variant="secondary">
+            {attachedFiles.map((attachment) => (
+              <Badge key={attachment.attachmentId} variant="secondary">
                 <Paperclip className="size-3" />
-                {path}
+                {attachment.name}
               </Badge>
             ))}
           </div>
 
-          <div className="flex justify-end">
-            <Button onClick={onClose} type="button">
-              Done
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          {error === null ? null : <p className="text-sm text-destructive">{error.message}</p>}
+        </div>
+        <DialogFooter>
+          <Button disabled={isUploading} onClick={onClose} type="button">
+            {isUploading ? "Uploading..." : "Done"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

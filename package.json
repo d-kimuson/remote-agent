@@ -6,6 +6,7 @@
   "scripts": {
     "build": "run-s build:web typecheck",
     "build:web": "vite build",
+    "db:generate": "drizzle-kit generate",
     "dev": "run-p dev:web dev:server",
     "dev:server": "portless --name 'acp-hono' node --watch src/server/main.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get acp-hono) portless --name 'acp-vite' vite",
@@ -32,6 +33,7 @@
     "ai": "6.0.168",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "drizzle-orm": "1.0.0-beta.20",
     "hono": "4.12.14",
     "hono-openapi": "1.3.0",
     "lucide-react": "1.8.0",
@@ -54,6 +56,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260421.2",
     "@vitejs/plugin-react": "6.0.1",
     "@vitest/browser-playwright": "4.1.5",
+    "drizzle-kit": "1.0.0-beta.20",
     "gatecheck": "0.0.1-beta.5",
     "lefthook": "2.1.6",
     "npm-run-all2": "8.0.4",
@@ -65,7 +68,11 @@
     "tailwindcss": "4.2.4",
     "typescript": "6.0.3",
     "vite": "8.0.9",
-    "vitest": "4.1.5"
+    "vite-plugin-pwa": "1.1.0",
+    "vitest": "4.1.5",
+    "workbox-precaching": "7.4.0",
+    "workbox-routing": "7.4.0",
+    "workbox-window": "7.4.0"
   },
   "packageManager": "pnpm@10.33.2+sha512.a90faf6feeab71ad6c6e57f94e0fe1a12f5dcc22cd754db40ae9593eb6a3e0b6b12e3540218bb37ae083404b1f2ce6db2a4121e979829b4aff94b99f49da1cf8"
 }

@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
 import { startTransition, useDeferredValue, useState, type FC } from "react";
 import {
   Bot,
@@ -173,17 +173,17 @@ const RawEventPanel: FC<{
 
 const ACPPlaygroundPage: FC = () => {
   const queryClient = useQueryClient();
-  const appInfoQuery = useQuery({
+  const appInfoQuery = useSuspenseQuery({
     queryKey: appInfoQueryKey,
     queryFn: fetchAppInfo,
   });
-  const sessionsQuery = useQuery({
+  const sessionsQuery = useSuspenseQuery({
     queryKey: sessionQueryKey,
     queryFn: fetchSessions,
   });
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedPresetId, setSelectedPresetId] = useState("claude-code");
+  const [selectedPresetId, setSelectedPresetId] = useState("codex");
   const [customCommand, setCustomCommand] = useState("");
   const [argsText, setArgsText] = useState("");
   const [cwd, setCwd] = useState("");
@@ -242,7 +242,7 @@ const ACPPlaygroundPage: FC = () => {
     }: {
       readonly sessionId: string;
       readonly nextPrompt: string;
-    }) => sendPromptRequest(sessionId, nextPrompt),
+    }) => sendPromptRequest(sessionId, { prompt: nextPrompt, attachmentIds: [] }),
   });
 
   const handlePresetChange = (presetId: string | null) => {
