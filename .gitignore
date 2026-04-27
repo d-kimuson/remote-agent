@@ -147,6 +147,9 @@ vite.config.ts.timestamp-*
 # claude
 .claude/settings.local.json
 
+# codex
+.codex
+
 # docs
 docs/tmp/*
 
