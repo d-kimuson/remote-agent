@@ -52,6 +52,10 @@ export const sessionMessagesTable = sqliteTable(
     text: text("text").notNull(),
     rawEventsJson: text("raw_events_json").notNull(),
     createdAt: text("created_at").notNull(),
+    messageKind: text("message_kind").notNull().default("legacy_assistant_turn"),
+    streamPartId: text("stream_part_id"),
+    metadataJson: text("metadata_json").notNull().default("{}"),
+    updatedAt: text("updated_at").notNull(),
   },
   (table) => [
     index("idx_session_messages_session_id").on(table.sessionId),

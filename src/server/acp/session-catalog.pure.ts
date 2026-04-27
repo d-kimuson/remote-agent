@@ -33,3 +33,24 @@ export const enrichModeOptionsIfEmpty = (
   }
   return [{ id: currentModeId, name: currentModeId, description: null }];
 };
+
+/** ACP 再開時の initSession が空カタログだけ返すことがある。空でない方を優先 */
+export const preferNonEmptyModelCatalog = (
+  fromProvider: readonly ModelOption[],
+  fromStore: readonly ModelOption[],
+): ModelOption[] => {
+  if (fromProvider.length > 0) {
+    return [...fromProvider];
+  }
+  return [...fromStore];
+};
+
+export const preferNonEmptyModeCatalog = (
+  fromProvider: readonly ModeOption[],
+  fromStore: readonly ModeOption[],
+): ModeOption[] => {
+  if (fromProvider.length > 0) {
+    return [...fromProvider];
+  }
+  return [...fromStore];
+};

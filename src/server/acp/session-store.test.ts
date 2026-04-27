@@ -197,7 +197,13 @@ describe("createSessionStore", () => {
         setModel: async () => {},
         tools: {},
       }),
-      promptCollector: () => Promise.resolve({ text: "pong", rawEvents: [] }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: "pong",
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
     });
 
     await store.createSession({

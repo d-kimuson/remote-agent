@@ -1,6 +1,7 @@
 import { parse } from "valibot";
 
 import {
+  agentModelCatalogResponseSchema,
   appInfoSchema,
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
@@ -14,6 +15,7 @@ import {
   sessionResponseSchema,
   sessionsResponseSchema,
   uploadAttachmentsResponseSchema,
+  type AgentModelCatalogResponse,
   type AppInfo,
   type CreateProjectRequest,
   type CreateSessionRequest,
@@ -95,6 +97,16 @@ export const uploadAttachmentsRequest = async (
 export const fetchSessions = async (): Promise<SessionsResponse> => {
   const response = await honoClient.acp.sessions.$get();
   return parse(sessionsResponseSchema, await response.json());
+};
+
+export const fetchAgentModelCatalog = async (input: {
+  readonly projectId: string;
+  readonly presetId: string;
+}): Promise<AgentModelCatalogResponse> => {
+  const response = await honoClient.acp.agent["model-catalog"].$get({
+    query: { projectId: input.projectId, presetId: input.presetId },
+  });
+  return parse(agentModelCatalogResponseSchema, await response.json());
 };
 
 export const fetchResumableSessions = async (

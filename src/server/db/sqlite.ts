@@ -50,7 +50,11 @@ const initializeSchema = (client: DatabaseSync): void => {
       role TEXT NOT NULL,
       text TEXT NOT NULL,
       raw_events_json TEXT NOT NULL,
-      created_at TEXT NOT NULL
+      created_at TEXT NOT NULL,
+      message_kind TEXT NOT NULL DEFAULT 'legacy_assistant_turn',
+      stream_part_id TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_session_messages_session_id
@@ -58,6 +62,47 @@ const initializeSchema = (client: DatabaseSync): void => {
 
     CREATE INDEX IF NOT EXISTS idx_session_messages_created_at
       ON session_messages (created_at);
+  `);
+
+  migrateSessionMessagesV2(client);
+};
+
+const isTableInfoRow = (v: unknown): v is { readonly name: string } =>
+  v !== null &&
+  typeof v === "object" &&
+  "name" in v &&
+  typeof (v as { readonly name: unknown }).name === "string";
+
+const hasColumn = (client: DatabaseSync, table: string, column: string): boolean => {
+  const raw = client.prepare(`PRAGMA table_info(${table})`).all();
+  const rows = Array.isArray(raw) ? raw.filter(isTableInfoRow) : [];
+  return rows.some((r) => r.name === column);
+};
+
+const migrateSessionMessagesV2 = (client: DatabaseSync): void => {
+  if (!hasColumn(client, "session_messages", "message_kind")) {
+    client.exec(
+      "ALTER TABLE session_messages ADD COLUMN message_kind TEXT NOT NULL DEFAULT 'legacy_assistant_turn';",
+    );
+    client.exec("UPDATE session_messages SET message_kind = 'user' WHERE role = 'user';");
+  }
+  if (!hasColumn(client, "session_messages", "stream_part_id")) {
+    client.exec("ALTER TABLE session_messages ADD COLUMN stream_part_id TEXT;");
+  }
+  if (!hasColumn(client, "session_messages", "metadata_json")) {
+    client.exec(
+      "ALTER TABLE session_messages ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}';",
+    );
+  }
+  if (!hasColumn(client, "session_messages", "updated_at")) {
+    client.exec("ALTER TABLE session_messages ADD COLUMN updated_at TEXT;");
+    client.exec("UPDATE session_messages SET updated_at = created_at WHERE updated_at IS NULL");
+  }
+
+  client.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_session_messages_stream_part
+    ON session_messages (session_id, stream_part_id)
+    WHERE stream_part_id IS NOT NULL;
   `);
 };
 

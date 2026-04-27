@@ -3,6 +3,8 @@ import { describeRoute, validator as vValidator } from "hono-openapi";
 import { boolean, object, parse } from "valibot";
 
 import {
+  agentModelCatalogQuerySchema,
+  agentModelCatalogResponseSchema,
   createSessionRequestSchema,
   discoverResumableSessionsRequestSchema,
   loadSessionRequestSchema,
@@ -20,6 +22,7 @@ import { errorResponseSchema, jsonResponse, validationErrorHook } from "../hono-
 import { getProject } from "../project-store.ts";
 import { discoverResumableSessions } from "./agent-session-client.ts";
 import { parseArgsText } from "./args.pure.ts";
+import { probeAgentModelCatalog } from "./probe-agent-catalog.ts";
 import { agentPresets } from "./presets.ts";
 import {
   createSession,
@@ -105,6 +108,42 @@ const resolveCodexResumeCommand = (presetId: string | null | undefined) => {
 };
 
 export const acpRoutes = new Hono()
+  .get(
+    "/agent/model-catalog",
+    describeRoute({
+      summary: "Probe agent for model and mode list (ephemeral initSession)",
+      responses: {
+        200: jsonResponse("Model/mode options", agentModelCatalogResponseSchema),
+        400: jsonResponse("Model catalog error", errorResponseSchema),
+        404: jsonResponse("Project not found", errorResponseSchema),
+      },
+    }),
+    vValidator("query", agentModelCatalogQuerySchema, validationErrorHook),
+    async (c) => {
+      const request = c.req.valid("query");
+      let project;
+      try {
+        project = await getProject(request.projectId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown project";
+        if (message.startsWith("Unknown project:")) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 500);
+      }
+
+      try {
+        const raw = await probeAgentModelCatalog({
+          cwd: project.workingDirectory,
+          presetId: request.presetId,
+        });
+        return c.json(parse(agentModelCatalogResponseSchema, raw));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to probe model catalog";
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
   .get(
     "/sessions",
     describeRoute({

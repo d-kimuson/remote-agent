@@ -67,6 +67,31 @@ export const ChatRawEvents: FC<{
           );
         }
 
+        if (event.type === "toolInput") {
+          return (
+            <MetaBlock icon={Wrench} key={key} title="ツール入力 (tool-input)">
+              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px]">
+                {truncate(event.text.length > 0 ? event.text : "（空）")}
+              </pre>
+            </MetaBlock>
+          );
+        }
+
+        if (event.type === "streamPart") {
+          return (
+            <MetaBlock
+              className="border-sky-500/20 bg-sky-500/5"
+              icon={SplitSquareVertical}
+              key={key}
+              title={`ストリーム · ${event.partType}`}
+            >
+              <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px] text-muted-foreground">
+                {truncate(event.text)}
+              </pre>
+            </MetaBlock>
+          );
+        }
+
         if (event.type === "toolCall") {
           return (
             <MetaBlock icon={Wrench} key={key} title={`ツール呼び出し · ${event.toolName}`}>

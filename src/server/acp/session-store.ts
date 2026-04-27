@@ -1,11 +1,12 @@
 import type { NewSessionResponse } from "@agentclientprotocol/sdk";
 import { createACPProvider, type ACPProvider } from "@mcpc-tech/acp-ai-provider";
 import type { DatabaseSync } from "node:sqlite";
-import { eq } from "drizzle-orm";
-import { streamText } from "ai";
+import { and, eq } from "drizzle-orm";
+import type { ToolSet } from "ai";
 import { array, parse, string } from "valibot";
 
 import {
+  chatMessageKindSchema,
   chatMessageRoleSchema,
   modeOptionSchema,
   modelOptionSchema,
@@ -13,36 +14,34 @@ import {
   sessionSummarySchema,
   type AgentPreset,
   type ChatMessage,
+  type ChatMessageKind,
   type MessageResponse,
   type RawEvent,
   type SendMessageRequest,
   type SessionSummary,
   type UpdateSessionRequest,
 } from "../../shared/acp.ts";
+import {
+  collectPromptStream,
+  type PromptStreamInsertRow,
+  type PromptStreamPersistence,
+} from "./collect-prompt-stream.ts";
 import { resolveAttachments } from "../attachments/store.ts";
 import { type AppDatabase, getDefaultDatabase } from "../db/sqlite.ts";
 import { sessionMessagesTable, sessionsTable } from "../db/schema.ts";
 import { buildPromptWithAttachments } from "./prompt-attachments.pure.ts";
 import { agentPresets } from "./presets.ts";
 import { resolveCommandPath } from "./command-path.ts";
-import { normalizeRawEvent } from "./raw-event.pure.ts";
-import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from "./session-catalog.pure.ts";
-
-const stringifyForRawEvent = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return "";
-  }
-
-  if (typeof value === "string") {
-    return value;
-  }
-
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return "[unserializable]";
-  }
-};
+import {
+  buildModelOptionsFromResponse,
+  buildModeOptionsFromResponse,
+} from "./session-acp-response.pure.ts";
+import {
+  enrichModeOptionsIfEmpty,
+  enrichModelOptionsIfEmpty,
+  preferNonEmptyModeCatalog,
+  preferNonEmptyModelCatalog,
+} from "./session-catalog.pure.ts";
 
 type SessionProvider = Pick<
   ACPProvider,
@@ -62,34 +61,17 @@ type SessionStoreDependencies = {
     readonly cwd: string;
     readonly existingSessionId?: string;
   }) => SessionProvider;
+  /** 省略時は `collectPromptStream` で全パーツを永続化。テスト用に差し替え可。 */
   readonly promptCollector?: (
     provider: SessionProvider,
     prompt: string,
   ) => Promise<{
     readonly text: string;
     readonly rawEvents: readonly RawEvent[];
+    readonly alreadyPersisted: boolean;
+    readonly assistantSegmentMessages: readonly ChatMessage[];
   }>;
   readonly resolveCommand?: typeof resolveCommandPath;
-};
-
-const mapModes = (response: NewSessionResponse): SessionSummary["availableModes"] => {
-  const availableModes = response.modes?.availableModes ?? [];
-
-  return availableModes.map((mode) => ({
-    id: mode.id,
-    name: mode.name,
-    description: mode.description ?? null,
-  }));
-};
-
-const mapModels = (response: NewSessionResponse): SessionSummary["availableModels"] => {
-  const availableModels = response.models?.availableModels ?? [];
-
-  return availableModels.map((model) => ({
-    id: model.modelId,
-    name: model.name,
-    description: model.description ?? null,
-  }));
 };
 
 const createSessionSummary = ({
@@ -117,8 +99,10 @@ const createSessionSummary = ({
   readonly updatedAt: string | null;
   readonly response: NewSessionResponse;
 }): SessionSummary => {
-  const currentModeId = response.modes?.currentModeId ?? null;
-  const currentModelId = response.models?.currentModelId ?? null;
+  const modelInfo = buildModelOptionsFromResponse(response);
+  const modeInfo = buildModeOptionsFromResponse(response);
+  const currentModelId = modelInfo.currentModelId;
+  const currentModeId = modeInfo.currentModeId;
 
   return parse(sessionSummarySchema, {
     sessionId: response.sessionId,
@@ -135,106 +119,16 @@ const createSessionSummary = ({
     updatedAt,
     currentModeId,
     currentModelId,
-    availableModes: enrichModeOptionsIfEmpty(mapModes(response), currentModeId),
-    availableModels: enrichModelOptionsIfEmpty(mapModels(response), currentModelId),
+    availableModes: enrichModeOptionsIfEmpty(modeInfo.options, currentModeId),
+    availableModels: enrichModelOptionsIfEmpty(modelInfo.options, currentModelId),
   });
 };
 
-const collectPromptResult = async (
-  provider: SessionProvider,
-  prompt: string,
-): Promise<{
-  readonly text: string;
-  readonly rawEvents: readonly RawEvent[];
-}> => {
-  const result = streamText({
-    includeRawChunks: true,
-    model: provider.languageModel(),
-    prompt,
-    tools: provider.tools,
-  });
-
-  let text = "";
-  const rawEvents: RawEvent[] = [];
-  const reasoningById = new Map<string, string>();
-
-  for await (const part of result.fullStream) {
-    if (part.type === "text-delta") {
-      text += part.text;
-      continue;
-    }
-
-    if (part.type === "reasoning-delta") {
-      const previous = reasoningById.get(part.id) ?? "";
-      reasoningById.set(part.id, previous + part.text);
-      continue;
-    }
-
-    if (part.type === "reasoning-end") {
-      const merged = reasoningById.get(part.id) ?? "";
-      reasoningById.delete(part.id);
-      if (merged.length > 0) {
-        rawEvents.push({ type: "reasoning", text: merged, rawText: merged });
-      }
-      continue;
-    }
-
-    if (part.type === "tool-call") {
-      const input = "input" in part ? (part as { input: unknown }).input : undefined;
-      rawEvents.push({
-        type: "toolCall",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        inputText: stringifyForRawEvent(input),
-        rawText: stringifyForRawEvent({ toolName: part.toolName, input }),
-      });
-      continue;
-    }
-
-    if (part.type === "tool-result" && part.preliminary !== true) {
-      rawEvents.push({
-        type: "toolResult",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        outputText: stringifyForRawEvent(
-          "output" in part ? (part as { output: unknown }).output : undefined,
-        ),
-        rawText: stringifyForRawEvent(part),
-      });
-      continue;
-    }
-
-    if (part.type === "tool-error") {
-      const errorValue = "error" in part ? (part as { error: unknown }).error : undefined;
-      rawEvents.push({
-        type: "toolError",
-        toolCallId: part.toolCallId,
-        toolName: part.toolName,
-        errorText: stringifyForRawEvent(errorValue),
-        rawText: stringifyForRawEvent(part),
-      });
-      continue;
-    }
-
-    if (part.type === "raw") {
-      const rawEvent = normalizeRawEvent(part.rawValue);
-      if (rawEvent !== null) {
-        rawEvents.push(rawEvent);
-      }
-    }
+const mapMessageKindFromDb = (value: string | null | undefined): ChatMessageKind => {
+  if (value === null || value === undefined || value.length === 0) {
+    return "legacy_assistant_turn";
   }
-
-  for (const pendingReasoning of reasoningById.values()) {
-    if (pendingReasoning.length > 0) {
-      rawEvents.push({
-        type: "reasoning",
-        text: pendingReasoning,
-        rawText: pendingReasoning,
-      });
-    }
-  }
-
-  return { text, rawEvents };
+  return parse(chatMessageKindSchema, value);
 };
 
 const parseStringArray = (input: string): readonly string[] => {
@@ -317,7 +211,7 @@ export const createSessionStore = ({
       },
       persistSession: true,
     }),
-  promptCollector = collectPromptResult,
+  promptCollector,
   resolveCommand = resolveCommandPath,
 }: SessionStoreDependencies = {}) => {
   const runtimeSessions = new Map<string, SessionEntry>();
@@ -375,9 +269,16 @@ export const createSessionStore = ({
       .map((record) => ({
         id: record.id,
         role: parse(chatMessageRoleSchema, record.role),
+        kind:
+          record.role === "user"
+            ? "user"
+            : mapMessageKindFromDb(record.messageKind as string | null | undefined),
         text: record.text,
         rawEvents: parse(array(rawEventSchema), JSON.parse(record.rawEventsJson)),
         createdAt: record.createdAt,
+        updatedAt: record.updatedAt,
+        streamPartId: record.streamPartId,
+        metadataJson: record.metadataJson,
       }));
   };
 
@@ -388,13 +289,21 @@ export const createSessionStore = ({
     readonly sessionId: string;
     readonly message: ChatMessage;
   }): Promise<void> => {
+    const created = message.createdAt;
+    const updated = message.updatedAt ?? created;
+    const kind: ChatMessageKind =
+      message.kind ?? (message.role === "user" ? "user" : "legacy_assistant_turn");
     await database.db.insert(sessionMessagesTable).values({
       id: message.id,
       sessionId,
       role: message.role,
       text: message.text,
       rawEventsJson: JSON.stringify(message.rawEvents),
-      createdAt: message.createdAt,
+      createdAt: created,
+      messageKind: kind,
+      streamPartId: message.streamPartId ?? null,
+      metadataJson: message.metadataJson ?? "{}",
+      updatedAt: updated,
     });
   };
 
@@ -402,17 +311,64 @@ export const createSessionStore = ({
     role,
     text,
     rawEvents,
+    kind,
+    streamPartId = null,
+    metadataJson = "{}",
   }: {
     readonly role: ChatMessage["role"];
     readonly text: string;
     readonly rawEvents: readonly RawEvent[];
-  }): ChatMessage => ({
-    id: crypto.randomUUID(),
-    role,
-    text,
-    rawEvents: [...rawEvents],
-    createdAt: new Date().toISOString(),
+    readonly kind?: ChatMessageKind;
+    readonly streamPartId?: string | null;
+    readonly metadataJson?: string;
+  }): ChatMessage => {
+    const t = new Date().toISOString();
+    return {
+      id: crypto.randomUUID(),
+      role,
+      kind: kind ?? (role === "user" ? "user" : "legacy_assistant_turn"),
+      text,
+      rawEvents: [...rawEvents],
+      createdAt: t,
+      updatedAt: t,
+      streamPartId,
+      metadataJson: metadataJson === "{}" ? undefined : metadataJson,
+    };
+  };
+
+  const toChatMessageFromStreamRow = (row: PromptStreamInsertRow): ChatMessage => ({
+    id: row.id,
+    role: row.role,
+    kind: row.messageKind,
+    text: row.text,
+    rawEvents: [...row.rawEvents],
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    streamPartId: row.streamPartId,
+    metadataJson: row.metadataJson,
   });
+
+  const streamPersistence: PromptStreamPersistence = {
+    insert: async (row) => {
+      await persistMessage({ sessionId: row.sessionId, message: toChatMessageFromStreamRow(row) });
+    },
+    updateByStreamPartId: async (input) => {
+      await database.db
+        .update(sessionMessagesTable)
+        .set({
+          text: input.text,
+          rawEventsJson: JSON.stringify([...input.rawEvents]),
+          metadataJson: input.metadataJson,
+          updatedAt: input.updatedAt,
+        })
+        .where(
+          and(
+            eq(sessionMessagesTable.sessionId, input.sessionId),
+            eq(sessionMessagesTable.streamPartId, input.streamPartId),
+          ),
+        );
+    },
+  };
 
   const createSession = async ({
     projectId,
@@ -611,10 +567,22 @@ export const createSessionStore = ({
     ) {
       await entry.provider.setMode(fromDb.currentModeId);
     }
+    const currentModelId = fromDb.currentModelId ?? entry.session.currentModelId;
+    const currentModeId = fromDb.currentModeId ?? entry.session.currentModeId;
+    const availableModels = enrichModelOptionsIfEmpty(
+      preferNonEmptyModelCatalog(entry.session.availableModels, fromDb.availableModels),
+      currentModelId,
+    );
+    const availableModes = enrichModeOptionsIfEmpty(
+      preferNonEmptyModeCatalog(entry.session.availableModes, fromDb.availableModes),
+      currentModeId,
+    );
     entry.session = parse(sessionSummarySchema, {
       ...entry.session,
-      currentModelId: fromDb.currentModelId,
-      currentModeId: fromDb.currentModeId,
+      currentModelId,
+      currentModeId,
+      availableModels,
+      availableModes,
     });
     await persistSession(entry.session);
 
@@ -678,25 +646,58 @@ export const createSessionStore = ({
 
     await persistMessage({
       sessionId,
-      message: buildMessage({ role: "user", text: effectivePrompt, rawEvents: [] }),
+      message: buildMessage({ role: "user", text: effectivePrompt, rawEvents: [], kind: "user" }),
     });
 
     try {
-      const result = await promptCollector(entry.provider, effectivePrompt);
-
-      await persistMessage({
-        sessionId,
-        message: buildMessage({
-          role: "assistant",
+      if (promptCollector !== undefined) {
+        const result = await promptCollector(entry.provider, effectivePrompt);
+        if (!result.alreadyPersisted) {
+          const segments =
+            result.assistantSegmentMessages.length > 0
+              ? [...result.assistantSegmentMessages]
+              : [
+                  buildMessage({
+                    role: "assistant",
+                    text: result.text,
+                    rawEvents: result.rawEvents,
+                    kind: "legacy_assistant_turn",
+                  }),
+                ];
+          for (const msg of segments) {
+            await persistMessage({ sessionId, message: msg });
+          }
+          return {
+            session: entry.session,
+            text: result.text,
+            rawEvents: [...result.rawEvents],
+            assistantSegmentMessages: segments,
+          };
+        }
+        return {
+          session: entry.session,
           text: result.text,
-          rawEvents: result.rawEvents,
-        }),
+          rawEvents: [...result.rawEvents],
+          assistantSegmentMessages: [...result.assistantSegmentMessages],
+        };
+      }
+
+      const streamed = await collectPromptStream({
+        provider: {
+          languageModel: () => entry.provider.languageModel(),
+          tools: (entry.provider.tools ?? {}) as ToolSet,
+        },
+        prompt: effectivePrompt,
+        sessionId,
+        now: () => new Date().toISOString(),
+        persistence: streamPersistence,
       });
 
       return {
         session: entry.session,
-        text: result.text,
-        rawEvents: [...result.rawEvents],
+        text: streamed.text,
+        rawEvents: [...streamed.rawEvents],
+        assistantSegmentMessages: [...streamed.assistantSegmentMessages],
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to collect prompt result";
@@ -706,6 +707,7 @@ export const createSessionStore = ({
           role: "assistant",
           text: `Error: ${message}`,
           rawEvents: [],
+          kind: "legacy_assistant_turn",
         }),
       });
       throw error;

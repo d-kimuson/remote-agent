@@ -115,6 +115,21 @@ export const toolErrorEventSchema = object({
   rawText: string(),
 });
 
+/** fullStream 上の補助パーツ（start / finish 等）のトレース用 */
+export const streamPartEventSchema = object({
+  type: literal("streamPart"),
+  partType: pipe(string(), trim()),
+  text: string(),
+  rawText: string(),
+});
+
+export const toolInputEventSchema = object({
+  type: literal("toolInput"),
+  streamId: pipe(string(), trim()),
+  text: string(),
+  rawText: string(),
+});
+
 export const rawEventSchema = union([
   planEventSchema,
   diffEventSchema,
@@ -123,6 +138,8 @@ export const rawEventSchema = union([
   toolCallEventSchema,
   toolResultEventSchema,
   toolErrorEventSchema,
+  streamPartEventSchema,
+  toolInputEventSchema,
 ]);
 
 export type RawEvent = InferOutput<typeof rawEventSchema>;
@@ -245,6 +262,23 @@ export type DiscoverResumableSessionsRequest = InferOutput<
   typeof discoverResumableSessionsRequestSchema
 >;
 
+/** プロジェクト＋プリセット向け。永続セッションなしで initSession 相当の一覧を返す。 */
+export const agentModelCatalogQuerySchema = object({
+  projectId: pipe(string(), trim()),
+  presetId: optional(pipe(string(), trim()), "codex"),
+});
+
+export type AgentModelCatalogQuery = InferOutput<typeof agentModelCatalogQuerySchema>;
+
+export const agentModelCatalogResponseSchema = object({
+  availableModels: array(modelOptionSchema),
+  availableModes: array(modeOptionSchema),
+  currentModelId: nullable(optional(pipe(string(), trim()))),
+  currentModeId: nullable(optional(pipe(string(), trim()))),
+});
+
+export type AgentModelCatalogResponse = InferOutput<typeof agentModelCatalogResponseSchema>;
+
 export const resumeCapabilitySchema = object({
   loadSession: boolean(),
   listSessions: boolean(),
@@ -298,14 +332,6 @@ export const sessionResponseSchema = object({
 
 export type SessionResponse = InferOutput<typeof sessionResponseSchema>;
 
-export const messageResponseSchema = object({
-  session: sessionSummarySchema,
-  text: string(),
-  rawEvents: array(rawEventSchema),
-});
-
-export type MessageResponse = InferOutput<typeof messageResponseSchema>;
-
 export const sessionsResponseSchema = object({
   sessions: array(sessionSummarySchema),
 });
@@ -316,15 +342,54 @@ export const chatMessageRoleSchema = union([literal("user"), literal("assistant"
 
 export type ChatMessageRole = InferOutput<typeof chatMessageRoleSchema>;
 
+/** 1 行の session_messages に対応（ストリーム単位・ツール単位を区別） */
+export const chatMessageKindSchema = union([
+  literal("user"),
+  literal("legacy_assistant_turn"),
+  literal("assistant_text"),
+  literal("reasoning"),
+  literal("tool_input"),
+  literal("tool_call"),
+  literal("tool_result"),
+  literal("tool_error"),
+  literal("tool_output_denied"),
+  literal("tool_approval_request"),
+  literal("source"),
+  literal("file"),
+  literal("stream_start"),
+  literal("stream_finish"),
+  literal("step_start"),
+  literal("step_finish"),
+  literal("abort"),
+  literal("stream_error"),
+  literal("raw_meta"),
+]);
+
+export type ChatMessageKind = InferOutput<typeof chatMessageKindSchema>;
+
 export const chatMessageSchema = object({
   id: pipe(string(), trim()),
   role: chatMessageRoleSchema,
+  kind: optional(chatMessageKindSchema),
   text: string(),
   rawEvents: array(rawEventSchema),
   createdAt: pipe(string(), trim()),
+  updatedAt: optional(nullable(pipe(string(), trim()))),
+  streamPartId: optional(nullable(pipe(string(), trim()))),
+  metadataJson: optional(nullable(pipe(string(), trim()))),
 });
 
 export type ChatMessage = InferOutput<typeof chatMessageSchema>;
+
+export const messageResponseSchema = object({
+  session: sessionSummarySchema,
+  text: string(),
+  rawEvents: array(rawEventSchema),
+  /** 今回のユーザ発話以降のアシスタント側セグメント（時系列）。空のときは text/rawEvents の集約のみ */
+  assistantSegmentMessages: optional(array(chatMessageSchema)),
+});
+
+export type MessageResponse = InferOutput<typeof messageResponseSchema>;
 
 export const sessionMessagesResponseSchema = object({
   messages: array(chatMessageSchema),

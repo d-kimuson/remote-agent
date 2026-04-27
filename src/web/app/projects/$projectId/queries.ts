@@ -9,6 +9,9 @@ export const filesystemTreeQueryKey = (root: string) => ["filesystem-tree", root
 export const resumableSessionsQueryKey = (projectId: string) =>
   ["resumable-sessions", projectId] as const;
 
+export const agentModelCatalogQueryKey = (projectId: string, presetId: string) =>
+  ["acp", "agent-model-catalog", projectId, presetId] as const;
+
 export const selectedSessionFrom = (
   sessions: readonly SessionSummary[],
   selectedSessionId: string | null,

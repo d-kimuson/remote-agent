@@ -18,6 +18,18 @@ describe("acpRoutes", () => {
     });
   });
 
+  test("returns 404 for unknown project on agent model catalog", async () => {
+    const response = await honoApp.request(
+      "/api/acp/agent/model-catalog?projectId=__no_such_project__&presetId=codex",
+    );
+    const payload: unknown = await response.json();
+
+    expect(response.status).toBe(404);
+    expect(payload).toEqual({
+      error: "Unknown project: __no_such_project__",
+    });
+  });
+
   test("rejects session creation requests for non-Codex presets", async () => {
     const response = await honoApp.request("/api/acp/sessions", {
       method: "POST",

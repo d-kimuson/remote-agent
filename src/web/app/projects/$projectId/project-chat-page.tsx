@@ -12,10 +12,20 @@ import {
   Settings,
   Trash2,
 } from "lucide-react";
-import { Suspense, useCallback, useEffect, useMemo, useState, type FC } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type FC,
+} from "react";
 
 import type {
+  AgentModelCatalogResponse,
   ChatMessage,
+  ChatMessageKind,
   SessionSummary,
   SessionsResponse,
   UploadedAttachment,
@@ -34,6 +44,7 @@ import { Textarea } from "../../../components/ui/textarea.tsx";
 import {
   createSessionRequest,
   deleteSessionRequest,
+  fetchAgentModelCatalog,
   fetchAppInfo,
   fetchProject,
   fetchResumableSessions,
@@ -60,6 +71,7 @@ import {
 import { ChatRawEvents } from "./chat-raw-events.tsx";
 import { LoadSessionDialog } from "./load-session-dialog.tsx";
 import {
+  agentModelCatalogQueryKey,
   appInfoQueryKey,
   projectQueryKey,
   sessionMessagesQueryKey,
@@ -79,6 +91,56 @@ const formatCreatedAt = (createdAt: string): string =>
     minute: "2-digit",
   }).format(new Date(createdAt));
 
+const transcriptMessageLabel = (message: ChatMessage): string => {
+  if (message.role === "user") {
+    return "user";
+  }
+  const k: ChatMessageKind = message.kind ?? "legacy_assistant_turn";
+  return k === "legacy_assistant_turn" ? "assistant" : k;
+};
+
+const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
+  if (message.role === "user") {
+    return <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>;
+  }
+  const k = message.kind ?? "legacy_assistant_turn";
+  if (k === "legacy_assistant_turn") {
+    return (
+      <>
+        {message.rawEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
+        {message.text.length > 0 ? (
+          <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+        ) : null}
+      </>
+    );
+  }
+  if (k === "reasoning" && message.text.length > 0) {
+    return (
+      <ChatRawEvents events={[{ type: "reasoning", text: message.text, rawText: message.text }]} />
+    );
+  }
+  if (k === "assistant_text" || k === "tool_input") {
+    return message.text.length > 0 ? (
+      <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
+    ) : null;
+  }
+  if (k === "tool_call" || k === "tool_result" || k === "tool_error") {
+    return message.rawEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null;
+  }
+  return (
+    <>
+      {message.text.length > 0 ? (
+        <pre className="max-h-64 overflow-y-auto whitespace-pre-wrap text-xs text-muted-foreground">
+          {message.text}
+        </pre>
+      ) : null}
+      {message.rawEvents.length > 0 ? (
+        <ChatRawEvents className="mt-2" events={message.rawEvents} />
+      ) : null}
+    </>
+  );
+};
+
 const presetLabelFrom = ({
   presetId,
   presets,
@@ -86,6 +148,26 @@ const presetLabelFrom = ({
   readonly presetId: string | null | undefined;
   readonly presets: readonly { readonly id: string; readonly label: string }[];
 }): string => presets.find((preset) => preset.id === presetId)?.label ?? presetId ?? "custom";
+
+/** useSuspenseQuery 必須のため、下書き時のみマウントしてカタログを state に反映する。 */
+const DraftAgentModelCatalogLoader: FC<{
+  readonly projectId: string;
+  readonly presetId: string;
+  readonly onReady: (catalog: AgentModelCatalogResponse) => void;
+}> = ({ projectId, presetId, onReady }) => {
+  const { data } = useSuspenseQuery({
+    queryKey: agentModelCatalogQueryKey(projectId, presetId),
+    queryFn: () => fetchAgentModelCatalog({ projectId, presetId }),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+
+  useEffect(() => {
+    onReady(data);
+  }, [data, onReady]);
+
+  return null;
+};
 
 const SessionMessagesHydrator: FC<{
   readonly sessionId: string;
@@ -136,6 +218,13 @@ export const ProjectChatPage: FC<{
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [isAttachDialogOpen, setIsAttachDialogOpen] = useState(false);
   const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
+  const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
+    null,
+  );
+
+  const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
+    setProbedModelCatalog(catalog);
+  }, []);
 
   const projectSessions = useMemo(
     () =>
@@ -182,10 +271,48 @@ export const ProjectChatPage: FC<{
     );
   }, [activePresetId, projectSessions, sessionsData.sessions]);
 
-  const draftModelSourceHasList =
-    modelModeTemplateSession !== null && modelModeTemplateSession.availableModels.length > 0;
-  const draftModeSourceHasList =
-    modelModeTemplateSession !== null && modelModeTemplateSession.availableModes.length > 0;
+  const draftCatalogScopeKey = `${projectId}\0${activePresetId}`;
+
+  useEffect(() => {
+    if (!shouldUseDraftSession) {
+      setProbedModelCatalog(null);
+    }
+  }, [shouldUseDraftSession]);
+
+  useLayoutEffect(() => {
+    if (shouldUseDraftSession) {
+      setProbedModelCatalog(null);
+    }
+  }, [draftCatalogScopeKey, shouldUseDraftSession]);
+
+  /** 永続セッションが 0 件でも initSession 由来の一覧を使えるように、既存サマリと probe をマージ。 */
+  const draftModelModeListSource = useMemo(() => {
+    const t = modelModeTemplateSession;
+    const c = probedModelCatalog;
+    if (t === null) {
+      return {
+        availableModels: c?.availableModels ?? [],
+        availableModes: c?.availableModes ?? [],
+        currentModelId: c?.currentModelId ?? null,
+        currentModeId: c?.currentModeId ?? null,
+      };
+    }
+    const modelsFromSession = t.availableModels.length > 0;
+    const modesFromSession = t.availableModes.length > 0;
+    return {
+      availableModels: modelsFromSession
+        ? t.availableModels
+        : (c?.availableModels ?? t.availableModels),
+      availableModes: modesFromSession ? t.availableModes : (c?.availableModes ?? t.availableModes),
+      currentModelId:
+        (modelsFromSession ? t.currentModelId : c?.currentModelId) ?? t.currentModelId ?? null,
+      currentModeId:
+        (modesFromSession ? t.currentModeId : c?.currentModeId) ?? t.currentModeId ?? null,
+    };
+  }, [modelModeTemplateSession, probedModelCatalog]);
+
+  const draftModelSourceHasList = draftModelModeListSource.availableModels.length > 0;
+  const draftModeSourceHasList = draftModelModeListSource.availableModes.length > 0;
 
   const activeTranscriptKey = shouldUseDraftSession
     ? draftSessionTranscriptKey
@@ -292,20 +419,17 @@ export const ProjectChatPage: FC<{
   const canSend = buildPromptText(prompt, attachmentNames).length > 0 && !isSending;
 
   const thinkingModelLabel = useMemo((): string => {
-    if (modelModeTemplateSession === null) {
-      return "Model";
-    }
     if (shouldUseDraftSession) {
       if (!draftModelSourceHasList) {
         return "Model";
       }
       const id =
         draftModelId ??
-        modelModeTemplateSession.currentModelId ??
-        modelModeTemplateSession.availableModels[0]?.id;
+        draftModelModeListSource.currentModelId ??
+        draftModelModeListSource.availableModels[0]?.id;
       const found =
         id !== undefined
-          ? modelModeTemplateSession.availableModels.find((m) => m.id === id)
+          ? draftModelModeListSource.availableModels.find((m) => m.id === id)
           : undefined;
       return found?.name ?? id ?? "Model";
     }
@@ -318,8 +442,8 @@ export const ProjectChatPage: FC<{
     return "Model";
   }, [
     draftModelId,
+    draftModelModeListSource,
     draftModelSourceHasList,
-    modelModeTemplateSession,
     selectedSession,
     shouldUseDraftSession,
   ]);
@@ -461,7 +585,7 @@ export const ProjectChatPage: FC<{
     }
 
     const previousPrompt = prompt;
-    const userMessage = createChatMessage("user", nextPrompt);
+    const userMessage = createChatMessage("user", nextPrompt, [], { kind: "user" });
     const initialTranscriptKey = activeTranscriptKey;
 
     setPrompt("");
@@ -480,14 +604,14 @@ export const ProjectChatPage: FC<{
       if (activeSessionId === null) {
         const modelIdForCreate = draftModelSourceHasList
           ? (draftModelId ??
-            modelModeTemplateSession?.currentModelId ??
-            modelModeTemplateSession?.availableModels[0]?.id ??
+            draftModelModeListSource.currentModelId ??
+            draftModelModeListSource.availableModels[0]?.id ??
             undefined)
           : undefined;
         const modeIdForCreate = draftModeSourceHasList
           ? (draftModeId ??
-            modelModeTemplateSession?.currentModeId ??
-            modelModeTemplateSession?.availableModes[0]?.id ??
+            draftModelModeListSource.currentModeId ??
+            draftModelModeListSource.availableModes[0]?.id ??
             undefined)
           : undefined;
         const sessionResponse = await createSessionMutation.mutateAsync({
@@ -536,13 +660,30 @@ export const ProjectChatPage: FC<{
       });
 
       upsertSessionInCache(response.session);
-      setTranscripts((current) =>
-        appendTranscriptMessage({
-          message: createChatMessage("assistant", response.text, response.rawEvents),
-          transcriptKey: resolvedActiveSessionId,
-          transcripts: current,
-        }),
-      );
+      const assistantSegmentMessages = response.assistantSegmentMessages;
+      if (assistantSegmentMessages !== undefined && assistantSegmentMessages.length > 0) {
+        setTranscripts((current) => {
+          return assistantSegmentMessages.reduce(
+            (transcripts, nextMessage) =>
+              appendTranscriptMessage({
+                message: nextMessage,
+                transcriptKey: resolvedActiveSessionId,
+                transcripts,
+              }),
+            current,
+          );
+        });
+      } else {
+        setTranscripts((current) =>
+          appendTranscriptMessage({
+            message: createChatMessage("assistant", response.text, response.rawEvents, {
+              kind: "legacy_assistant_turn",
+            }),
+            transcriptKey: resolvedActiveSessionId,
+            transcripts: current,
+          }),
+        );
+      }
 
       if (document.visibilityState === "hidden") {
         void showAssistantResponseNotification({
@@ -566,7 +707,9 @@ export const ProjectChatPage: FC<{
       setPrompt(previousPrompt);
       setTranscripts((current) =>
         appendTranscriptMessage({
-          message: createChatMessage("assistant", `Error: ${message}`),
+          message: createChatMessage("assistant", `Error: ${message}`, [], {
+            kind: "legacy_assistant_turn",
+          }),
           transcriptKey: activeSessionId ?? draftSessionTranscriptKey,
           transcripts: current,
         }),
@@ -594,6 +737,16 @@ export const ProjectChatPage: FC<{
 
   return (
     <div className="min-h-screen bg-background">
+      {shouldUseDraftSession && (
+        <Suspense fallback={null}>
+          <DraftAgentModelCatalogLoader
+            key={draftCatalogScopeKey}
+            presetId={activePresetId}
+            projectId={projectId}
+            onReady={onAgentCatalogReady}
+          />
+        </Suspense>
+      )}
       {sessionId === null ? null : (
         <Suspense fallback={null}>
           <SessionMessagesHydrator
@@ -747,15 +900,10 @@ export const ProjectChatPage: FC<{
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
                       <p className="text-[11px] font-medium tracking-[0.18em] uppercase opacity-70">
-                        {message.role}
+                        {transcriptMessageLabel(message)}
                       </p>
                     </div>
-                    {message.text.length > 0 ? (
-                      <p className="whitespace-pre-wrap text-sm leading-7">{message.text}</p>
-                    ) : null}
-                    {message.role === "assistant" && message.rawEvents.length > 0 ? (
-                      <ChatRawEvents events={message.rawEvents} />
-                    ) : null}
+                    <TranscriptMessageBody message={message} />
                   </div>
                 ))}
 
@@ -841,10 +989,10 @@ export const ProjectChatPage: FC<{
                             setDraftModelId(value);
                           }}
                           value={
-                            draftModelSourceHasList && modelModeTemplateSession !== null
+                            draftModelSourceHasList
                               ? (draftModelId ??
-                                modelModeTemplateSession.currentModelId ??
-                                modelModeTemplateSession.availableModels[0]?.id ??
+                                draftModelModeListSource.currentModelId ??
+                                draftModelModeListSource.availableModels[0]?.id ??
                                 DRAFT_FALLBACK_SELECT_VALUE)
                               : DRAFT_FALLBACK_SELECT_VALUE
                           }
@@ -854,22 +1002,22 @@ export const ProjectChatPage: FC<{
                             disabled={!draftModelSourceHasList}
                             title={
                               !draftModelSourceHasList
-                                ? "どこかのセッションができると、ここにモデル一覧が出ます（初回はエージェント既定で作成されます）"
+                                ? "エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません"
                                 : undefined
                             }
                           >
                             <SelectValue placeholder="Model" />
                           </SelectTrigger>
                           <SelectContent>
-                            {draftModelSourceHasList && modelModeTemplateSession !== null ? (
-                              modelModeTemplateSession.availableModels.map((model) => (
+                            {draftModelSourceHasList ? (
+                              draftModelModeListSource.availableModels.map((model) => (
                                 <SelectItem key={model.id} value={model.id}>
                                   {model.name}
                                 </SelectItem>
                               ))
                             ) : (
                               <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
-                                既定（エージェント既定・一覧は初回作成後）
+                                既定（エージェント既定・一覧取得待ち）
                               </SelectItem>
                             )}
                           </SelectContent>
@@ -884,10 +1032,10 @@ export const ProjectChatPage: FC<{
                             setDraftModeId(value);
                           }}
                           value={
-                            draftModeSourceHasList && modelModeTemplateSession !== null
+                            draftModeSourceHasList
                               ? (draftModeId ??
-                                modelModeTemplateSession.currentModeId ??
-                                modelModeTemplateSession.availableModes[0]?.id ??
+                                draftModelModeListSource.currentModeId ??
+                                draftModelModeListSource.availableModes[0]?.id ??
                                 DRAFT_FALLBACK_SELECT_VALUE)
                               : DRAFT_FALLBACK_SELECT_VALUE
                           }
@@ -897,22 +1045,22 @@ export const ProjectChatPage: FC<{
                             disabled={!draftModeSourceHasList}
                             title={
                               !draftModeSourceHasList
-                                ? "どこかのセッションができると、ここにモード一覧が出ます（初回はエージェント既定で作成されます）"
+                                ? "エージェントに問い合わせて一覧を取得中か、利用可能なモードがありません"
                                 : undefined
                             }
                           >
                             <SelectValue placeholder="Effort" />
                           </SelectTrigger>
                           <SelectContent>
-                            {draftModeSourceHasList && modelModeTemplateSession !== null ? (
-                              modelModeTemplateSession.availableModes.map((mode) => (
+                            {draftModeSourceHasList ? (
+                              draftModelModeListSource.availableModes.map((mode) => (
                                 <SelectItem key={mode.id} value={mode.id}>
                                   {mode.name}
                                 </SelectItem>
                               ))
                             ) : (
                               <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
-                                既定（エージェント既定・一覧は初回作成後）
+                                既定（エージェント既定・一覧取得待ち）
                               </SelectItem>
                             )}
                           </SelectContent>

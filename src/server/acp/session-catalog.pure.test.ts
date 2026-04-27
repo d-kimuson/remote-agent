@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from "./session-catalog.pure";
+import {
+  enrichModeOptionsIfEmpty,
+  enrichModelOptionsIfEmpty,
+  preferNonEmptyModeCatalog,
+  preferNonEmptyModelCatalog,
+} from "./session-catalog.pure";
 
 describe("enrichModelOptionsIfEmpty", () => {
   test("leaves non-empty list unchanged", () => {
@@ -24,5 +29,25 @@ describe("enrichModeOptionsIfEmpty", () => {
     expect(enrichModeOptionsIfEmpty([], "auto")).toEqual([
       { id: "auto", name: "auto", description: null },
     ]);
+  });
+});
+
+describe("preferNonEmptyModelCatalog", () => {
+  const a = { id: "m1", name: "M1", description: null as string | null };
+
+  test("prefers provider list when non-empty", () => {
+    expect(preferNonEmptyModelCatalog([a], [])).toEqual([a]);
+  });
+
+  test("falls back to store when provider is empty", () => {
+    expect(preferNonEmptyModelCatalog([], [a])).toEqual([a]);
+  });
+});
+
+describe("preferNonEmptyModeCatalog", () => {
+  const a = { id: "balanced", name: "Balanced", description: null as string | null };
+
+  test("falls back to store when provider is empty", () => {
+    expect(preferNonEmptyModeCatalog([], [a])).toEqual([a]);
   });
 });
