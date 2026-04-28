@@ -68,6 +68,42 @@ describe("project-session-list.pure", () => {
     ]);
   });
 
+  test("sortSessionsNewestFirst groups by running, paused, inactive before timestamp", () => {
+    const sessions = [
+      {
+        ...session,
+        sessionId: "inactive-new",
+        status: "inactive",
+        createdAt: "2026-04-28T12:00:00.000Z",
+      },
+      {
+        ...session,
+        sessionId: "paused-old",
+        status: "paused",
+        createdAt: "2026-04-27T12:00:00.000Z",
+      },
+      {
+        ...session,
+        sessionId: "running-old",
+        status: "running",
+        createdAt: "2026-04-26T12:00:00.000Z",
+      },
+      {
+        ...session,
+        sessionId: "paused-new",
+        status: "paused",
+        createdAt: "2026-04-28T10:00:00.000Z",
+      },
+    ] satisfies readonly SessionSummary[];
+
+    expect(sortSessionsNewestFirst(sessions).map((s) => s.sessionId)).toEqual([
+      "running-old",
+      "paused-new",
+      "paused-old",
+      "inactive-new",
+    ]);
+  });
+
   test("sessionTimestamp prefers updatedAt", () => {
     expect(
       sessionTimestamp({

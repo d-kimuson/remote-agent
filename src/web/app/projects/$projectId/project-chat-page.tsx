@@ -112,6 +112,7 @@ import { RichPromptEditor } from "./rich-prompt-editor.tsx";
 import { appendRichPromptText } from "./rich-prompt-editor.pure.ts";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
 import { shouldShowMessageCopyButton } from "./message-copy-display.pure.ts";
+import { sortSessionsNewestFirst } from "./project-session-list.pure.ts";
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = "w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl";
@@ -481,6 +482,8 @@ export const ProjectChatPage: FC<{
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
+  const [selectedSessionModelCatalog, setSelectedSessionModelCatalog] =
+    useState<AgentModelCatalogResponse | null>(null);
   const [preparedSessionIdsByScope, setPreparedSessionIdsByScope] = useState<
     Readonly<Record<string, string>>
   >({});
@@ -505,6 +508,10 @@ export const ProjectChatPage: FC<{
     setProbedModelCatalog(catalog);
   }, []);
 
+  const onSelectedSessionCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
+    setSelectedSessionModelCatalog(catalog);
+  }, []);
+
   const replacePrompt = useCallback((value: string) => {
     setPromptExternalValue((current) => ({
       revision: current.revision + 1,
@@ -524,9 +531,9 @@ export const ProjectChatPage: FC<{
 
   const projectSessions = useMemo(
     () =>
-      sessionsData.sessions
-        .filter((session) => session.projectId === projectId)
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt)),
+      sortSessionsNewestFirst(
+        sessionsData.sessions.filter((session) => session.projectId === projectId),
+      ),
     [projectId, sessionsData.sessions],
   );
   /** サイドバー用は `projectSessions` だが、URL の `session-id` との対応づけは全セッションから行う。 */
@@ -730,14 +737,27 @@ export const ProjectChatPage: FC<{
       : selectedSession.isActive
         ? (selectedSession.currentModeId ?? undefined)
         : (pendingTuningModeId ?? selectedSession.currentModeId ?? undefined);
+  const selectedSessionCatalogMatches =
+    selectedSession !== null &&
+    selectedSessionModelCatalog !== null &&
+    selectedSession.presetId !== null &&
+    selectedSession.presetId !== undefined;
+  const selectedSessionModelOptions =
+    selectedSession?.availableModels.length === 0 && selectedSessionCatalogMatches
+      ? selectedSessionModelCatalog.availableModels
+      : (selectedSession?.availableModels ?? []);
+  const selectedSessionModeOptions =
+    selectedSession?.availableModes.length === 0 && selectedSessionCatalogMatches
+      ? selectedSessionModelCatalog.availableModes
+      : (selectedSession?.availableModes ?? []);
   const selectedSessionAvailableModels = useMemo(
     () =>
       orderModelOptions({
-        options: selectedSession?.availableModels ?? [],
+        options: selectedSessionModelOptions,
         favoriteModelIds: selectedSessionFavoriteModelIds,
         lastUsedModelId: selectedSession?.currentModelId ?? null,
       }),
-    [selectedSession, selectedSessionFavoriteModelIds],
+    [selectedSession?.currentModelId, selectedSessionFavoriteModelIds, selectedSessionModelOptions],
   );
   const draftModelSelectInfo = formatAcpSelectValueInfo({
     kind: "model",
@@ -759,7 +779,7 @@ export const ProjectChatPage: FC<{
   });
   const sessionModeSelectInfo = formatAcpSelectValueInfo({
     kind: "mode",
-    options: selectedSession?.availableModes ?? [],
+    options: selectedSessionModeOptions,
     presetId: selectedSession?.presetId,
     value: sessionModeSelectValue,
   });
@@ -807,6 +827,7 @@ export const ProjectChatPage: FC<{
   useEffect(() => {
     setPendingTuningModelId(null);
     setPendingTuningModeId(null);
+    setSelectedSessionModelCatalog(null);
   }, [selectedSession?.sessionId]);
 
   const createSessionMutation = useMutation({
@@ -1524,6 +1545,20 @@ export const ProjectChatPage: FC<{
           />
         </Suspense>
       )}
+      {selectedSession !== null &&
+      selectedSession.presetId !== null &&
+      selectedSession.presetId !== undefined &&
+      (selectedSession.availableModels.length === 0 ||
+        selectedSession.availableModes.length === 0) ? (
+        <Suspense fallback={null}>
+          <DraftAgentModelCatalogLoader
+            key={`${selectedSession.sessionId}\0${selectedSession.presetId}`}
+            onReady={onSelectedSessionCatalogReady}
+            presetId={selectedSession.presetId}
+            projectId={projectId}
+          />
+        </Suspense>
+      ) : null}
       <ProjectMenuContent
         currentSessionId={sessionId}
         projectId={projectId}
@@ -1952,7 +1987,7 @@ export const ProjectChatPage: FC<{
                               </SelectContent>
                             </Select>
                           </FieldControl>
-                          {selectedSession.availableModes.length > 0 ? (
+                          {selectedSessionModeOptions.length > 0 ? (
                             <FieldControl
                               htmlFor="session-mode-select"
                               label={sessionModeSelectLabel}
@@ -1975,7 +2010,7 @@ export const ProjectChatPage: FC<{
                                         formatAcpSelectValueLabel({
                                           fallback: sessionModeSelectLabel,
                                           kind: "mode",
-                                          options: selectedSession.availableModes,
+                                          options: selectedSessionModeOptions,
                                           presetId: selectedSession.presetId,
                                           value,
                                         })
@@ -1985,13 +2020,13 @@ export const ProjectChatPage: FC<{
                                   <AcpSelectValueInfo info={sessionModeSelectInfo} />
                                 </div>
                                 <SelectContent>
-                                  {selectedSession.availableModes.map((mode) => (
+                                  {selectedSessionModeOptions.map((mode) => (
                                     <SelectItem key={mode.id} value={mode.id}>
                                       <AcpSelectItemLabel>
                                         {formatAcpSelectOptionLabel({
                                           kind: "mode",
                                           option: mode,
-                                          options: selectedSession.availableModes,
+                                          options: selectedSessionModeOptions,
                                           presetId: selectedSession.presetId,
                                         })}
                                       </AcpSelectItemLabel>

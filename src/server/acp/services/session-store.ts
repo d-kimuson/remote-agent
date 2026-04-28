@@ -16,6 +16,8 @@ import {
   type ChatMessage,
   type ChatMessageKind,
   type MessageResponse,
+  type ModeOption,
+  type ModelOption,
   type RawEvent,
   type SendMessageRequest,
   type SessionSummary,
@@ -29,7 +31,11 @@ import {
 } from "./collect-prompt-stream.ts";
 import { resolveAttachments } from "../../attachments/store.ts";
 import { type AppDatabase, getDefaultDatabase } from "../../db/sqlite.ts";
-import { sessionMessagesTable, sessionsTable } from "../../db/schema.ts";
+import {
+  agentProviderCatalogsTable,
+  sessionMessagesTable,
+  sessionsTable,
+} from "../../db/schema.ts";
 import { buildPromptWithAttachments } from "../prompt-attachments.pure.ts";
 import { agentPresets } from "../presets.ts";
 import { resolveCommandPath } from "./command-path.ts";
@@ -225,6 +231,14 @@ const mapStoredSession = (
   });
 };
 
+const providerCatalogKey = ({
+  cwd,
+  presetId,
+}: {
+  readonly presetId: string;
+  readonly cwd: string;
+}): string => `${presetId}\0${cwd}`;
+
 export const createSessionStore = ({
   database = getDefaultDatabase(),
   createProvider = ({ command, args, cwd, existingSessionId }) =>
@@ -319,25 +333,79 @@ export const createSessionStore = ({
 
   const listSessions = async (): Promise<readonly SessionSummary[]> => {
     const records = await database.db.select().from(sessionsTable);
+    const catalogRecords = await database.db.select().from(agentProviderCatalogsTable);
+    const catalogsByPresetAndCwd = new Map(
+      catalogRecords.map((record) => [
+        providerCatalogKey({ presetId: record.presetId, cwd: record.cwd }),
+        {
+          availableModes: parse(array(modeOptionSchema), JSON.parse(record.availableModesJson)),
+          availableModels: parse(array(modelOptionSchema), JSON.parse(record.availableModelsJson)),
+          currentModeId: record.currentModeId,
+          currentModelId: record.currentModelId,
+        },
+      ]),
+    );
     const firstPreviews = firstUserMessagePreviewBySessionId(database.client);
     return records
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((record) => {
         const entry = runtimeSessions.get(record.sessionId);
-        return mapStoredSession(
+        const session = mapStoredSession(
           record,
           entry !== undefined,
           sessionStatusFromEntry(entry),
           firstPreviews.get(record.sessionId) ?? null,
         );
+        if (record.presetId === null) {
+          return session;
+        }
+        const catalog = catalogsByPresetAndCwd.get(
+          providerCatalogKey({ presetId: record.presetId, cwd: record.cwd }),
+        );
+        if (catalog === undefined) {
+          return session;
+        }
+        const currentModelId = session.currentModelId ?? catalog.currentModelId;
+        const currentModeId = session.currentModeId ?? catalog.currentModeId;
+        return parse(sessionSummarySchema, {
+          ...session,
+          currentModelId,
+          currentModeId,
+          availableModels: enrichModelOptionsIfEmpty(
+            preferNonEmptyModelCatalog(session.availableModels, catalog.availableModels),
+            currentModelId,
+          ),
+          availableModes: enrichModeOptionsIfEmpty(
+            preferNonEmptyModeCatalog(session.availableModes, catalog.availableModes),
+            currentModeId,
+          ),
+        });
       });
   };
 
   const listMessages = async (sessionId: string): Promise<readonly ChatMessage[]> => {
-    const records = await database.db
-      .select()
-      .from(sessionMessagesTable)
-      .where(eq(sessionMessagesTable.sessionId, sessionId));
+    const selectMessages = async () =>
+      await database.db
+        .select()
+        .from(sessionMessagesTable)
+        .where(eq(sessionMessagesTable.sessionId, sessionId));
+
+    let records = await selectMessages();
+    if (records.length === 0) {
+      const [record] = await database.db
+        .select({ presetId: sessionsTable.presetId })
+        .from(sessionsTable)
+        .where(eq(sessionsTable.sessionId, sessionId))
+        .limit(1);
+      if (record?.presetId !== null && record?.presetId !== undefined) {
+        await importProviderMessagesIfEmpty({
+          presetId: record.presetId,
+          sessionId,
+        });
+        records = await selectMessages();
+      }
+    }
+
     return records
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
       .map((record) => ({
@@ -672,6 +740,84 @@ export const createSessionStore = ({
     return restoredSession;
   };
 
+  const importSession = async ({
+    projectId,
+    preset,
+    command,
+    args,
+    cwd,
+    sessionId,
+    title,
+    updatedAt,
+    availableModes,
+    availableModels,
+    currentModeId,
+    currentModelId,
+  }: {
+    readonly projectId: string | null;
+    readonly preset: AgentPreset;
+    readonly command: string;
+    readonly args: readonly string[];
+    readonly cwd: string;
+    readonly sessionId: string;
+    readonly title: string | null;
+    readonly updatedAt: string | null;
+    readonly availableModes: readonly ModeOption[];
+    readonly availableModels: readonly ModelOption[];
+    readonly currentModeId: string | null;
+    readonly currentModelId: string | null;
+  }): Promise<SessionSummary> => {
+    const activeEntry = runtimeSessions.get(sessionId);
+    if (activeEntry !== undefined) {
+      return activeEntry.session;
+    }
+
+    const [existingRow] = await database.db
+      .select()
+      .from(sessionsTable)
+      .where(eq(sessionsTable.sessionId, sessionId))
+      .limit(1);
+    const storedSession =
+      existingRow === undefined ? null : mapStoredSession(existingRow, false, "inactive", null);
+    const createdAt = existingRow?.createdAt ?? new Date().toISOString();
+    const origin =
+      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : "loaded";
+    const effectiveCurrentModeId = storedSession?.currentModeId ?? currentModeId;
+    const effectiveCurrentModelId = storedSession?.currentModelId ?? currentModelId;
+    const importedSession = parse(sessionSummarySchema, {
+      sessionId,
+      origin,
+      status: "inactive",
+      projectId,
+      presetId: preset.id,
+      command,
+      args: [...args],
+      cwd,
+      createdAt,
+      isActive: false,
+      title: title ?? existingRow?.title ?? null,
+      firstUserMessagePreview: null,
+      updatedAt: updatedAt ?? existingRow?.updatedAt ?? createdAt,
+      currentModeId: effectiveCurrentModeId,
+      currentModelId: effectiveCurrentModelId,
+      availableModes: enrichModeOptionsIfEmpty(
+        preferNonEmptyModeCatalog([...availableModes], storedSession?.availableModes ?? []),
+        effectiveCurrentModeId,
+      ),
+      availableModels: enrichModelOptionsIfEmpty(
+        preferNonEmptyModelCatalog([...availableModels], storedSession?.availableModels ?? []),
+        effectiveCurrentModelId,
+      ),
+    });
+
+    await persistSession(importedSession);
+    await importProviderMessagesIfEmpty({
+      presetId: preset.id,
+      sessionId: importedSession.sessionId,
+    });
+    return importedSession;
+  };
+
   const resolveAgentPreset = (presetId: string | null | undefined): AgentPreset => {
     const id = presetId ?? "codex";
     const fallback = agentPresets[0];
@@ -961,6 +1107,7 @@ export const createSessionStore = ({
     listMessages,
     createSession,
     loadSession,
+    importSession,
     updateSession,
     sendPrompt,
     removeSession,
@@ -1018,6 +1165,23 @@ export const loadSession = async (options: {
   readonly updatedAt: string | null;
 }): Promise<SessionSummary> => {
   return getSessionStore().loadSession(options);
+};
+
+export const importSession = async (options: {
+  readonly projectId: string | null;
+  readonly preset: AgentPreset;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly sessionId: string;
+  readonly title: string | null;
+  readonly updatedAt: string | null;
+  readonly availableModes: readonly ModeOption[];
+  readonly availableModels: readonly ModelOption[];
+  readonly currentModeId: string | null;
+  readonly currentModelId: string | null;
+}): Promise<SessionSummary> => {
+  return getSessionStore().importSession(options);
 };
 
 export const updateSession = async (

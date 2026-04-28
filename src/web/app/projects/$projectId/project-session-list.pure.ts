@@ -23,6 +23,15 @@ export const sortSessionsNewestFirst = (
   sessions: readonly SessionSummary[],
 ): readonly SessionSummary[] =>
   [...sessions].sort((left, right) => {
+    const statusOrder = { running: 0, paused: 1, inactive: 2 } as const satisfies Record<
+      SessionStatus,
+      number
+    >;
+    const statusComparison = statusOrder[left.status] - statusOrder[right.status];
+    if (statusComparison !== 0) {
+      return statusComparison;
+    }
+
     const leftDate = left.updatedAt ?? left.createdAt;
     const rightDate = right.updatedAt ?? right.createdAt;
     return rightDate.localeCompare(leftDate);

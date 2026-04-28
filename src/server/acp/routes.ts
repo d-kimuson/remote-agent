@@ -45,7 +45,7 @@ import {
 import {
   createPreparedSession,
   createSession,
-  loadSession,
+  importSession,
   listSessionMessages,
   listSessions,
   removeSession,
@@ -518,31 +518,23 @@ export const acpRoutes = new Hono()
           projectId: request.projectId,
           cwd: request.cwd,
         });
-        const discovered = await discoverResumableSessions({
-          command: resolved.command,
-          args: resolved.args,
+        const catalog = await getProviderCatalog({
+          presetId: resolved.preset.id,
           cwd: context.cwd,
         });
-
-        if (!discovered.capability.canLoadIntoProvider) {
-          throw new Error(
-            discovered.capability.fallbackReason ??
-              "This agent does not support loading existing sessions in the current PoC.",
-          );
-        }
-
-        const candidate = discovered.sessions.find(
-          (session) => session.sessionId === request.sessionId,
-        );
-        const session = await loadSession({
+        const session = await importSession({
           projectId: context.project?.id ?? null,
           preset: resolved.preset,
           command: resolved.command,
           args: resolved.args,
           cwd: context.cwd,
           sessionId: request.sessionId,
-          title: request.title ?? candidate?.title ?? null,
-          updatedAt: request.updatedAt ?? candidate?.updatedAt ?? null,
+          title: request.title ?? null,
+          updatedAt: request.updatedAt ?? null,
+          availableModes: catalog?.availableModes ?? [],
+          availableModels: catalog?.availableModels ?? [],
+          currentModeId: catalog?.currentModeId ?? null,
+          currentModelId: catalog?.currentModelId ?? null,
         });
         await markProjectModelUsed(session);
         const response = parse(sessionResponseSchema, { session });

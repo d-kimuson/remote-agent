@@ -7,7 +7,7 @@ import { afterEach, describe, expect, test } from "vitest";
 
 import type { AgentPreset } from "../../../shared/acp.ts";
 import { createDatabase } from "../../db/sqlite.ts";
-import { sessionMessagesTable } from "../../db/schema.ts";
+import { agentProviderCatalogsTable, sessionMessagesTable } from "../../db/schema.ts";
 import { createSessionStore } from "./session-store.ts";
 
 const codexPreset: AgentPreset = {
@@ -440,6 +440,193 @@ describe("createSessionStore", () => {
         updatedAt: "2026-04-27T00:00:00.000Z",
         status: "inactive",
         isActive: false,
+      }),
+    ]);
+  });
+
+  test("imports an existing session into the database without starting a provider", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      createProvider: () => {
+        throw new Error("provider should not start during importSession");
+      },
+      importProviderMessages: (_presetId, sessionId) =>
+        Promise.resolve([
+          {
+            id: `codex-log:${sessionId}:0`,
+            role: "user",
+            kind: "user",
+            text: "imported prompt",
+            rawEvents: [],
+            createdAt: "2026-04-27T00:00:00.000Z",
+            updatedAt: "2026-04-27T00:00:00.000Z",
+            streamPartId: null,
+            metadataJson: '{"source":"codex-session-log"}',
+          },
+        ]),
+    });
+
+    const importedSession = await store.importSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "existing-session-db-only",
+      title: "Recovered DB-only Session",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+      availableModes: [{ id: "balanced", name: "Balanced", description: null }],
+      availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
+      currentModeId: "balanced",
+      currentModelId: "gpt-5-codex",
+    });
+
+    expect(importedSession).toMatchObject({
+      sessionId: "existing-session-db-only",
+      origin: "loaded",
+      title: "Recovered DB-only Session",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+      status: "inactive",
+      isActive: false,
+      currentModeId: "balanced",
+      currentModelId: "gpt-5-codex",
+    });
+    expect(importedSession.availableModels).toEqual([
+      { id: "gpt-5-codex", name: "GPT-5 Codex", description: null },
+    ]);
+
+    const restoredSessions = await store.listSessions();
+    expect(restoredSessions).toEqual([
+      expect.objectContaining({
+        sessionId: "existing-session-db-only",
+        status: "inactive",
+        isActive: false,
+        firstUserMessagePreview: "imported prompt",
+        availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
+      }),
+    ]);
+    expect(
+      (await store.listMessages("existing-session-db-only")).map((message) => message.text),
+    ).toEqual(["imported prompt"]);
+  });
+
+  test("listMessages backfills provider log messages for imported sessions with empty messages", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      createProvider: () => {
+        throw new Error("provider should not start during importSession");
+      },
+      importProviderMessages: () => Promise.resolve([]),
+    });
+
+    await store.importSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "existing-session-backfill",
+      title: "Backfill Session",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+      availableModes: [],
+      availableModels: [],
+      currentModeId: null,
+      currentModelId: null,
+    });
+
+    expect(await store.listMessages("existing-session-backfill")).toEqual([]);
+
+    const database2 = createDatabase(databasePath);
+    disposableClients.push(database2.client);
+
+    const storeAfterRestart = createSessionStore({
+      database: database2,
+      importProviderMessages: (_presetId, sessionId) =>
+        Promise.resolve([
+          {
+            id: `codex-log:${sessionId}:0`,
+            role: "user",
+            kind: "user",
+            text: "backfilled prompt",
+            rawEvents: [],
+            createdAt: "2026-04-27T00:00:00.000Z",
+            updatedAt: "2026-04-27T00:00:00.000Z",
+            streamPartId: null,
+            metadataJson: '{"source":"codex-session-log"}',
+          },
+        ]),
+    });
+
+    expect(
+      (await storeAfterRestart.listMessages("existing-session-backfill")).map(
+        (message) => message.text,
+      ),
+    ).toEqual(["backfilled prompt"]);
+  });
+
+  test("listSessions enriches imported sessions with the cached provider catalog", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    await database.db.insert(agentProviderCatalogsTable).values({
+      presetId: "codex",
+      cwd: sandboxDirectory,
+      availableModesJson: JSON.stringify([{ id: "balanced", name: "Balanced", description: null }]),
+      availableModelsJson: JSON.stringify([
+        { id: "gpt-5-codex", name: "GPT-5 Codex", description: null },
+      ]),
+      currentModeId: "balanced",
+      currentModelId: "gpt-5-codex",
+      lastError: null,
+      refreshedAt: "2026-04-27T00:00:00.000Z",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+    });
+
+    const store = createSessionStore({
+      database,
+      createProvider: () => {
+        throw new Error("provider should not start during importSession");
+      },
+      importProviderMessages: () => Promise.resolve([]),
+    });
+
+    await store.importSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "existing-session-catalog-fallback",
+      title: "Catalog fallback Session",
+      updatedAt: "2026-04-27T00:00:00.000Z",
+      availableModes: [],
+      availableModels: [],
+      currentModeId: null,
+      currentModelId: null,
+    });
+
+    expect(await store.listSessions()).toEqual([
+      expect.objectContaining({
+        sessionId: "existing-session-catalog-fallback",
+        currentModeId: "balanced",
+        currentModelId: "gpt-5-codex",
+        availableModes: [{ id: "balanced", name: "Balanced", description: null }],
+        availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
       }),
     ]);
   });
