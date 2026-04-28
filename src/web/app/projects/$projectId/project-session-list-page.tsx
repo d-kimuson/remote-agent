@@ -50,7 +50,7 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
       </div>
       <div className="shrink-0 text-right text-xs text-muted-foreground">
         <p>{formatDateTime(updatedAt)}</p>
-        <p>{session.isActive ? "active" : session.origin}</p>
+        <p>{session.status}</p>
       </div>
     </Link>
   );

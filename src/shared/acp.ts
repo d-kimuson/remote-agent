@@ -44,9 +44,18 @@ export const sessionOriginSchema = union([literal("new"), literal("loaded")]);
 
 export type SessionOrigin = InferOutput<typeof sessionOriginSchema>;
 
+export const sessionStatusSchema = union([
+  literal("running"),
+  literal("paused"),
+  literal("inactive"),
+]);
+
+export type SessionStatus = InferOutput<typeof sessionStatusSchema>;
+
 export const sessionSummarySchema = object({
   sessionId: pipe(string(), trim()),
   origin: sessionOriginSchema,
+  status: sessionStatusSchema,
   projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),
   command: pipe(string(), trim()),

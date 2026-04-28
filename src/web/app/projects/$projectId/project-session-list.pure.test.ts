@@ -6,6 +6,7 @@ import { filterSessionsByQuery, sortSessionsNewestFirst } from "./project-sessio
 const session = {
   sessionId: "session-1",
   origin: "new",
+  status: "paused",
   projectId: "project-1",
   presetId: "codex",
   command: "codex",

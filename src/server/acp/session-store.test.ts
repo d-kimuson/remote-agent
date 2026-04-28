@@ -76,6 +76,7 @@ describe("createSessionStore", () => {
     expect(createdSession).toMatchObject({
       sessionId: "session-1",
       origin: "new",
+      status: "paused",
       isActive: true,
     });
 
@@ -83,6 +84,7 @@ describe("createSessionStore", () => {
     expect(activeSessions).toEqual([
       expect.objectContaining({
         sessionId: "session-1",
+        status: "paused",
         isActive: true,
         currentModeId: "balanced",
         currentModelId: "gpt-5-codex",
@@ -99,6 +101,7 @@ describe("createSessionStore", () => {
       expect.objectContaining({
         sessionId: "session-1",
         origin: "new",
+        status: "inactive",
         isActive: false,
         projectId: null,
       }),
@@ -166,6 +169,7 @@ describe("createSessionStore", () => {
         sessionId: "session-2",
         currentModeId: "high",
         currentModelId: "gpt-5-codex-mini",
+        status: "inactive",
         isActive: false,
       }),
     ]);
@@ -232,6 +236,86 @@ describe("createSessionStore", () => {
     const restoredMessages = await restoredStore.listMessages("session-msgs");
 
     expect(restoredMessages.map((message) => message.text)).toEqual(["ping", "pong"]);
+  });
+
+  test("marks active session as running only while a prompt response is pending", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const promptStarted = Promise.withResolvers<void>();
+    const releasePrompt = Promise.withResolvers<void>();
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: "session-running",
+            modes: {
+              currentModeId: "balanced",
+              availableModes: [{ id: "balanced", name: "Balanced" }],
+            },
+            models: {
+              currentModelId: "gpt-5-codex",
+              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: async () => {
+        promptStarted.resolve();
+        await releasePrompt.promise;
+        return {
+          text: "pong",
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        };
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+    });
+
+    const sendPromise = store.sendPrompt("session-running", { prompt: "ping" });
+    await promptStarted.promise;
+
+    expect(await store.listSessions()).toEqual([
+      expect.objectContaining({
+        sessionId: "session-running",
+        isActive: true,
+        status: "running",
+      }),
+    ]);
+
+    releasePrompt.resolve();
+    const response = await sendPromise;
+
+    expect(response.session).toMatchObject({
+      sessionId: "session-running",
+      status: "paused",
+      isActive: true,
+    });
+    expect(await store.listSessions()).toEqual([
+      expect.objectContaining({
+        sessionId: "session-running",
+        isActive: true,
+        status: "paused",
+      }),
+    ]);
   });
 
   test("persists assistant error line when prompt collection throws", async () => {
@@ -338,6 +422,7 @@ describe("createSessionStore", () => {
       origin: "loaded",
       title: "Recovered Session",
       updatedAt: "2026-04-27T00:00:00.000Z",
+      status: "paused",
       isActive: true,
     });
 
@@ -353,6 +438,7 @@ describe("createSessionStore", () => {
         origin: "loaded",
         title: "Recovered Session",
         updatedAt: "2026-04-27T00:00:00.000Z",
+        status: "inactive",
         isActive: false,
       }),
     ]);

@@ -44,7 +44,7 @@ export const SessionListItem: FC<{
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-medium tracking-[0.01em]">{listTitle}</p>
             <Badge variant="secondary">
-              {session.kind === "draft" ? "draft" : session.session.origin}
+              {session.kind === "draft" ? "draft" : session.session.status}
             </Badge>
           </div>
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>

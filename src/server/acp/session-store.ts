@@ -20,6 +20,7 @@ import {
   type RawEvent,
   type SendMessageRequest,
   type SessionSummary,
+  type SessionStatus,
   type UpdateSessionRequest,
 } from "../../shared/acp.ts";
 import {
@@ -66,6 +67,7 @@ const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSes
 
 type SessionEntry = {
   provider: SessionProvider;
+  runningPromptCount: number;
   session: SessionSummary;
 };
 
@@ -92,6 +94,7 @@ type SessionStoreDependencies = {
 
 const createSessionSummary = ({
   origin,
+  status,
   createdAt,
   projectId,
   presetId,
@@ -104,6 +107,7 @@ const createSessionSummary = ({
   response,
 }: {
   readonly origin: SessionSummary["origin"];
+  readonly status: SessionStatus;
   readonly createdAt: string;
   readonly projectId: string | null;
   readonly presetId: string | null;
@@ -123,6 +127,7 @@ const createSessionSummary = ({
   return parse(sessionSummarySchema, {
     sessionId: response.sessionId,
     origin,
+    status,
     projectId,
     presetId,
     command,
@@ -186,11 +191,13 @@ const firstUserMessagePreviewBySessionId = (client: DatabaseSync): ReadonlyMap<s
 const mapStoredSession = (
   record: typeof sessionsTable.$inferSelect,
   isActive: boolean,
+  status: SessionStatus,
   firstUserMessagePreview: string | null = null,
 ): SessionSummary => {
   return parse(sessionSummarySchema, {
     sessionId: record.sessionId,
     origin: record.origin,
+    status,
     projectId: record.projectId,
     presetId: record.presetId,
     command: record.command,
@@ -282,18 +289,35 @@ export const createSessionStore = ({
     return entry;
   };
 
+  const sessionStatusFromEntry = (entry: SessionEntry | undefined): SessionStatus => {
+    if (entry === undefined) {
+      return "inactive";
+    }
+    return entry.runningPromptCount > 0 ? "running" : "paused";
+  };
+
+  const setSessionStatus = (entry: SessionEntry, status: SessionStatus): void => {
+    entry.session = parse(sessionSummarySchema, {
+      ...entry.session,
+      status,
+      isActive: true,
+    });
+  };
+
   const listSessions = async (): Promise<readonly SessionSummary[]> => {
     const records = await database.db.select().from(sessionsTable);
     const firstPreviews = firstUserMessagePreviewBySessionId(database.client);
     return records
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-      .map((record) =>
-        mapStoredSession(
+      .map((record) => {
+        const entry = runtimeSessions.get(record.sessionId);
+        return mapStoredSession(
           record,
-          runtimeSessions.has(record.sessionId),
+          entry !== undefined,
+          sessionStatusFromEntry(entry),
           firstPreviews.get(record.sessionId) ?? null,
-        ),
-      );
+        );
+      });
   };
 
   const listMessages = async (sessionId: string): Promise<readonly ChatMessage[]> => {
@@ -443,6 +467,7 @@ export const createSessionStore = ({
     const createdAt = new Date().toISOString();
     let session = createSessionSummary({
       origin: "new",
+      status: "paused",
       createdAt,
       projectId,
       presetId: preset?.id ?? null,
@@ -481,6 +506,7 @@ export const createSessionStore = ({
 
     runtimeSessions.set(session.sessionId, {
       provider,
+      runningPromptCount: 0,
       session,
     });
     await persistSession(session);
@@ -538,6 +564,7 @@ export const createSessionStore = ({
     const effectiveUpdatedAt = updatedAt ?? existingRow?.updatedAt ?? null;
     const session = createSessionSummary({
       origin,
+      status: "paused",
       createdAt,
       projectId,
       presetId: preset.id,
@@ -561,6 +588,7 @@ export const createSessionStore = ({
 
     runtimeSessions.set(session.sessionId, {
       provider,
+      runningPromptCount: 0,
       session,
     });
     await persistSession(session);
@@ -605,7 +633,7 @@ export const createSessionStore = ({
     });
 
     const entry = getSessionEntry(sessionId);
-    const fromDb = mapStoredSession(record, true, null);
+    const fromDb = mapStoredSession(record, true, "paused", null);
 
     if (
       fromDb.currentModelId !== null &&
@@ -633,6 +661,7 @@ export const createSessionStore = ({
     );
     entry.session = parse(sessionSummarySchema, {
       ...entry.session,
+      status: sessionStatusFromEntry(entry),
       currentModelId,
       currentModeId,
       availableModels,
@@ -660,6 +689,7 @@ export const createSessionStore = ({
     const session = parse(sessionSummarySchema, {
       ...entry.session,
       isActive: true,
+      status: sessionStatusFromEntry(entry),
       updatedAt: new Date().toISOString(),
       currentModeId: request.modeId ?? entry.session.currentModeId,
       currentModelId: request.modelId ?? entry.session.currentModelId,
@@ -691,6 +721,7 @@ export const createSessionStore = ({
       entry.session = parse(sessionSummarySchema, {
         ...entry.session,
         isActive: true,
+        status: sessionStatusFromEntry(entry),
         updatedAt: new Date().toISOString(),
         currentModelId: request.modelId ?? entry.session.currentModelId,
         currentModeId: request.modeId ?? entry.session.currentModeId,
@@ -703,56 +734,67 @@ export const createSessionStore = ({
       message: buildMessage({ role: "user", text: effectivePrompt, rawEvents: [], kind: "user" }),
     });
 
-    try {
-      if (promptCollector !== undefined) {
-        const result = await promptCollector(entry.provider, effectivePrompt);
-        if (!result.alreadyPersisted) {
-          const segments =
-            result.assistantSegmentMessages.length > 0
-              ? [...result.assistantSegmentMessages]
-              : [
-                  buildMessage({
-                    role: "assistant",
-                    text: result.text,
-                    rawEvents: result.rawEvents,
-                    kind: "legacy_assistant_turn",
-                  }),
-                ];
-          for (const msg of segments) {
-            await persistMessage({ sessionId, message: msg });
-          }
-          return {
-            session: entry.session,
-            text: result.text,
-            rawEvents: [...result.rawEvents],
-            assistantSegmentMessages: segments,
-          };
-        }
+    const collectPromptResponse = async (): Promise<
+      Pick<MessageResponse, "assistantSegmentMessages" | "rawEvents" | "text">
+    > => {
+      if (promptCollector === undefined) {
+        const streamed = await collectPromptStream({
+          provider: {
+            languageModel: () => entry.provider.languageModel(),
+            tools: (entry.provider.tools ?? {}) as ToolSet,
+          },
+          prompt: effectivePrompt,
+          sessionId,
+          now: () => new Date().toISOString(),
+          persistence: streamPersistence,
+        });
+
         return {
-          session: entry.session,
+          text: streamed.text,
+          rawEvents: [...streamed.rawEvents],
+          assistantSegmentMessages: [...streamed.assistantSegmentMessages],
+        };
+      }
+
+      const result = await promptCollector(entry.provider, effectivePrompt);
+      if (result.alreadyPersisted) {
+        return {
           text: result.text,
           rawEvents: [...result.rawEvents],
           assistantSegmentMessages: [...result.assistantSegmentMessages],
         };
       }
 
-      const streamed = await collectPromptStream({
-        provider: {
-          languageModel: () => entry.provider.languageModel(),
-          tools: (entry.provider.tools ?? {}) as ToolSet,
-        },
-        prompt: effectivePrompt,
-        sessionId,
-        now: () => new Date().toISOString(),
-        persistence: streamPersistence,
-      });
+      const segments =
+        result.assistantSegmentMessages.length > 0
+          ? [...result.assistantSegmentMessages]
+          : [
+              buildMessage({
+                role: "assistant",
+                text: result.text,
+                rawEvents: result.rawEvents,
+                kind: "legacy_assistant_turn",
+              }),
+            ];
+      for (const msg of segments) {
+        await persistMessage({ sessionId, message: msg });
+      }
 
       return {
-        session: entry.session,
-        text: streamed.text,
-        rawEvents: [...streamed.rawEvents],
-        assistantSegmentMessages: [...streamed.assistantSegmentMessages],
+        text: result.text,
+        rawEvents: [...result.rawEvents],
+        assistantSegmentMessages: segments,
       };
+    };
+
+    entry.runningPromptCount += 1;
+    setSessionStatus(entry, sessionStatusFromEntry(entry));
+    emitAcpSse({ type: "session_updated", sessionId });
+
+    let result: Pick<MessageResponse, "assistantSegmentMessages" | "rawEvents" | "text"> | null =
+      null;
+    try {
+      result = await collectPromptResponse();
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to collect prompt result";
       await persistMessage({
@@ -765,7 +807,22 @@ export const createSessionStore = ({
         }),
       });
       throw error;
+    } finally {
+      entry.runningPromptCount = Math.max(0, entry.runningPromptCount - 1);
+      setSessionStatus(entry, sessionStatusFromEntry(entry));
+      emitAcpSse({ type: "session_updated", sessionId });
     }
+
+    if (result === null) {
+      throw new Error("failed to collect prompt result");
+    }
+
+    return {
+      session: entry.session,
+      text: result.text,
+      rawEvents: result.rawEvents,
+      assistantSegmentMessages: result.assistantSegmentMessages,
+    };
   };
 
   const removeSession = async (sessionId: string): Promise<boolean> => {

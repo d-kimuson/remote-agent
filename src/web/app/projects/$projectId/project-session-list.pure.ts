@@ -6,6 +6,7 @@ const sessionSearchText = (session: SessionSummary): string =>
   [
     session.title,
     session.firstUserMessagePreview,
+    session.status,
     session.sessionId,
     session.projectId,
     session.presetId,
