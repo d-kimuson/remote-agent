@@ -6,6 +6,7 @@
   "scripts": {
     "build": "run-s build:web typecheck",
     "build:web": "vite build",
+    "check": "gatecheck check",
     "db:generate": "pnpm migrate:generate",
     "dev": "run-p dev:web dev:server",
     "dev:server": "portless --name 'acp-hono' node --watch src/server/main.ts",
