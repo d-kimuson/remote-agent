@@ -3,7 +3,6 @@ import {
   useCallback,
   useLayoutEffect,
   useRef,
-  type ClipboardEvent,
   type FC,
   type KeyboardEvent,
   type ReactNode,
@@ -13,7 +12,6 @@ import { Button } from "../../../components/ui/button.tsx";
 import { cn } from "../../../lib/utils.ts";
 import {
   applyRichPromptFormat,
-  replaceRichPromptSelection,
   type RichPromptEditResult,
   type RichPromptFormat,
   type RichPromptSelection,
@@ -33,79 +31,28 @@ const toolbarItems = [
   { format: "quote", label: "Quote", icon: Quote },
 ] satisfies readonly ToolbarItem[];
 
-const readSelectionOffsets = (root: HTMLElement): RichPromptSelection | null => {
-  const selection = window.getSelection();
-  if (selection === null || selection.rangeCount === 0) {
-    return null;
-  }
-
-  const range = selection.getRangeAt(0);
-  if (!root.contains(range.startContainer) || !root.contains(range.endContainer)) {
-    return null;
-  }
-
-  const startRange = range.cloneRange();
-  startRange.selectNodeContents(root);
-  startRange.setEnd(range.startContainer, range.startOffset);
-
-  const endRange = range.cloneRange();
-  endRange.selectNodeContents(root);
-  endRange.setEnd(range.endContainer, range.endOffset);
-
-  return {
-    start: startRange.toString().length,
-    end: endRange.toString().length,
-  };
-};
-
-const resolveTextPosition = (
-  root: HTMLElement,
-  targetOffset: number,
-): { readonly node: Node; readonly offset: number } => {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  let remaining = targetOffset;
-  let current = walker.nextNode();
-
-  while (current !== null) {
-    const length = current.textContent?.length ?? 0;
-    if (remaining <= length) {
-      return { node: current, offset: remaining };
-    }
-
-    remaining -= length;
-    current = walker.nextNode();
-  }
-
-  const text = document.createTextNode("");
-  root.appendChild(text);
-  return { node: text, offset: 0 };
-};
-
-const setSelectionOffsets = (root: HTMLElement, selection: RichPromptSelection): void => {
-  const browserSelection = window.getSelection();
-  if (browserSelection === null) {
-    return;
-  }
-
-  const range = document.createRange();
-  const start = resolveTextPosition(root, selection.start);
-  const end = resolveTextPosition(root, selection.end);
-  range.setStart(start.node, start.offset);
-  range.setEnd(end.node, end.offset);
-  browserSelection.removeAllRanges();
-  browserSelection.addRange(range);
-};
-
 export const RichPromptEditor: FC<{
   readonly className?: string;
   readonly disabled?: boolean;
-  readonly onChange: (value: string) => void;
-  readonly onSubmit: () => void;
+  readonly externalValue: {
+    readonly revision: number;
+    readonly value: string;
+  };
+  readonly onSubmit: (value: string) => void;
+  readonly onValueReaderReady: (readValue: () => string) => void;
   readonly placeholder: string;
   readonly toolbarTrailing?: ReactNode;
-  readonly value: string;
-}> = ({ className, disabled = false, onChange, onSubmit, placeholder, toolbarTrailing, value }) => {
-  const editorRef = useRef<HTMLDivElement>(null);
+}> = ({
+  className,
+  disabled = false,
+  externalValue,
+  onSubmit,
+  onValueReaderReady,
+  placeholder,
+  toolbarTrailing,
+}) => {
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const valueRef = useRef(externalValue.value);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -113,31 +60,33 @@ export const RichPromptEditor: FC<{
       return;
     }
 
-    if ((editor.textContent ?? "") !== value) {
-      editor.textContent = value;
+    valueRef.current = externalValue.value;
+    if (editor.value !== externalValue.value) {
+      editor.value = externalValue.value;
     }
-  }, [value]);
+  }, [externalValue]);
 
-  const applyEditResult = useCallback(
-    (result: RichPromptEditResult) => {
-      const editor = editorRef.current;
-      if (editor === null) {
-        onChange(result.value);
-        return;
-      }
+  const applyEditResult = useCallback((result: RichPromptEditResult) => {
+    const editor = editorRef.current;
+    if (editor === null) {
+      valueRef.current = result.value;
+      return;
+    }
 
-      editor.textContent = result.value;
-      onChange(result.value);
-      editor.focus();
-      setSelectionOffsets(editor, result.selection);
-    },
-    [onChange],
-  );
+    editor.value = result.value;
+    valueRef.current = result.value;
+    editor.focus();
+    editor.setSelectionRange(result.selection.start, result.selection.end);
+  }, []);
 
   const readCurrentValue = useCallback((): string => {
     const editor = editorRef.current;
-    return editor?.textContent ?? value;
-  }, [value]);
+    return editor?.value ?? valueRef.current;
+  }, []);
+
+  useLayoutEffect(() => {
+    onValueReaderReady(readCurrentValue);
+  }, [onValueReaderReady, readCurrentValue]);
 
   const readCurrentSelection = useCallback((): RichPromptSelection => {
     const editor = editorRef.current;
@@ -146,7 +95,10 @@ export const RichPromptEditor: FC<{
       return { start: currentValue.length, end: currentValue.length };
     }
 
-    return readSelectionOffsets(editor) ?? { start: currentValue.length, end: currentValue.length };
+    return {
+      start: editor.selectionStart,
+      end: editor.selectionEnd,
+    };
   }, [readCurrentValue]);
 
   const applyFormat = useCallback(
@@ -162,27 +114,14 @@ export const RichPromptEditor: FC<{
     [applyEditResult, readCurrentSelection, readCurrentValue],
   );
 
-  const replaceSelection = useCallback(
-    (replacement: string) => {
-      applyEditResult(
-        replaceRichPromptSelection({
-          value: readCurrentValue(),
-          selection: readCurrentSelection(),
-          replacement,
-        }),
-      );
-    },
-    [applyEditResult, readCurrentSelection, readCurrentValue],
-  );
-
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return;
     }
 
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
       event.preventDefault();
-      onSubmit();
+      onSubmit(readCurrentValue());
       return;
     }
 
@@ -197,16 +136,6 @@ export const RichPromptEditor: FC<{
       applyFormat("italic");
       return;
     }
-
-    if (event.key === "Enter") {
-      event.preventDefault();
-      replaceSelection("\n");
-    }
-  };
-
-  const handlePaste = (event: ClipboardEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    replaceSelection(event.clipboardData.getData("text/plain"));
   };
 
   return (
@@ -244,25 +173,18 @@ export const RichPromptEditor: FC<{
         )}
       </div>
       <div className="relative">
-        {value.length === 0 ? (
-          <div className="pointer-events-none absolute top-3 left-3 select-none text-sm text-muted-foreground sm:top-4 sm:left-4">
-            {placeholder}
-          </div>
-        ) : null}
-        <div
+        <textarea
           aria-label={placeholder}
-          aria-disabled={disabled}
-          aria-multiline
-          className="min-h-16 w-full whitespace-pre-wrap break-words bg-transparent px-3 py-2.5 text-sm leading-6 outline-none selection:bg-primary/20 empty:before:text-muted-foreground sm:min-h-20 sm:px-4 sm:py-3 sm:leading-7"
-          contentEditable={!disabled}
-          onInput={(event) => {
-            onChange(event.currentTarget.textContent ?? "");
-          }}
+          className="block min-h-16 w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-6 outline-none selection:bg-primary/20 sm:min-h-20 sm:px-4 sm:py-3 sm:leading-7"
+          defaultValue={externalValue.value}
+          disabled={disabled}
+          autoCapitalize="off"
+          autoCorrect="off"
           onKeyDown={handleKeyDown}
-          onPaste={handlePaste}
+          placeholder={placeholder}
           ref={editorRef}
-          role="textbox"
-          suppressContentEditableWarning
+          rows={3}
+          spellCheck={false}
         />
       </div>
     </div>

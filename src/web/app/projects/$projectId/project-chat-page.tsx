@@ -467,7 +467,11 @@ export const ProjectChatPage: FC<{
   const [draftModeId, setDraftModeId] = useState<string | null>(null);
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
-  const [prompt, setPrompt] = useState("");
+  const promptReaderRef = useRef<() => string>(() => "");
+  const [promptExternalValue, setPromptExternalValue] = useState({
+    revision: 0,
+    value: "",
+  });
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
@@ -499,6 +503,17 @@ export const ProjectChatPage: FC<{
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
+  }, []);
+
+  const replacePrompt = useCallback((value: string) => {
+    setPromptExternalValue((current) => ({
+      revision: current.revision + 1,
+      value,
+    }));
+  }, []);
+
+  const handlePromptValueReaderReady = useCallback((readValue: () => string) => {
+    promptReaderRef.current = readValue;
   }, []);
 
   useEffect(() => {
@@ -979,10 +994,14 @@ export const ProjectChatPage: FC<{
     [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
-  const canSend =
-    buildPromptText(prompt, attachmentNames).length > 0 &&
-    !isSending &&
-    (!shouldUseDraftSession || activePresetId.length > 0);
+  const canSendPrompt = useCallback(
+    (value: string) =>
+      buildPromptText(value, attachmentNames).length > 0 &&
+      !isSending &&
+      (!shouldUseDraftSession || activePresetId.length > 0),
+    [activePresetId, attachmentNames, isSending, shouldUseDraftSession],
+  );
+  const canSend = !isSending && (!shouldUseDraftSession || activePresetId.length > 0);
 
   const thinkingModelLabel = useMemo((): string => {
     if (shouldUseDraftSession) {
@@ -1082,7 +1101,9 @@ export const ProjectChatPage: FC<{
       if (speechText.length === 0) {
         return;
       }
-      setPrompt((current) => appendRichPromptText({ value: current, addition: speechText }));
+      replacePrompt(
+        appendRichPromptText({ value: promptReaderRef.current(), addition: speechText }),
+      );
     };
     recognition.onerror = (event) => {
       setIsListeningToSpeech(false);
@@ -1213,13 +1234,13 @@ export const ProjectChatPage: FC<{
     }
   };
 
-  const handleSendPrompt = async () => {
-    const nextPrompt = buildPromptText(prompt, attachmentNames);
+  const handleSendPrompt = async (promptValue = promptReaderRef.current()) => {
+    const nextPrompt = buildPromptText(promptValue, attachmentNames);
     if (nextPrompt.length === 0) {
       return;
     }
 
-    const previousPrompt = prompt;
+    const previousPrompt = promptValue;
     const userMessage = createChatMessage("user", nextPrompt, [], { kind: "user" });
     const initialTranscriptKey = activeTranscriptKey;
 
@@ -1228,7 +1249,7 @@ export const ProjectChatPage: FC<{
     setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
     speechRecognitionRef.current?.stop();
     setIsListeningToSpeech(false);
-    setPrompt("");
+    replacePrompt("");
     setTranscripts((current) =>
       appendTranscriptMessage({
         message: userMessage,
@@ -1376,7 +1397,7 @@ export const ProjectChatPage: FC<{
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to send prompt";
       setAwaitingAssistantTranscriptKeys([]);
-      setPrompt(previousPrompt);
+      replacePrompt(previousPrompt);
       setTranscripts((current) =>
         appendTranscriptMessage({
           message: createChatMessage("assistant", `Error: ${message}`, [], {
@@ -1724,14 +1745,14 @@ export const ProjectChatPage: FC<{
                       </Button>
                     </>
                   }
-                  onChange={setPrompt}
-                  onSubmit={() => {
-                    if (canSend) {
-                      void handleSendPrompt();
+                  externalValue={promptExternalValue}
+                  onSubmit={(value) => {
+                    if (canSendPrompt(value)) {
+                      void handleSendPrompt(value);
                     }
                   }}
+                  onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
-                  value={prompt}
                 />
 
                 <div className="flex min-h-9 items-end gap-1.5 bg-transparent px-1.5 py-1 sm:px-2">
