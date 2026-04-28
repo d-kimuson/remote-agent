@@ -20,7 +20,7 @@ export const routes = new Hono()
     }),
     (c) => {
       const response = parse(appInfoSchema, {
-        appName: 'ACP Playground',
+        appName: 'Remote Agent',
         workingDirectory: process.cwd(),
         projectsFilePath: getProjectsFilePath(),
         agentPresets,

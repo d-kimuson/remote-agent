@@ -1,3 +1,3 @@
-# CLAUDE.md (acp-playground)
+# CLAUDE.md (remote-agent)
 
 @AGENTS.md

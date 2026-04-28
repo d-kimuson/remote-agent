@@ -36,8 +36,8 @@ afterEach(() => {
 
 describe('createSessionStore', () => {
   test('persists session metadata and marks restored sessions as inactive', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const firstDatabase = createDatabase(databasePath);
     disposableClients.push(firstDatabase.client);
@@ -110,8 +110,8 @@ describe('createSessionStore', () => {
   });
 
   test('updates persisted session metadata after mode and model changes', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -177,8 +177,8 @@ describe('createSessionStore', () => {
   });
 
   test('persists user and assistant messages and returns them via listMessages', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -240,8 +240,8 @@ describe('createSessionStore', () => {
   });
 
   test('marks active session as running only while a prompt response is pending', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -320,8 +320,8 @@ describe('createSessionStore', () => {
   });
 
   test('persists assistant error line when prompt collection throws', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -370,8 +370,8 @@ describe('createSessionStore', () => {
   });
 
   test('loads an existing session into an active provider and persists it as loaded', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -446,8 +446,8 @@ describe('createSessionStore', () => {
   });
 
   test('imports an existing session into the database without starting a provider', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -518,8 +518,8 @@ describe('createSessionStore', () => {
   });
 
   test('listMessages backfills provider log messages for imported sessions with empty messages', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -578,8 +578,8 @@ describe('createSessionStore', () => {
   });
 
   test('listSessions enriches imported sessions with the cached provider catalog', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -633,8 +633,8 @@ describe('createSessionStore', () => {
   });
 
   test('imports Codex session log messages when loading a Codex session with no stored messages', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -710,8 +710,8 @@ describe('createSessionStore', () => {
   });
 
   test('loadSession preserves createdAt and origin when rehydrating from the database', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -796,8 +796,8 @@ describe('createSessionStore', () => {
   });
 
   test('loadSession restores the model used by the stored conversation', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -882,8 +882,8 @@ describe('createSessionStore', () => {
   });
 
   test('loadSession keeps existing session_messages (persistSession must not delete sessions row)', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);

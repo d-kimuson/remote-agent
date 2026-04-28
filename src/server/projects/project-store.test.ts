@@ -16,11 +16,11 @@ afterEach(() => {
 
 describe('createProjectStore', () => {
   test('persists projects in sqlite and restores them from a new store instance', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const firstProjectDirectory = path.join(sandboxDirectory, 'workspace-a');
     await mkdir(firstProjectDirectory, { recursive: true });
 
-    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
     const firstDatabase = createDatabase(databasePath);
     disposableClients.push(firstDatabase.client);
 
@@ -53,11 +53,11 @@ describe('createProjectStore', () => {
   });
 
   test('returns the existing project when the same working directory is registered twice', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const projectDirectory = path.join(sandboxDirectory, 'workspace-b');
     await mkdir(projectDirectory, { recursive: true });
 
-    const database = createDatabase(path.join(sandboxDirectory, 'playground.sqlite'));
+    const database = createDatabase(path.join(sandboxDirectory, 'remote-agent.sqlite'));
     disposableClients.push(database.client);
 
     const store = createProjectStore(database);
@@ -74,11 +74,11 @@ describe('createProjectStore', () => {
   });
 
   test('stores favorite and last-used model preferences per project and preset', async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const projectDirectory = path.join(sandboxDirectory, 'workspace-models');
     await mkdir(projectDirectory, { recursive: true });
 
-    const database = createDatabase(path.join(sandboxDirectory, 'playground.sqlite'));
+    const database = createDatabase(path.join(sandboxDirectory, 'remote-agent.sqlite'));
     disposableClients.push(database.client);
 
     const store = createProjectStore(database);

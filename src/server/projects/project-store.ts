@@ -252,7 +252,7 @@ const getProjectStore = () => {
 };
 
 export const getProjectsFilePath = (): string => {
-  return envService.getEnv('ACP_PLAYGROUND_DB_PATH');
+  return envService.getEnv('REMOTE_AGENT_DB_PATH');
 };
 
 export const listProjects = async (): Promise<readonly Project[]> => {

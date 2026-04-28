@@ -6,8 +6,8 @@ const envSchema = v.object({
     v.optional(v.string(), '8989'),
     v.transform((v) => Number.parseInt(v)),
   ),
-  ACP_PLAYGROUND_DB_PATH: v.pipe(
-    v.optional(v.string(), path.resolve(process.cwd(), '.local', 'acp-playground.sqlite')),
+  REMOTE_AGENT_DB_PATH: v.pipe(
+    v.optional(v.string(), path.resolve(process.cwd(), '.local', 'remote-agent.sqlite')),
     v.transform((value) => path.resolve(value)),
   ),
 });

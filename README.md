@@ -1,1 +1,1 @@
-# acp-playground
+# remote-agent

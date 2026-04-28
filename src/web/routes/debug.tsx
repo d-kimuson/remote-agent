@@ -173,7 +173,7 @@ const RawEventPanel: FC<{
   );
 };
 
-const ACPPlaygroundPage: FC = () => {
+const RemoteAgentPage: FC = () => {
   const queryClient = useQueryClient();
   const appInfoQuery = useSuspenseQuery({
     queryKey: appInfoQueryKey,
@@ -340,7 +340,7 @@ const ACPPlaygroundPage: FC = () => {
                 <Badge className="rounded-full px-3 py-1 text-[11px] uppercase tracking-[0.22em]">
                   Web Stack × ACP
                 </Badge>
-                <Badge variant="outline">Private playground</Badge>
+                <Badge variant="outline">Private remote agent</Badge>
               </div>
               <div className="grid gap-3 md:grid-cols-[1.2fr_0.8fr] md:items-end">
                 <div className="space-y-3">
@@ -715,5 +715,5 @@ const ACPPlaygroundPage: FC = () => {
 };
 
 export const Route = createFileRoute('/debug')({
-  component: ACPPlaygroundPage,
+  component: RemoteAgentPage,
 });

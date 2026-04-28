@@ -142,7 +142,7 @@ export const createMemoryDatabase = (): AppDatabase => {
 let defaultDatabase: AppDatabase | undefined = undefined;
 
 export const getDefaultDatabase = (): AppDatabase => {
-  defaultDatabase ??= createDatabase(envService.getEnv('ACP_PLAYGROUND_DB_PATH'));
+  defaultDatabase ??= createDatabase(envService.getEnv('REMOTE_AGENT_DB_PATH'));
   return defaultDatabase;
 };
 

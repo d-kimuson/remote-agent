@@ -15,7 +15,7 @@ describe('buildPromptWithAttachments', () => {
           mediaType: 'text/plain',
           name: 'notes.txt',
           sizeInBytes: 12,
-          storedPath: '/tmp/acp-playground-attachments/attachment-1-notes.txt',
+          storedPath: '/tmp/remote-agent-attachments/attachment-1-notes.txt',
         },
       ],
       prompt: 'review this file',
@@ -25,6 +25,6 @@ describe('buildPromptWithAttachments', () => {
     expect(result).toContain('Attached files:');
     expect(result).toContain('notes.txt');
     expect(result).toContain('text/plain');
-    expect(result).toContain('/tmp/acp-playground-attachments/attachment-1-notes.txt');
+    expect(result).toContain('/tmp/remote-agent-attachments/attachment-1-notes.txt');
   });
 });

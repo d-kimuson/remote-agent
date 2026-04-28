@@ -2,7 +2,7 @@ export type ThemePreference = 'light' | 'dark' | 'system';
 
 export type ResolvedTheme = 'light' | 'dark';
 
-export const themeStorageKey = 'acp-playground:theme';
+export const themeStorageKey = 'remote-agent:theme';
 
 export const defaultThemePreference = 'system' satisfies ThemePreference;
 

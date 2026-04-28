@@ -94,7 +94,7 @@ const projectNameFrom = async (
   projectId: string | null | undefined,
 ): Promise<string> => {
   if (projectId === null || projectId === undefined) {
-    return 'ACP Playground';
+    return 'Remote Agent';
   }
 
   const cachedProjects = queryClient.getQueryData<ProjectsResponse>(projectsQueryKey);

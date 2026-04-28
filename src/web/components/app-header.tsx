@@ -169,7 +169,7 @@ export const AppHeader: FC<{
       </Button>
       {currentProjectId === null ? (
         <div className="flex min-w-0 flex-1 items-center">
-          <p className="truncate text-sm font-semibold tracking-tight">acp-playground</p>
+          <p className="truncate text-sm font-semibold tracking-tight">remote-agent</p>
         </div>
       ) : (
         <>

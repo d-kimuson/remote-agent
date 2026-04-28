@@ -159,7 +159,7 @@ export const SettingsPage: FC = () => {
   const handlePreviewNotification = async () => {
     const didShowNotification = await showNotificationPreview({
       projectId: 'settings',
-      projectName: 'ACP Playground',
+      projectName: 'Remote Agent',
       sessionId: 'settings',
       text: 'バックグラウンド時の assistant 応答をこの形式で通知します。',
       timestamp: Date.now(),

@@ -4,14 +4,14 @@ import { honoApp } from './app.ts';
 
 describe('honoApp', () => {
   test('serves OpenAPI spec for API routes', async () => {
-    const response = await honoApp.request('/openapi.json');
+    const response = await honoApp.request('/api/openapi.json');
     const document: unknown = await response.json();
 
     expect(response.status).toBe(200);
     expect(document).toMatchObject({
       openapi: '3.1.0',
       info: {
-        title: 'ACP Playground API',
+        title: 'Remote Agent API',
         version: '0.0.0',
       },
       paths: {

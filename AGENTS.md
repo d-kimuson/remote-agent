@@ -1,8 +1,8 @@
-# AGENTS.md (acp-playground)
+# AGENTS.md (remote-agent)
 
 ## Architecture
 
-`acp-playground` は、ACP 対応 Agent を Web UI から操作できるかを検証するための単一パッケージ playground です。Hono が ACP セッションを保持する BFF として動き、TanStack SPA がその API を使って Agent の起動・会話・セッション操作を行います。
+`remote-agent` は、ACP 対応 Agent を Web UI から操作できるかを検証するための単一パッケージ remote agent です。Hono が ACP セッションを保持する BFF として動き、TanStack SPA がその API を使って Agent の起動・会話・セッション操作を行います。
 
 ```
 browser SPA

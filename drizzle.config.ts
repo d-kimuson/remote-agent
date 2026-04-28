@@ -6,6 +6,6 @@ export default defineConfig({
   out: './drizzle',
   strict: true,
   dbCredentials: {
-    url: '.local/acp-playground.sqlite',
+    url: '.local/remote-agent.sqlite',
   },
 });

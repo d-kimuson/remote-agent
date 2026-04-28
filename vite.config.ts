@@ -6,9 +6,9 @@ import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
 const pwaManifest = {
-  name: 'ACP Playground',
-  short_name: 'ACP Playground',
-  description: 'ACP を使って任意の Agent を SPA から試すための playground',
+  name: 'Remote Agent',
+  short_name: 'Remote Agent',
+  description: 'ACP を使って任意の Agent を SPA から操作するための remote agent',
   theme_color: '#0f172a',
   background_color: '#020617',
   display: 'standalone',

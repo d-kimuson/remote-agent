@@ -9,7 +9,7 @@ describe('createAssistantNotificationPayload', () => {
   test('normalizes whitespace and keeps routing metadata', () => {
     const payload = createAssistantNotificationPayload({
       projectId: 'project-1',
-      projectName: 'ACP Playground',
+      projectName: 'Remote Agent',
       sessionId: 'session-1',
       text: '  first line\n\n second\tline  ',
       timestamp: 1_746_000_000_000,
@@ -17,7 +17,7 @@ describe('createAssistantNotificationPayload', () => {
     });
 
     expect(payload).toMatchObject({
-      title: 'ACP Playground • Agent response',
+      title: 'Remote Agent • Agent response',
       body: 'first line second line',
       tag: 'session:session-1',
       data: {
@@ -32,7 +32,7 @@ describe('createAssistantNotificationPayload', () => {
   test('falls back to a generic body when response text is empty', () => {
     const payload = createAssistantNotificationPayload({
       projectId: 'project-1',
-      projectName: 'ACP Playground',
+      projectName: 'Remote Agent',
       sessionId: 'session-1',
       text: '   ',
       timestamp: 1_746_000_000_000,
@@ -45,7 +45,7 @@ describe('createAssistantNotificationPayload', () => {
   test('truncates long assistant responses', () => {
     const payload = createAssistantNotificationPayload({
       projectId: 'project-1',
-      projectName: 'ACP Playground',
+      projectName: 'Remote Agent',
       sessionId: 'session-1',
       text: 'x'.repeat(400),
       timestamp: 1_746_000_000_000,
@@ -61,7 +61,7 @@ describe('createSessionPausedNotificationPayload', () => {
   test('creates a routeable paused-session notification', () => {
     const payload = createSessionPausedNotificationPayload({
       projectId: 'project-1',
-      projectName: 'ACP Playground',
+      projectName: 'Remote Agent',
       sessionId: 'session-1',
       sessionTitle: 'Implement notifications',
       timestamp: 1_746_000_000_000,
@@ -69,7 +69,7 @@ describe('createSessionPausedNotificationPayload', () => {
     });
 
     expect(payload).toMatchObject({
-      title: 'ACP Playground • Agent paused',
+      title: 'Remote Agent • Agent paused',
       body: 'Implement notifications is ready',
       tag: 'session-paused:session-1',
       data: {

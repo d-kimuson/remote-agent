@@ -1,9 +1,9 @@
 {
   "projects": [
     {
-      "id": "acp-playground",
-      "name": "acp-playground",
-      "workingDirectory": "/home/kaito/repos/acp-playground"
+      "id": "remote-agent",
+      "name": "remote-agent",
+      "workingDirectory": "/home/kaito/repos/remote-agent"
     },
     {
       "id": "gatecheck",

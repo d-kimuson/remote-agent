@@ -10,9 +10,9 @@ honoApp.get(
   openAPIRouteHandler(honoApp, {
     documentation: {
       info: {
-        title: 'ACP Playground API',
+        title: 'Remote Agent API',
         version: '0.0.0',
-        description: 'API for ACP Playground BFF',
+        description: 'API for Remote Agent BFF',
       },
     },
   }),

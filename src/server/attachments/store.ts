@@ -14,7 +14,7 @@ type AttachmentEntry = ResolvedAttachment & {
 };
 
 const attachmentStore = new Map<string, AttachmentEntry>();
-const uploadsDirectory = path.join(tmpdir(), 'acp-playground-attachments');
+const uploadsDirectory = path.join(tmpdir(), 'remote-agent-attachments');
 
 const normalizeAttachmentName = (name: string): string => {
   const normalizedName = path.basename(name).trim();

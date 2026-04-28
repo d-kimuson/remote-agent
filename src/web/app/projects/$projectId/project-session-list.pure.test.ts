@@ -19,7 +19,7 @@ const session = {
   presetId: 'codex',
   command: 'codex',
   args: [],
-  cwd: '/tmp/acp-playground',
+  cwd: '/tmp/remote-agent',
   createdAt: '2026-04-27T12:00:00.000Z',
   isActive: true,
   title: null,
@@ -42,7 +42,7 @@ describe('project-session-list.pure', () => {
       'beta',
     ]);
     expect(
-      filterSessionsByQuery({ sessions, query: 'ACP-PLAYGROUND' }).map((s) => s.sessionId),
+      filterSessionsByQuery({ sessions, query: 'REMOTE-AGENT' }).map((s) => s.sessionId),
     ).toEqual(['alpha', 'beta']);
     expect(filterSessionsByQuery({ sessions, query: ' ' }).map((s) => s.sessionId)).toEqual([
       'alpha',

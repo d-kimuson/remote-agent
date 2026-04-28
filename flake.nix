@@ -1,5 +1,5 @@
 {
-  description = "ACP playground with Hono and TanStack SPA";
+  description = "Remote Agent with Hono and TanStack SPA";
 
   inputs = {
     fenix = {
@@ -93,7 +93,7 @@
             RUST_FONTCONFIG_DLOPEN = "1";
 
             shellHook = ''
-              echo "acp-playground dev shell"
+              echo "remote-agent dev shell"
               echo "  node  $(node --version)"
               echo "  pnpm  $(pnpm --version)"
               echo "  rust  $(rustc --version)"
