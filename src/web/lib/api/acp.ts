@@ -4,6 +4,8 @@ import {
   agentModelCatalogResponseSchema,
   agentProvidersResponseSchema,
   agentSlashCommandsResponseSchema,
+  acpPermissionRequestsResponseSchema,
+  appSetupStateResponseSchema,
   appInfoSchema,
   checkAgentProviderRequestSchema,
   directoryListingResponseSchema,
@@ -23,6 +25,8 @@ import {
   type AgentModelCatalogResponse,
   type AgentProvidersResponse,
   type AgentSlashCommandsResponse,
+  type AcpPermissionRequestsResponse,
+  type AppSetupStateResponse,
   type AppInfo,
   type CheckAgentProviderRequest,
   type CreateProjectRequest,
@@ -38,6 +42,7 @@ import {
   type ProjectSettingsResponse,
   type ProjectsResponse,
   type ResumableSessionsResponse,
+  type ResolveAcpPermissionRequest,
   type SessionMessagesResponse,
   type SessionResponse,
   type SessionsResponse,
@@ -134,9 +139,36 @@ export const fetchSessions = async (): Promise<SessionsResponse> => {
   return parse(sessionsResponseSchema, await response.json());
 };
 
+export const fetchAcpPermissionRequests = async (): Promise<AcpPermissionRequestsResponse> => {
+  const response = await apiFetch('/api/acp/permissions', { method: 'GET' });
+  return parse(acpPermissionRequestsResponseSchema, await response.json());
+};
+
+export const resolveAcpPermissionRequest = async (
+  requestId: string,
+  request: ResolveAcpPermissionRequest,
+): Promise<AcpPermissionRequestsResponse> => {
+  const response = await apiFetch(`/api/acp/permissions/${encodeURIComponent(requestId)}/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return parse(acpPermissionRequestsResponseSchema, await response.json());
+};
+
 export const fetchAgentProviders = async (): Promise<AgentProvidersResponse> => {
   const response = await honoClient.acp.providers.$get();
   return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const fetchAppSetupState = async (): Promise<AppSetupStateResponse> => {
+  const response = await honoClient.setup.$get();
+  return parse(appSetupStateResponseSchema, await response.json());
+};
+
+export const completeInitialSetupRequest = async (): Promise<AppSetupStateResponse> => {
+  const response = await honoClient.setup.complete.$post();
+  return parse(appSetupStateResponseSchema, await response.json());
 };
 
 export const updateAgentProviderRequest = async (

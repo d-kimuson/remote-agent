@@ -363,6 +363,19 @@ export const agentProvidersResponseSchema = object({
 
 export type AgentProvidersResponse = InferOutput<typeof agentProvidersResponseSchema>;
 
+export const appSetupStateSchema = object({
+  initialSetupCompleted: boolean(),
+  completedAt: nullable(optional(pipe(string(), trim()))),
+});
+
+export type AppSetupState = InferOutput<typeof appSetupStateSchema>;
+
+export const appSetupStateResponseSchema = object({
+  setup: appSetupStateSchema,
+});
+
+export type AppSetupStateResponse = InferOutput<typeof appSetupStateResponseSchema>;
+
 export const updateAgentProviderRequestSchema = object({
   enabled: boolean(),
 });
@@ -428,6 +441,44 @@ export const loadSessionRequestSchema = object({
 });
 
 export type LoadSessionRequest = InferOutput<typeof loadSessionRequestSchema>;
+
+export const acpPermissionOptionSchema = object({
+  id: pipe(string(), trim()),
+  kind: union([
+    literal('allow_once'),
+    literal('allow_always'),
+    literal('reject_once'),
+    literal('reject_always'),
+  ]),
+  name: pipe(string(), trim()),
+});
+
+export type AcpPermissionOption = InferOutput<typeof acpPermissionOptionSchema>;
+
+export const acpPermissionRequestSchema = object({
+  id: pipe(string(), trim()),
+  sessionId: pipe(string(), trim()),
+  toolCallId: pipe(string(), trim()),
+  title: nullable(optional(pipe(string(), trim()))),
+  kind: nullable(optional(pipe(string(), trim()))),
+  rawInputText: nullable(optional(string())),
+  options: array(acpPermissionOptionSchema),
+  createdAt: pipe(string(), trim()),
+});
+
+export type AcpPermissionRequest = InferOutput<typeof acpPermissionRequestSchema>;
+
+export const acpPermissionRequestsResponseSchema = object({
+  requests: array(acpPermissionRequestSchema),
+});
+
+export type AcpPermissionRequestsResponse = InferOutput<typeof acpPermissionRequestsResponseSchema>;
+
+export const resolveAcpPermissionRequestSchema = object({
+  optionId: nullable(optional(pipe(string(), trim()))),
+});
+
+export type ResolveAcpPermissionRequest = InferOutput<typeof resolveAcpPermissionRequestSchema>;
 
 export const sendMessageRequestSchema = object({
   prompt: pipe(string(), trim()),
@@ -552,6 +603,10 @@ export const acpSseEventSchema = union([
     type: literal('agent_catalog_updated'),
     presetId: pipe(string(), trim()),
     cwd: pipe(string(), trim()),
+  }),
+  object({
+    type: literal('permission_requests_updated'),
+    sessionId: optional(pipe(string(), trim())),
   }),
 ]);
 

@@ -12,6 +12,7 @@ import { Readable, Writable } from 'node:stream';
 import type { SlashCommand } from '../../../shared/acp.ts';
 
 import { agentPresets } from '../presets.ts';
+import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { resolveCommandPath } from './command-path.ts';
 
 const COMMAND_UPDATE_WAIT_MS = 500;
@@ -88,7 +89,7 @@ export const probeAgentSlashCommands = async (options: {
 
   const agentProcess = spawn(resolvedCommandPath, [...preset.args], {
     cwd: options.cwd,
-    env: process.env,
+    env: buildAgentProcessEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
@@ -108,8 +109,7 @@ export const probeAgentSlashCommands = async (options: {
     requestPermission: () =>
       Promise.resolve({
         outcome: {
-          outcome: 'selected',
-          optionId: 'allow',
+          outcome: 'cancelled',
         },
       }),
     sessionUpdate: (params) => {

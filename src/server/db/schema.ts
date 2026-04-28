@@ -1,6 +1,12 @@
 import { sql } from 'drizzle-orm';
 import { index, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
+export const appSettingsTable = sqliteTable('app_settings', {
+  key: text('key').primaryKey(),
+  value: text('value').notNull(),
+  updatedAt: text('updated_at').notNull(),
+});
+
 export const projectsTable = sqliteTable(
   'projects',
   {

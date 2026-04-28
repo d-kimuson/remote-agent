@@ -6,6 +6,7 @@ import {
   agentModelCatalogQuerySchema,
   agentModelCatalogResponseSchema,
   agentProvidersResponseSchema,
+  acpPermissionRequestsResponseSchema,
   agentSlashCommandsQuerySchema,
   agentSlashCommandsResponseSchema,
   checkAgentProviderRequestSchema,
@@ -16,6 +17,7 @@ import {
   prepareAgentSessionRequestSchema,
   prepareAgentSessionResponseSchema,
   resumableSessionsResponseSchema,
+  resolveAcpPermissionRequestSchema,
   sendMessageRequestSchema,
   sessionMessagesResponseSchema,
   sessionResponseSchema,
@@ -42,6 +44,10 @@ import {
   upsertProviderCatalog,
 } from './repositories/provider-catalog-store.ts';
 import { discoverResumableSessions } from './services/agent-session-client.ts';
+import {
+  listPermissionRequests,
+  resolvePermissionRequest,
+} from './services/permission-request-store.ts';
 import { probeAgentModelCatalog } from './services/probe-agent-catalog.ts';
 import { probeAgentSlashCommands } from './services/probe-agent-slash-commands.ts';
 import {
@@ -226,6 +232,41 @@ export const acpRoutes = new Hono()
           'X-Accel-Buffering': 'no',
         },
       });
+    },
+  )
+  .get(
+    '/permissions',
+    describeRoute({
+      summary: 'List pending ACP permission requests',
+      responses: {
+        200: jsonResponse('ACP permission requests', acpPermissionRequestsResponseSchema),
+      },
+    }),
+    (c) => {
+      const sessionId = c.req.query('sessionId');
+      return c.json(listPermissionRequests(sessionId));
+    },
+  )
+  .post(
+    '/permissions/:requestId/resolve',
+    describeRoute({
+      summary: 'Resolve a pending ACP permission request',
+      responses: {
+        200: jsonResponse('ACP permission requests', acpPermissionRequestsResponseSchema),
+        404: jsonResponse('ACP permission request not found', errorResponseSchema),
+      },
+    }),
+    vValidator('json', resolveAcpPermissionRequestSchema, validationErrorHook),
+    (c) => {
+      const request = c.req.valid('json');
+      const resolved = resolvePermissionRequest({
+        requestId: c.req.param('requestId'),
+        optionId: request.optionId ?? null,
+      });
+      if (!resolved) {
+        return c.json({ error: 'Permission request not found' }, 404);
+      }
+      return c.json(listPermissionRequests());
     },
   )
   .get(

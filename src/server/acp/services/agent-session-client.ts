@@ -16,6 +16,8 @@ import {
   inspectResumeCapabilities,
   mapResumableSessionCandidates,
 } from '../session-resume.pure.ts';
+import { buildAgentProcessEnv } from './agent-process-env.ts';
+import { requestUserPermission } from './permission-request-store.ts';
 
 type AgentCommand = {
   readonly command: string;
@@ -31,16 +33,7 @@ type AgentConnection = {
 
 const createClient = (): Client => {
   return {
-    requestPermission: () => {
-      const response: Awaited<ReturnType<Client['requestPermission']>> = {
-        outcome: {
-          outcome: 'selected',
-          optionId: 'allow',
-        },
-      };
-
-      return Promise.resolve(response);
-    },
+    requestPermission: requestUserPermission,
     sessionUpdate: () => Promise.resolve(),
   };
 };
@@ -95,7 +88,7 @@ const createAgentConnection = async ({
 }: AgentCommand): Promise<AgentConnection> => {
   const agentProcess = spawn(command, [...args], {
     cwd,
-    env: process.env,
+    env: buildAgentProcessEnv(),
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });

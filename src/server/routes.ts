@@ -5,6 +5,7 @@ import { parse } from 'valibot';
 import { appInfoSchema } from '../shared/acp.ts';
 import { agentPresets } from './acp/presets.ts';
 import { acpRoutes } from './acp/routes.ts';
+import { appSetupRoutes } from './app-setup/routes.ts';
 import { attachmentRoutes } from './attachments/routes.ts';
 import { filesystemRoutes } from './filesystem/routes.ts';
 import { jsonResponse } from './hono-utils.ts';
@@ -31,6 +32,7 @@ export const routes = new Hono()
   .route('/attachments', attachmentRoutes)
   .route('/filesystem', filesystemRoutes)
   .route('/projects', projectRoutes)
+  .route('/setup', appSetupRoutes)
   .route('/acp', acpRoutes);
 
 export type RouteType = typeof routes;

@@ -13,6 +13,7 @@ import {
 } from '../../../shared/acp.ts';
 import {
   agentProvidersQueryKey,
+  acpPermissionRequestsQueryKey,
   projectsQueryKey,
   sessionMessagesQueryKey,
   sessionsQueryKey,
@@ -45,6 +46,7 @@ const mergeEventToPending = (
     pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
     catalogUpdates: Set<string>;
+    permissionRequestsUpdated: boolean;
   },
   event: AcpSseEvent,
   knownStatuses: Map<string, SessionStatus>,
@@ -52,6 +54,10 @@ const mergeEventToPending = (
 ) => {
   if (event.type === 'agent_catalog_updated') {
     pending.catalogUpdates.add(`${event.presetId}\0${event.cwd}`);
+    return;
+  }
+  if (event.type === 'permission_requests_updated') {
+    pending.permissionRequestsUpdated = true;
     return;
   }
   if (event.type === 'session_removed') {
@@ -155,6 +161,7 @@ const flushPending = async (
     pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
     catalogUpdates: Set<string>;
+    permissionRequestsUpdated: boolean;
   },
   knownStatuses: Map<string, SessionStatus>,
 ): Promise<void> => {
@@ -164,12 +171,14 @@ const flushPending = async (
     pausedSessionIds: new Set(pending.pausedSessionIds),
     removedSessionIds: new Set(pending.removedSessionIds),
     catalogUpdates: new Set(pending.catalogUpdates),
+    permissionRequestsUpdated: pending.permissionRequestsUpdated,
   };
   pending.needSessionsList = false;
   pending.messageSessionIds.clear();
   pending.pausedSessionIds.clear();
   pending.removedSessionIds.clear();
   pending.catalogUpdates.clear();
+  pending.permissionRequestsUpdated = false;
 
   const cachedSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
   for (const sessionId of work.removedSessionIds) {
@@ -204,6 +213,9 @@ const flushPending = async (
       void queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
     }
   }
+  if (work.permissionRequestsUpdated) {
+    void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
+  }
   if (freshSessions !== null && work.pausedSessionIds.size > 0) {
     await notifyPausedSessions(queryClient, freshSessions, work.pausedSessionIds);
   }
@@ -222,6 +234,7 @@ export const useAcpSseCacheSync = (): void => {
       pausedSessionIds: new Set<string>(),
       removedSessionIds: new Set<string>(),
       catalogUpdates: new Set<string>(),
+      permissionRequestsUpdated: false,
     };
 
     const statusFromCache = (sessionId: string): SessionStatus | null => {
@@ -273,7 +286,8 @@ export const useAcpSseCacheSync = (): void => {
         pending.messageSessionIds.size > 0 ||
         pending.pausedSessionIds.size > 0 ||
         pending.removedSessionIds.size > 0 ||
-        pending.catalogUpdates.size > 0;
+        pending.catalogUpdates.size > 0 ||
+        pending.permissionRequestsUpdated;
       if (hasWork) {
         void flushPending(queryClient, pending, knownStatuses);
       }

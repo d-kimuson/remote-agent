@@ -165,6 +165,16 @@ const applySqlMigrationsFallback = (client: DatabaseSync): void => {
   }
 };
 
+const ensureRuntimeSchemaCompatibility = (client: DatabaseSync): void => {
+  client.exec(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key text PRIMARY KEY,
+      value text NOT NULL,
+      updated_at text NOT NULL
+    );
+  `);
+};
+
 export const createDatabase = (storagePath: string) => {
   const resolvedStoragePath = resolveStoragePath(storagePath);
   if (resolvedStoragePath !== ':memory:') {
@@ -177,6 +187,7 @@ export const createDatabase = (storagePath: string) => {
   applySqlMigrationsFallback(client);
   const db = drizzle({ client, schema });
   migrate(db, { migrationsFolder });
+  ensureRuntimeSchemaCompatibility(client);
 
   return {
     client,

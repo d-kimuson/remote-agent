@@ -44,6 +44,7 @@ import {
   preferNonEmptyModeCatalog,
   preferNonEmptyModelCatalog,
 } from '../session-catalog.pure.ts';
+import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { importProviderSessionMessages } from './codex-session-log.ts';
 import {
   collectPromptStream,
@@ -51,6 +52,10 @@ import {
   type PromptStreamPersistence,
 } from './collect-prompt-stream.ts';
 import { resolveCommandPath } from './command-path.ts';
+import {
+  cancelPermissionRequestsForSession,
+  requestUserPermission,
+} from './permission-request-store.ts';
 import { emitAcpSse } from './sse-broadcast.ts';
 
 type SessionProvider = Pick<
@@ -69,7 +74,26 @@ const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSes
   /** `ACPProvider.get tools` は `this.model` 未生成だと常に undefined（@mcpc-tech/acp-ai-provider） */
   provider.languageModel();
   const tools = (provider.tools ?? {}) as NonNullable<Parameters<ACPProvider['initSession']>[0]>;
-  return await provider.initSession(tools);
+  const response = await provider.initSession(tools);
+  installProviderPermissionHandler(provider);
+  return response;
+};
+
+const installProviderPermissionHandler = (provider: SessionProvider): void => {
+  const client: unknown = Reflect.get(provider, 'client');
+  if (client === undefined) {
+    return;
+  }
+  if (client === null || typeof client !== 'object') {
+    throw new Error('ACP provider client is not available for permission handling');
+  }
+
+  const setPermissionRequestHandler: unknown = Reflect.get(client, 'setPermissionRequestHandler');
+  if (typeof setPermissionRequestHandler !== 'function') {
+    throw new Error('ACP provider does not support permission request handling');
+  }
+
+  Reflect.apply(setPermissionRequestHandler, client, [requestUserPermission]);
 };
 
 type SessionEntry = {
@@ -246,6 +270,7 @@ export const createSessionStore = ({
     createACPProvider({
       command,
       args: [...args],
+      env: buildAgentProcessEnv(),
       existingSessionId,
       session: {
         cwd,
@@ -1090,6 +1115,7 @@ export const createSessionStore = ({
 
     const entry = runtimeSessions.get(sessionId);
     if (entry !== undefined) {
+      cancelPermissionRequestsForSession(sessionId);
       entry.provider.cleanup();
       runtimeSessions.delete(sessionId);
     }

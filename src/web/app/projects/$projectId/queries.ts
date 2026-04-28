@@ -4,6 +4,7 @@ export const appInfoQueryKey = ['app-info'] as const;
 export const agentProvidersQueryKey = ['agent-providers'] as const;
 export const projectsQueryKey = ['projects'] as const;
 export const sessionsQueryKey = ['sessions'] as const;
+export const acpPermissionRequestsQueryKey = ['acp', 'permission-requests'] as const;
 export const sessionMessagesQueryKey = (sessionId: string) =>
   ['session-messages', sessionId] as const;
 export const projectQueryKey = (projectId: string) => ['project', projectId] as const;

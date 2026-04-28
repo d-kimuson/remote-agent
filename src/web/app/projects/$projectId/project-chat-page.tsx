@@ -8,6 +8,7 @@ import {
   MessageSquareDashed,
   Paperclip,
   Send,
+  ShieldAlert,
   Star,
   Trash2,
   X,
@@ -30,6 +31,7 @@ import { toast } from 'sonner';
 import {
   parseAcpSseEventJson,
   type AcpSseEvent,
+  type AcpPermissionRequest,
   type AgentPreset,
   type AgentModelCatalogResponse,
   type ChatMessage,
@@ -38,6 +40,7 @@ import {
   type SessionMessagesResponse,
   type SessionSummary,
   type SessionsResponse,
+  type SlashCommand,
   type UploadedAttachment,
 } from '../../../../shared/acp.ts';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
@@ -61,12 +64,14 @@ import {
   fetchAgentModelCatalog,
   fetchAgentProviders,
   fetchAgentSlashCommands,
+  fetchAcpPermissionRequests,
   fetchAppInfo,
   fetchProject,
   fetchProjectSettings,
   fetchSessionMessages,
   fetchSessions,
   prepareAgentSessionRequest,
+  resolveAcpPermissionRequest,
   sendPromptRequest,
   sendPreparedPromptRequest,
   updateProjectModelPreferenceRequest,
@@ -101,6 +106,7 @@ import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
   agentSlashCommandsQueryKey,
+  acpPermissionRequestsQueryKey,
   appInfoQueryKey,
   projectQueryKey,
   projectSettingsQueryKey,
@@ -257,7 +263,7 @@ const AcpSelectValueInfo: FC<{
   readonly info: string | null;
 }> = ({ info }) => {
   if (info === null) {
-    return null;
+    return <span aria-hidden="true" className="size-8 shrink-0" />;
   }
 
   return (
@@ -377,6 +383,67 @@ const LoadingConversation: FC = () => (
   </div>
 );
 
+const permissionOptionVariant = (
+  kind: AcpPermissionRequest['options'][number]['kind'],
+): 'default' | 'destructive' | 'outline' =>
+  kind === 'reject_once' || kind === 'reject_always'
+    ? 'destructive'
+    : kind === 'allow_once'
+      ? 'default'
+      : 'outline';
+
+const PermissionRequestPanel: FC<{
+  readonly disabled: boolean;
+  readonly request: AcpPermissionRequest;
+  readonly onResolve: (requestId: string, optionId: string | null) => void;
+}> = ({ disabled, request, onResolve }) => (
+  <div className={cn('flex w-full min-w-0 flex-col gap-3', CONVERSATION_COLUMN_CLASS)}>
+    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 shadow-sm">
+      <div className="flex items-start gap-3">
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium text-foreground">承認が必要です</p>
+          <p className="mt-1 break-words text-sm text-muted-foreground">
+            {request.title ?? request.toolCallId}
+          </p>
+          {request.rawInputText !== null && request.rawInputText !== undefined ? (
+            <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background/70 px-2.5 py-2 text-xs text-muted-foreground">
+              {request.rawInputText}
+            </pre>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+        {request.options.map((option) => (
+          <Button
+            disabled={disabled}
+            key={option.id}
+            onClick={() => {
+              onResolve(request.id, option.id);
+            }}
+            size="sm"
+            type="button"
+            variant={permissionOptionVariant(option.kind)}
+          >
+            {option.name}
+          </Button>
+        ))}
+        <Button
+          disabled={disabled}
+          onClick={() => {
+            onResolve(request.id, null);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          Cancel
+        </Button>
+      </div>
+    </div>
+  </div>
+);
+
 const FieldControl: FC<{
   readonly className?: string;
   readonly htmlFor: string;
@@ -409,6 +476,28 @@ const DraftAgentModelCatalogLoader: FC<{
   useEffect(() => {
     onReady(data);
   }, [data, onReady]);
+
+  return null;
+};
+
+const SlashCommandsLoader: FC<{
+  readonly projectId: string;
+  readonly presetId: string;
+  readonly onReady: (commands: readonly SlashCommand[]) => void;
+}> = ({ projectId, presetId, onReady }) => {
+  const { data } = useSuspenseQuery({
+    queryKey: agentSlashCommandsQueryKey(projectId, presetId),
+    queryFn: () =>
+      fetchAgentSlashCommands({
+        projectId,
+        presetId,
+      }),
+    staleTime: 60_000,
+  });
+
+  useEffect(() => {
+    onReady(data.commands);
+  }, [data.commands, onReady]);
 
   return null;
 };
@@ -456,6 +545,10 @@ export const ProjectChatPage: FC<{
     queryKey: sessionsQueryKey,
     queryFn: fetchSessions,
   });
+  const { data: permissionRequestsData } = useSuspenseQuery({
+    queryKey: acpPermissionRequestsQueryKey,
+    queryFn: fetchAcpPermissionRequests,
+  });
 
   const project = projectData.project;
   const projectSettings = projectSettingsData.settings;
@@ -484,6 +577,10 @@ export const ProjectChatPage: FC<{
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
+  const [slashCommandsResult, setSlashCommandsResult] = useState<{
+    readonly scopeKey: string;
+    readonly commands: readonly SlashCommand[];
+  } | null>(null);
   const [selectedSessionModelCatalog, setSelectedSessionModelCatalog] =
     useState<AgentModelCatalogResponse | null>(null);
   const [preparedSessionIdsByScope, setPreparedSessionIdsByScope] = useState<
@@ -513,6 +610,13 @@ export const ProjectChatPage: FC<{
   const onSelectedSessionCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setSelectedSessionModelCatalog(catalog);
   }, []);
+
+  const onSlashCommandsReady = useCallback(
+    (scopeKey: string, commands: readonly SlashCommand[]) => {
+      setSlashCommandsResult({ scopeKey, commands });
+    },
+    [],
+  );
 
   const replacePrompt = useCallback((value: string) => {
     setPromptExternalValue((current) => ({
@@ -561,15 +665,9 @@ export const ProjectChatPage: FC<{
     presets: appInfoData.agentPresets,
   });
   const slashCommandPresetId = selectedSession?.presetId ?? activePresetId;
-  const { data: slashCommandsData } = useSuspenseQuery({
-    queryKey: agentSlashCommandsQueryKey(projectId, slashCommandPresetId),
-    queryFn: () =>
-      fetchAgentSlashCommands({
-        projectId,
-        presetId: slashCommandPresetId,
-      }),
-    staleTime: 60_000,
-  });
+  const slashCommandScopeKey = `${projectId}\0${slashCommandPresetId}`;
+  const slashCommands =
+    slashCommandsResult?.scopeKey === slashCommandScopeKey ? slashCommandsResult.commands : [];
   const selectedSessionPreset = presetFrom({
     presetId: selectedSession?.presetId,
     presets: appInfoData.agentPresets,
@@ -804,6 +902,9 @@ export const ProjectChatPage: FC<{
   const activeTranscriptKey = sessionId ?? draftSessionTranscriptKey;
 
   const transcript = transcripts[activeTranscriptKey] ?? [];
+  const activePermissionRequests = permissionRequestsData.requests.filter(
+    (request) => request.sessionId === activeTranscriptKey,
+  );
   const isTranscriptHydrating = shouldShowConversationLoading({
     isDraftSession: shouldUseDraftSession,
     transcriptKey: activeTranscriptKey,
@@ -824,6 +925,9 @@ export const ProjectChatPage: FC<{
         message.rawEvents.map((event) => event.rawText.length).join('.'),
       ].join(':'),
     )
+    .join('|');
+  const permissionRequestSignature = activePermissionRequests
+    .map((request) => `${request.id}:${request.createdAt}:${request.options.length.toString()}`)
     .join('|');
   const projectUrl = `/projects/${projectId}`;
 
@@ -883,6 +987,16 @@ export const ProjectChatPage: FC<{
 
   const closeSessionMutation = useMutation({
     mutationFn: deleteSessionRequest,
+  });
+
+  const resolvePermissionMutation = useMutation({
+    mutationFn: ({
+      optionId,
+      requestId,
+    }: {
+      readonly requestId: string;
+      readonly optionId: string | null;
+    }) => resolveAcpPermissionRequest(requestId, { optionId }),
   });
 
   const sendPromptMutation = useMutation({
@@ -975,7 +1089,11 @@ export const ProjectChatPage: FC<{
         return;
       }
       const sseEvent: AcpSseEvent = parsed;
-      if (sseEvent.type === 'agent_catalog_updated' || sseEvent.type === 'session_removed') {
+      if (
+        sseEvent.type === 'agent_catalog_updated' ||
+        sseEvent.type === 'session_removed' ||
+        sseEvent.type === 'permission_requests_updated'
+      ) {
         return;
       }
       const nextSessionId = sseEvent.sessionId;
@@ -1273,6 +1391,12 @@ export const ProjectChatPage: FC<{
     }
   };
 
+  const handleResolvePermission = async (requestId: string, optionId: string | null) => {
+    const response = await resolvePermissionMutation.mutateAsync({ requestId, optionId });
+    queryClient.setQueryData(acpPermissionRequestsQueryKey, response);
+    void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
+  };
+
   const handleSendPrompt = async (promptValue = promptReaderRef.current()) => {
     const nextPrompt = buildPromptText(promptValue, attachmentNames);
     if (nextPrompt.length === 0) {
@@ -1517,7 +1641,7 @@ export const ProjectChatPage: FC<{
       }),
     );
     previousVisibleMessageCountRef.current = visibleTranscript.length;
-  }, [chatScrollSignature, visibleTranscript.length]);
+  }, [chatScrollSignature, permissionRequestSignature, visibleTranscript.length]);
 
   useLayoutEffect(() => {
     const didSessionChange = lastActiveTranscriptKeyRef.current !== activeTranscriptKey;
@@ -1535,6 +1659,7 @@ export const ProjectChatPage: FC<{
   }, [
     activeTranscriptKey,
     chatScrollSignature,
+    permissionRequestSignature,
     shouldShowThinking,
     transcript.length,
     visibleTranscript.length,
@@ -1563,6 +1688,18 @@ export const ProjectChatPage: FC<{
           />
         </Suspense>
       )}
+      {slashCommandPresetId.length > 0 ? (
+        <Suspense fallback={null}>
+          <SlashCommandsLoader
+            key={slashCommandScopeKey}
+            onReady={(commands) => {
+              onSlashCommandsReady(slashCommandScopeKey, commands);
+            }}
+            presetId={slashCommandPresetId}
+            projectId={projectId}
+          />
+        </Suspense>
+      ) : null}
       {selectedSession !== null &&
       selectedSession.presetId !== null &&
       selectedSession.presetId !== undefined &&
@@ -1689,6 +1826,17 @@ export const ProjectChatPage: FC<{
                     );
                   })}
 
+                  {activePermissionRequests.map((request) => (
+                    <PermissionRequestPanel
+                      disabled={resolvePermissionMutation.isPending}
+                      key={request.id}
+                      onResolve={(requestId, optionId) => {
+                        void handleResolvePermission(requestId, optionId);
+                      }}
+                      request={request}
+                    />
+                  ))}
+
                   {shouldShowThinking ? (
                     <div
                       className={cn(
@@ -1806,7 +1954,7 @@ export const ProjectChatPage: FC<{
                   }}
                   onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
-                  slashCommands={slashCommandsData?.commands ?? []}
+                  slashCommands={slashCommands}
                 />
 
                 <div className="flex min-h-9 items-end gap-1.5 bg-transparent px-1.5 py-1 sm:px-2">
@@ -1814,7 +1962,11 @@ export const ProjectChatPage: FC<{
                     <div className="flex flex-wrap items-center gap-1.5">
                       {shouldUseDraftSession ? (
                         <>
-                          <FieldControl htmlFor="draft-provider-select" label="Provider">
+                          <FieldControl
+                            className="basis-40 sm:w-44"
+                            htmlFor="draft-provider-select"
+                            label="Provider"
+                          >
                             <Select
                               onValueChange={(value) => {
                                 if (value !== null) {
@@ -1835,7 +1987,11 @@ export const ProjectChatPage: FC<{
                               </SelectContent>
                             </Select>
                           </FieldControl>
-                          <FieldControl htmlFor="draft-model-select" label={draftModelSelectLabel}>
+                          <FieldControl
+                            className="basis-56 sm:w-64 lg:w-72"
+                            htmlFor="draft-model-select"
+                            label={draftModelSelectLabel}
+                          >
                             <Select
                               onValueChange={(value) => {
                                 if (!draftModelSourceHasList || value === null) {
@@ -1895,7 +2051,11 @@ export const ProjectChatPage: FC<{
                               </SelectContent>
                             </Select>
                           </FieldControl>
-                          <FieldControl htmlFor="draft-mode-select" label={draftModeSelectLabel}>
+                          <FieldControl
+                            className="basis-48 sm:w-52"
+                            htmlFor="draft-mode-select"
+                            label={draftModeSelectLabel}
+                          >
                             <Select
                               onValueChange={(value) => {
                                 if (!draftModeSourceHasList || value === null) {
@@ -1958,6 +2118,7 @@ export const ProjectChatPage: FC<{
                       ) : selectedSession !== null ? (
                         <>
                           <FieldControl
+                            className="basis-56 sm:w-64 lg:w-72"
                             htmlFor="session-model-select"
                             label={sessionModelSelectLabel}
                           >
@@ -2008,6 +2169,7 @@ export const ProjectChatPage: FC<{
                           </FieldControl>
                           {selectedSessionModeOptions.length > 0 ? (
                             <FieldControl
+                              className="basis-48 sm:w-52"
                               htmlFor="session-mode-select"
                               label={sessionModeSelectLabel}
                             >
@@ -2059,16 +2221,19 @@ export const ProjectChatPage: FC<{
                       ) : null}
                     </div>
 
-                    {shouldUseDraftSession &&
-                    (isPreparingDraftProvider ||
-                      draftPrepareError !== null ||
-                      draftCatalogError !== null) ? (
+                    {shouldUseDraftSession ? (
                       <p
-                        className={
+                        className={cn(
+                          'min-h-4 text-xs',
                           draftPrepareError !== null || draftCatalogError !== null
-                            ? 'text-xs text-destructive'
-                            : 'text-xs text-muted-foreground'
-                        }
+                            ? 'text-destructive'
+                            : 'text-muted-foreground',
+                          isPreparingDraftProvider ||
+                            draftPrepareError !== null ||
+                            draftCatalogError !== null
+                            ? ''
+                            : 'invisible',
+                        )}
                       >
                         {draftPrepareError ??
                           draftCatalogError ??
