@@ -1,3 +1,4 @@
+import { homedir } from 'node:os';
 import path from 'node:path';
 import * as v from 'valibot';
 
@@ -6,8 +7,8 @@ const envSchema = v.object({
     v.optional(v.string(), '8989'),
     v.transform((v) => Number.parseInt(v)),
   ),
-  REMOTE_AGENT_DB_PATH: v.pipe(
-    v.optional(v.string(), path.resolve(process.cwd(), '.local', 'remote-agent.sqlite')),
+  RA_DIR: v.pipe(
+    v.optional(v.string(), path.resolve(homedir(), '.ra')),
     v.transform((value) => path.resolve(value)),
   ),
 });

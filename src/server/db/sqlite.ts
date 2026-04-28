@@ -2,7 +2,7 @@ import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
 import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
-import path from 'node:path';
+import path, { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
@@ -183,7 +183,7 @@ export const createMemoryDatabase = (): AppDatabase => {
 let defaultDatabase: AppDatabase | undefined = undefined;
 
 export const getDefaultDatabase = (): AppDatabase => {
-  defaultDatabase ??= createDatabase(envService.getEnv('REMOTE_AGENT_DB_PATH'));
+  defaultDatabase ??= createDatabase(resolve(envService.getEnv('RA_DIR'), 'data.sql'));
   return defaultDatabase;
 };
 
