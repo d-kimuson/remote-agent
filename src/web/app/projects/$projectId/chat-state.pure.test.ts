@@ -8,9 +8,11 @@ import {
   buildPromptText,
   buildSessionEntries,
   defaultPresetId,
+  draftSessionTranscriptKeyForGeneration,
   moveTranscript,
   resolveSelectedSessionId,
   resolveSessionListTitle,
+  shouldRedirectDraftSessionStart,
   shouldShowConversationLoading,
 } from './chat-state.pure.ts';
 import { createChatMessage } from './types.ts';
@@ -154,6 +156,11 @@ describe('chat-state.pure', () => {
     expect(moved['session-1']?.map((message) => message.text)).toEqual(['hello', 'world']);
   });
 
+  test('draftSessionTranscriptKeyForGeneration creates a distinct key per draft view', () => {
+    expect(draftSessionTranscriptKeyForGeneration(0)).toBe('draft-session:0');
+    expect(draftSessionTranscriptKeyForGeneration(1)).toBe('draft-session:1');
+  });
+
   test('shouldShowConversationLoading only treats missing existing transcripts as loading', () => {
     expect(
       shouldShowConversationLoading({
@@ -176,6 +183,52 @@ describe('chat-state.pure', () => {
         isDraftSession: false,
         transcriptKey: 'session-1',
         transcripts: { 'session-1': [] },
+      }),
+    ).toBe(false);
+  });
+
+  test('shouldRedirectDraftSessionStart redirects only once for the originating draft view', () => {
+    expect(
+      shouldRedirectDraftSessionStart({
+        currentDraftViewGeneration: 1,
+        nextSessionId: 'session-1',
+        request: {
+          draftTranscriptKey: draftSessionTranscriptKeyForGeneration(1),
+          draftViewGeneration: 1,
+          redirectedSessionId: null,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldRedirectDraftSessionStart({
+        currentDraftViewGeneration: 1,
+        nextSessionId: 'session-1',
+        request: {
+          draftTranscriptKey: draftSessionTranscriptKeyForGeneration(1),
+          draftViewGeneration: 1,
+          redirectedSessionId: 'session-1',
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldRedirectDraftSessionStart({
+        currentDraftViewGeneration: 2,
+        nextSessionId: 'session-1',
+        request: {
+          draftTranscriptKey: draftSessionTranscriptKeyForGeneration(1),
+          draftViewGeneration: 1,
+          redirectedSessionId: null,
+        },
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldRedirectDraftSessionStart({
+        currentDraftViewGeneration: 1,
+        nextSessionId: 'session-1',
+        request: null,
       }),
     ).toBe(false);
   });

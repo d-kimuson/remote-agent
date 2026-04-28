@@ -20,6 +20,28 @@ export type SessionListEntry =
       readonly session: SessionSummary;
     };
 
+export type DraftSessionRedirectRequest = {
+  readonly draftTranscriptKey: string;
+  readonly draftViewGeneration: number;
+  readonly redirectedSessionId: string | null;
+};
+
+export const draftSessionTranscriptKeyForGeneration = (generation: number): string =>
+  `${draftSessionTranscriptKey}:${generation.toString()}`;
+
+export const shouldRedirectDraftSessionStart = ({
+  currentDraftViewGeneration,
+  nextSessionId,
+  request,
+}: {
+  readonly currentDraftViewGeneration: number;
+  readonly nextSessionId: string;
+  readonly request: DraftSessionRedirectRequest | null;
+}): boolean =>
+  request !== null &&
+  request.draftViewGeneration === currentDraftViewGeneration &&
+  request.redirectedSessionId !== nextSessionId;
+
 export const defaultPresetId = (presets: readonly AgentPreset[]): string => {
   const codexPreset = presets.find((preset) => preset.id === 'codex');
   return codexPreset?.id ?? presets[0]?.id ?? '';

@@ -93,9 +93,12 @@ import {
   buildDraftSession,
   buildPromptText,
   defaultPresetId,
+  type DraftSessionRedirectRequest,
   draftSessionTranscriptKey,
+  draftSessionTranscriptKeyForGeneration,
   moveTranscript,
   resolveSessionListTitle,
+  shouldRedirectDraftSessionStart,
   shouldShowConversationLoading,
 } from './chat-state.pure.ts';
 import { CopyBlockButton } from './copy-block-button.tsx';
@@ -263,7 +266,7 @@ const AcpSelectValueInfo: FC<{
   readonly info: string | null;
 }> = ({ info }) => {
   if (info === null) {
-    return <span aria-hidden="true" className="size-8 shrink-0" />;
+    return null;
   }
 
   return (
@@ -450,7 +453,7 @@ const FieldControl: FC<{
   readonly label: string;
   readonly children: ReactNode;
 }> = ({ className, htmlFor, label, children }) => (
-  <div className={cn('min-w-32 flex-1 sm:min-w-40 sm:flex-none', className)}>
+  <div className={cn('min-w-0', className)}>
     <Label className="sr-only" htmlFor={htmlFor}>
       {label}
     </Label>
@@ -599,6 +602,11 @@ export const ProjectChatPage: FC<{
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const lastActiveTranscriptKeyRef = useRef<string | null>(null);
+  const previousSessionIdRef = useRef<string | null>(sessionId);
+  const [draftViewGeneration, setDraftViewGeneration] = useState(0);
+  const draftViewGenerationRef = useRef(0);
+  const activeTranscriptKeyRef = useRef<string | null>(null);
+  const draftSessionRedirectRequestRef = useRef<DraftSessionRedirectRequest | null>(null);
   const previousVisibleMessageCountRef = useRef(0);
   const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
@@ -634,6 +642,16 @@ export const ProjectChatPage: FC<{
       speechRecognitionRef.current?.abort();
     };
   }, []);
+
+  useLayoutEffect(() => {
+    const previousSessionId = previousSessionIdRef.current;
+    if (previousSessionId !== null && sessionId === null) {
+      const nextGeneration = draftViewGenerationRef.current + 1;
+      draftViewGenerationRef.current = nextGeneration;
+      setDraftViewGeneration(nextGeneration);
+    }
+    previousSessionIdRef.current = sessionId;
+  }, [sessionId]);
 
   const projectSessions = useMemo(
     () =>
@@ -899,7 +917,12 @@ export const ProjectChatPage: FC<{
     presetId: selectedSession?.presetId,
     value: sessionModeSelectValue,
   });
-  const activeTranscriptKey = sessionId ?? draftSessionTranscriptKey;
+  const activeTranscriptKey =
+    sessionId ?? draftSessionTranscriptKeyForGeneration(draftViewGeneration);
+
+  useLayoutEffect(() => {
+    activeTranscriptKeyRef.current = activeTranscriptKey;
+  }, [activeTranscriptKey]);
 
   const transcript = transcripts[activeTranscriptKey] ?? [];
   const activePermissionRequests = permissionRequestsData.requests.filter(
@@ -940,6 +963,43 @@ export const ProjectChatPage: FC<{
     },
     [navigate],
   );
+
+  const navigateToStartedDraftSession = useCallback(
+    (nextSessionId: string) => {
+      const request = draftSessionRedirectRequestRef.current;
+      if (request === null) {
+        return;
+      }
+      if (
+        !shouldRedirectDraftSessionStart({
+          currentDraftViewGeneration: draftViewGenerationRef.current,
+          nextSessionId,
+          request,
+        })
+      ) {
+        return;
+      }
+
+      draftSessionRedirectRequestRef.current = {
+        draftTranscriptKey: request.draftTranscriptKey,
+        draftViewGeneration: request.draftViewGeneration,
+        redirectedSessionId: nextSessionId,
+      };
+      navigateToSession(nextSessionId);
+    },
+    [navigateToSession],
+  );
+
+  const clearDraftSessionRedirectRequest = useCallback((draftViewGeneration: number | null) => {
+    const request = draftSessionRedirectRequestRef.current;
+    if (
+      draftViewGeneration !== null &&
+      request !== null &&
+      request.draftViewGeneration === draftViewGeneration
+    ) {
+      draftSessionRedirectRequestRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     setDraftModelId(null);
@@ -1047,19 +1107,17 @@ export const ProjectChatPage: FC<{
     mutationFn: uploadAttachmentsRequest,
   });
 
-  const isSending =
-    createSessionMutation.isPending ||
-    sendPromptMutation.isPending ||
-    sendPreparedPromptMutation.isPending ||
-    updateSessionMutation.isPending ||
-    uploadAttachmentsMutation.isPending;
   const isAssistantRequestPending =
     createSessionMutation.isPending ||
     sendPromptMutation.isPending ||
     sendPreparedPromptMutation.isPending;
-  const isEditorDisabled = isAssistantRequestPending;
   const isAwaitingActiveAssistantResponse =
-    isAssistantRequestPending && awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
+    awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
+  const isSending =
+    isAwaitingActiveAssistantResponse ||
+    updateSessionMutation.isPending ||
+    uploadAttachmentsMutation.isPending;
+  const isEditorDisabled = isAwaitingActiveAssistantResponse;
   const isSelectedSessionRunning =
     !shouldUseDraftSession && selectedSession !== null && selectedSession.status === 'running';
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
@@ -1101,22 +1159,22 @@ export const ProjectChatPage: FC<{
         current.includes(nextSessionId) ? current : [...current, nextSessionId],
       );
       setTranscripts((current) =>
-        current[nextSessionId] === undefined
+        current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
           ? moveTranscript({
-              from: draftSessionTranscriptKey,
+              from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
               to: nextSessionId,
               transcripts: current,
             })
           : current,
       );
-      navigateToSession(nextSessionId);
+      navigateToStartedDraftSession(nextSessionId);
     };
 
     window.addEventListener(ACP_SSE_BROWSER_EVENT, onAcpSseEvent);
     return () => {
       window.removeEventListener(ACP_SSE_BROWSER_EVENT, onAcpSseEvent);
     };
-  }, [isAssistantRequestPending, navigateToSession, shouldUseDraftSession]);
+  }, [isAssistantRequestPending, navigateToStartedDraftSession, shouldUseDraftSession]);
   const handleMessagesHydrated = useCallback(
     (targetSessionId: string, messages: readonly ChatMessage[]) => {
       setTranscripts((current) => {
@@ -1159,6 +1217,17 @@ export const ProjectChatPage: FC<{
     [activePresetId, attachmentNames, isSending, shouldUseDraftSession],
   );
   const canSend = !isSending && (!shouldUseDraftSession || activePresetId.length > 0);
+
+  const addAwaitingAssistantTranscriptKeys = (keys: readonly string[]) => {
+    setAwaitingAssistantTranscriptKeys((current) => [
+      ...current,
+      ...keys.filter((key) => !current.includes(key)),
+    ]);
+  };
+
+  const removeAwaitingAssistantTranscriptKeys = (keys: readonly string[]) => {
+    setAwaitingAssistantTranscriptKeys((current) => current.filter((key) => !keys.includes(key)));
+  };
 
   const thinkingModelLabel = useMemo((): string => {
     if (shouldUseDraftSession) {
@@ -1406,13 +1475,16 @@ export const ProjectChatPage: FC<{
     const previousPrompt = promptValue;
     const userMessage = createChatMessage('user', nextPrompt, [], { kind: 'user' });
     const initialTranscriptKey = activeTranscriptKey;
+    const requestAttachmentIds = attachedFiles.map((attachment) => attachment.attachmentId);
+    let requestAwaitingTranscriptKeys: readonly string[] = [initialTranscriptKey];
 
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
-    setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
+    addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
     speechRecognitionRef.current?.stop();
     setIsListeningToSpeech(false);
     replacePrompt('');
+    setAttachedFiles([]);
     setTranscripts((current) =>
       appendTranscriptMessage({
         message: userMessage,
@@ -1423,6 +1495,15 @@ export const ProjectChatPage: FC<{
 
     const sessionForTuning = selectedSession;
     let activeSessionId = sessionId;
+    const draftRedirectGeneration =
+      activeSessionId === null ? draftViewGenerationRef.current : null;
+    if (draftRedirectGeneration !== null) {
+      draftSessionRedirectRequestRef.current = {
+        draftTranscriptKey: initialTranscriptKey,
+        draftViewGeneration: draftRedirectGeneration,
+        redirectedSessionId: null,
+      };
+    }
 
     try {
       if (activeSessionId === null) {
@@ -1447,7 +1528,7 @@ export const ProjectChatPage: FC<{
           : undefined;
         if (preparedSessionId !== undefined) {
           const response = await sendPreparedPromptMutation.mutateAsync({
-            attachmentIds: attachedFiles.map((attachment) => attachment.attachmentId),
+            attachmentIds: requestAttachmentIds,
             prepareId: preparedSessionId,
             nextPrompt,
             modelId: modelIdForCreate,
@@ -1455,16 +1536,17 @@ export const ProjectChatPage: FC<{
           });
 
           activeSessionId = response.session.sessionId;
-          setAwaitingAssistantTranscriptKeys([initialTranscriptKey, response.session.sessionId]);
+          requestAwaitingTranscriptKeys = [initialTranscriptKey, response.session.sessionId];
+          addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
           upsertSessionInCache(response.session);
           setTranscripts((current) =>
             moveTranscript({
-              from: draftSessionTranscriptKey,
+              from: initialTranscriptKey,
               to: response.session.sessionId,
               transcripts: current,
             }),
           );
-          navigateToSession(response.session.sessionId);
+          navigateToStartedDraftSession(response.session.sessionId);
           if (document.visibilityState === 'hidden') {
             void showAssistantResponseNotification({
               projectId: project.id,
@@ -1482,8 +1564,8 @@ export const ProjectChatPage: FC<{
           });
           setPendingTuningModelId(null);
           setPendingTuningModeId(null);
-          setAttachedFiles([]);
-          setAwaitingAssistantTranscriptKeys([]);
+          removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
+          clearDraftSessionRedirectRequest(draftRedirectGeneration);
           return;
         }
         const sessionResponse = await createSessionMutation.mutateAsync({
@@ -1497,19 +1579,17 @@ export const ProjectChatPage: FC<{
         });
 
         activeSessionId = sessionResponse.session.sessionId;
-        setAwaitingAssistantTranscriptKeys([
-          initialTranscriptKey,
-          sessionResponse.session.sessionId,
-        ]);
+        requestAwaitingTranscriptKeys = [initialTranscriptKey, sessionResponse.session.sessionId];
+        addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
         upsertSessionInCache(sessionResponse.session);
         setTranscripts((current) =>
           moveTranscript({
-            from: draftSessionTranscriptKey,
+            from: initialTranscriptKey,
             to: sessionResponse.session.sessionId,
             transcripts: current,
           }),
         );
-        navigateToSession(sessionResponse.session.sessionId);
+        navigateToStartedDraftSession(sessionResponse.session.sessionId);
       }
 
       if (activeSessionId === null) {
@@ -1530,7 +1610,7 @@ export const ProjectChatPage: FC<{
         }
       }
       const response = await sendPromptMutation.mutateAsync({
-        attachmentIds: attachedFiles.map((attachment) => attachment.attachmentId),
+        attachmentIds: requestAttachmentIds,
         sessionId: resolvedActiveSessionId,
         nextPrompt,
         ...inactiveTuning,
@@ -1555,18 +1635,24 @@ export const ProjectChatPage: FC<{
       });
       setPendingTuningModelId(null);
       setPendingTuningModeId(null);
-      setAttachedFiles([]);
-      setAwaitingAssistantTranscriptKeys([]);
+      removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
+      clearDraftSessionRedirectRequest(draftRedirectGeneration);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'failed to send prompt';
-      setAwaitingAssistantTranscriptKeys([]);
-      replacePrompt(previousPrompt);
+      removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
+      clearDraftSessionRedirectRequest(draftRedirectGeneration);
+      if (activeTranscriptKeyRef.current === initialTranscriptKey) {
+        replacePrompt(previousPrompt);
+        setAttachedFiles((current) =>
+          current.length === 0 ? attachedFiles.map((attachment) => ({ ...attachment })) : current,
+        );
+      }
       setTranscripts((current) =>
         appendTranscriptMessage({
           message: createChatMessage('assistant', `Error: ${message}`, [], {
             kind: 'legacy_assistant_turn',
           }),
-          transcriptKey: activeSessionId ?? draftSessionTranscriptKey,
+          transcriptKey: activeSessionId ?? initialTranscriptKey,
           transcripts: current,
         }),
       );
@@ -1876,7 +1962,7 @@ export const ProjectChatPage: FC<{
               ) : null}
             </div>
 
-            <div className="bg-transparent px-1 pt-0 pb-1 md:px-2 md:pb-1.5">
+            <div className="bg-transparent px-1 pt-0 pb-0.5 md:px-2 md:pb-1">
               <div className="overflow-visible">
                 {attachedFiles.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
@@ -1957,13 +2043,13 @@ export const ProjectChatPage: FC<{
                   slashCommands={slashCommands}
                 />
 
-                <div className="flex min-h-9 items-end gap-1.5 bg-transparent px-1.5 py-1 sm:px-2">
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex min-h-9 flex-col gap-1 bg-transparent px-1.5 pt-1 pb-0 sm:px-2">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:flex-none">
                       {shouldUseDraftSession ? (
                         <>
                           <FieldControl
-                            className="basis-40 sm:w-44"
+                            className="w-[5.75rem] shrink xl:w-44"
                             htmlFor="draft-provider-select"
                             label="Provider"
                           >
@@ -1988,7 +2074,7 @@ export const ProjectChatPage: FC<{
                             </Select>
                           </FieldControl>
                           <FieldControl
-                            className="basis-56 sm:w-64 lg:w-72"
+                            className="w-[7.25rem] shrink xl:w-64 2xl:w-72"
                             htmlFor="draft-model-select"
                             label={draftModelSelectLabel}
                           >
@@ -2052,7 +2138,7 @@ export const ProjectChatPage: FC<{
                             </Select>
                           </FieldControl>
                           <FieldControl
-                            className="basis-48 sm:w-52"
+                            className="w-[5.75rem] shrink xl:w-52"
                             htmlFor="draft-mode-select"
                             label={draftModeSelectLabel}
                           >
@@ -2118,7 +2204,7 @@ export const ProjectChatPage: FC<{
                       ) : selectedSession !== null ? (
                         <>
                           <FieldControl
-                            className="basis-56 sm:w-64 lg:w-72"
+                            className="w-[8.75rem] shrink xl:w-64 2xl:w-72"
                             htmlFor="session-model-select"
                             label={sessionModelSelectLabel}
                           >
@@ -2169,7 +2255,7 @@ export const ProjectChatPage: FC<{
                           </FieldControl>
                           {selectedSessionModeOptions.length > 0 ? (
                             <FieldControl
-                              className="basis-48 sm:w-52"
+                              className="w-[6.75rem] shrink xl:w-52"
                               htmlFor="session-mode-select"
                               label={sessionModeSelectLabel}
                             >
@@ -2221,45 +2307,46 @@ export const ProjectChatPage: FC<{
                       ) : null}
                     </div>
 
-                    {shouldUseDraftSession ? (
+                    <Button
+                      aria-label={
+                        isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
+                      }
+                      className="shrink-0"
+                      disabled={!canSend}
+                      onClick={() => {
+                        void handleSendPrompt();
+                      }}
+                      size="icon"
+                      title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
+                      type="button"
+                    >
+                      {isSending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Send className="size-4" />
+                      )}
+                    </Button>
+                  </div>
+
+                  {shouldUseDraftSession &&
+                  (isPreparingDraftProvider ||
+                    draftPrepareError !== null ||
+                    draftCatalogError !== null) ? (
+                    <div className="min-w-0 pr-9">
                       <p
                         className={cn(
-                          'min-h-4 text-xs',
+                          'text-xs',
                           draftPrepareError !== null || draftCatalogError !== null
                             ? 'text-destructive'
                             : 'text-muted-foreground',
-                          isPreparingDraftProvider ||
-                            draftPrepareError !== null ||
-                            draftCatalogError !== null
-                            ? ''
-                            : 'invisible',
                         )}
                       >
                         {draftPrepareError ??
                           draftCatalogError ??
                           `${draftSession.label} に接続しています...`}
                       </p>
-                    ) : null}
-                  </div>
-                  <Button
-                    aria-label={
-                      isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
-                    }
-                    className="shrink-0"
-                    disabled={!canSend}
-                    onClick={() => {
-                      void handleSendPrompt();
-                    }}
-                    size="icon"
-                    title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
-                    type="button"
-                  >
-                    {isSending ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <Send className="size-4" />
-                    )}
-                  </Button>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
