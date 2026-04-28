@@ -1,7 +1,7 @@
 import { readMigrationFiles } from 'drizzle-orm/migrator';
 import { drizzle } from 'drizzle-orm/node-sqlite';
 import { migrate } from 'drizzle-orm/node-sqlite/migrator';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -13,6 +13,7 @@ export const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../drizzle',
 );
+const migrationsRootFolder = path.join(migrationsFolder, 'migrations');
 
 const migrationsTable = '__drizzle_migrations';
 
@@ -114,6 +115,45 @@ const resolveStoragePath = (storagePath: string): string => {
   return path.resolve(storagePath);
 };
 
+const listSqlMigrationFiles = (): readonly string[] => {
+  try {
+    return readdirSync(migrationsRootFolder, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => path.join(migrationsRootFolder, entry.name, 'migration.sql'))
+      .filter((filePath) => {
+        try {
+          return readFileSync(filePath, 'utf8').length > 0;
+        } catch {
+          return false;
+        }
+      })
+      .sort();
+  } catch {
+    return [];
+  }
+};
+
+const hasManagedTables = (client: DatabaseSync): boolean => {
+  return ['projects', 'sessions', 'session_messages', 'enabled_agent_providers'].some((table) =>
+    tableExists(client, table),
+  );
+};
+
+const applySqlMigrationsFallback = (client: DatabaseSync): void => {
+  if (hasManagedTables(client)) {
+    return;
+  }
+
+  const sqlMigrationFiles = listSqlMigrationFiles();
+  if (sqlMigrationFiles.length === 0) {
+    return;
+  }
+
+  for (const filePath of sqlMigrationFiles) {
+    client.exec(readFileSync(filePath, 'utf8'));
+  }
+};
+
 export const createDatabase = (storagePath: string) => {
   const resolvedStoragePath = resolveStoragePath(storagePath);
   if (resolvedStoragePath !== ':memory:') {
@@ -123,6 +163,7 @@ export const createDatabase = (storagePath: string) => {
   const client = new DatabaseSync(resolvedStoragePath);
   client.exec('PRAGMA foreign_keys = ON;');
   baselineLegacyMigrations(client);
+  applySqlMigrationsFallback(client);
   const db = drizzle({ client, schema });
   migrate(db, { migrationsFolder });
 

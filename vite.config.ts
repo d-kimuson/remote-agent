@@ -36,6 +36,10 @@ const pwaManifest = {
 } as const;
 
 export default defineConfig({
+  build: {
+    outDir: 'dist/client',
+    emptyOutDir: false,
+  },
   plugins: [
     tanstackRouter({
       target: 'react',

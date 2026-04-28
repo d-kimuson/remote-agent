@@ -1,6 +1,9 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { honoApp } from './app.ts';
+import { createHonoApp, honoApp } from './app.ts';
 
 describe('honoApp', () => {
   test('serves OpenAPI spec for API routes', async () => {
@@ -71,5 +74,30 @@ describe('honoApp', () => {
         },
       },
     });
+  });
+
+  test('serves client build assets and SPA fallback when client build is configured', async () => {
+    const clientBuildDirectory = mkdtempSync(path.join(tmpdir(), 'remote-agent-client-'));
+    writeFileSync(path.join(clientBuildDirectory, 'index.html'), '<html><body>spa</body></html>');
+    writeFileSync(path.join(clientBuildDirectory, 'app.js'), 'console.log("asset");');
+
+    try {
+      const app = createHonoApp({ clientBuildDirectory });
+
+      const indexResponse = await app.request('/');
+      const assetResponse = await app.request('/app.js');
+      const fallbackResponse = await app.request('/projects/123');
+
+      expect(indexResponse.status).toBe(200);
+      expect(await indexResponse.text()).toContain('spa');
+
+      expect(assetResponse.status).toBe(200);
+      expect(await assetResponse.text()).toContain('asset');
+
+      expect(fallbackResponse.status).toBe(200);
+      expect(await fallbackResponse.text()).toContain('spa');
+    } finally {
+      rmSync(clientBuildDirectory, { recursive: true, force: true });
+    }
   });
 });

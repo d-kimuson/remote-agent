@@ -1,17 +1,19 @@
 import { serve } from '@hono/node-server';
 
-import { honoApp } from './app.ts';
+import { createHonoApp } from './app.ts';
 
 type ServerOptions = {
   port?: number;
+  clientBuildDirectory?: string;
 };
 
 export const startServer = (options?: ServerOptions) => {
-  const { port = 8989 } = options ?? {};
+  const { port = 8989, clientBuildDirectory } = options ?? {};
+  const app = createHonoApp({ clientBuildDirectory });
 
   const server = serve(
     {
-      fetch: honoApp.fetch,
+      fetch: app.fetch,
       port,
     },
     (info) => {
