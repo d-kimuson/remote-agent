@@ -21,29 +21,29 @@ import {
   type SessionSummary,
   type SessionStatus,
   type UpdateSessionRequest,
-} from "../../shared/acp.ts";
+} from "../../../shared/acp.ts";
 import {
   collectPromptStream,
   type PromptStreamInsertRow,
   type PromptStreamPersistence,
 } from "./collect-prompt-stream.ts";
-import { resolveAttachments } from "../attachments/store.ts";
-import { type AppDatabase, getDefaultDatabase } from "../db/sqlite.ts";
-import { sessionMessagesTable, sessionsTable } from "../db/schema.ts";
-import { buildPromptWithAttachments } from "./prompt-attachments.pure.ts";
-import { agentPresets } from "./presets.ts";
+import { resolveAttachments } from "../../attachments/store.ts";
+import { type AppDatabase, getDefaultDatabase } from "../../db/sqlite.ts";
+import { sessionMessagesTable, sessionsTable } from "../../db/schema.ts";
+import { buildPromptWithAttachments } from "../prompt-attachments.pure.ts";
+import { agentPresets } from "../presets.ts";
 import { resolveCommandPath } from "./command-path.ts";
 import { emitAcpSse } from "./sse-broadcast.ts";
 import {
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
-} from "./session-acp-response.pure.ts";
+} from "../session-acp-response.pure.ts";
 import {
   enrichModeOptionsIfEmpty,
   enrichModelOptionsIfEmpty,
   preferNonEmptyModeCatalog,
   preferNonEmptyModelCatalog,
-} from "./session-catalog.pure.ts";
+} from "../session-catalog.pure.ts";
 
 type SessionProvider = Pick<
   ACPProvider,
@@ -594,6 +594,8 @@ export const createSessionStore = ({
         sessionId,
       },
     });
+    const storedSession =
+      existingRow === undefined ? null : mapStoredSession(existingRow, true, "paused", null);
 
     if (session.sessionId !== sessionId) {
       throw new Error(
@@ -601,14 +603,36 @@ export const createSessionStore = ({
       );
     }
 
-    runtimeSessions.set(session.sessionId, {
+    const currentModelId = storedSession?.currentModelId ?? session.currentModelId;
+    const currentModeId = storedSession?.currentModeId ?? session.currentModeId;
+    if (currentModelId !== null && currentModelId !== undefined && currentModelId.length > 0) {
+      await provider.setModel(currentModelId);
+    }
+    if (currentModeId !== null && currentModeId !== undefined && currentModeId.length > 0) {
+      await provider.setMode(currentModeId);
+    }
+    const restoredSession = parse(sessionSummarySchema, {
+      ...session,
+      currentModelId,
+      currentModeId,
+      availableModels: enrichModelOptionsIfEmpty(
+        preferNonEmptyModelCatalog(session.availableModels, storedSession?.availableModels ?? []),
+        currentModelId,
+      ),
+      availableModes: enrichModeOptionsIfEmpty(
+        preferNonEmptyModeCatalog(session.availableModes, storedSession?.availableModes ?? []),
+        currentModeId,
+      ),
+    });
+
+    runtimeSessions.set(restoredSession.sessionId, {
       provider,
       runningPromptCount: 0,
-      session,
+      session: restoredSession,
     });
-    await persistSession(session);
+    await persistSession(restoredSession);
 
-    return session;
+    return restoredSession;
   };
 
   const resolveAgentPreset = (presetId: string | null | undefined): AgentPreset => {

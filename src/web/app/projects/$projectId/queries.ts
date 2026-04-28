@@ -7,6 +7,8 @@ export const sessionsQueryKey = ["sessions"] as const;
 export const sessionMessagesQueryKey = (sessionId: string) =>
   ["session-messages", sessionId] as const;
 export const projectQueryKey = (projectId: string) => ["project", projectId] as const;
+export const projectSettingsQueryKey = (projectId: string) =>
+  ["project-settings", projectId] as const;
 export const filesystemTreeQueryKey = (root: string) => ["filesystem-tree", root] as const;
 export const resumableSessionsQueryKey = (projectId: string) =>
   ["resumable-sessions", projectId] as const;

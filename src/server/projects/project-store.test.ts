@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, test } from "vitest";
 
-import { createDatabase } from "./db/sqlite.ts";
+import { createDatabase } from "../db/sqlite.ts";
 import { createProjectStore } from "./project-store.ts";
 
 const disposableClients: { close: () => void }[] = [];
@@ -72,5 +72,50 @@ describe("createProjectStore", () => {
     });
 
     expect(secondProject).toEqual(firstProject);
+  });
+
+  test("stores favorite and last-used model preferences per project and preset", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-projects-"));
+    const projectDirectory = path.join(sandboxDirectory, "workspace-models");
+    await mkdir(projectDirectory, { recursive: true });
+
+    const database = createDatabase(path.join(sandboxDirectory, "playground.sqlite"));
+    disposableClients.push(database.client);
+
+    const store = createProjectStore(database);
+    const project = await store.createProject({
+      name: "Workspace Models",
+      workingDirectory: projectDirectory,
+    });
+
+    await store.updateProjectModelPreference(project.id, {
+      presetId: "codex",
+      modelId: "gpt-5-codex",
+      isFavorite: true,
+    });
+    const settings = await store.updateProjectModelPreference(project.id, {
+      presetId: "codex",
+      modelId: "gpt-5-codex-mini",
+      markLastUsed: true,
+    });
+
+    expect(settings.modelPreferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          presetId: "codex",
+          modelId: "gpt-5-codex",
+          isFavorite: true,
+          lastUsedAt: null,
+        }),
+        expect.objectContaining({
+          presetId: "codex",
+          modelId: "gpt-5-codex-mini",
+          isFavorite: false,
+        }),
+      ]),
+    );
+    expect(
+      settings.modelPreferences.find((entry) => entry.modelId === "gpt-5-codex-mini")?.lastUsedAt,
+    ).toEqual(expect.any(String));
   });
 });

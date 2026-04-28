@@ -6,7 +6,7 @@
   "scripts": {
     "build": "run-s build:web typecheck",
     "build:web": "vite build",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "pnpm migrate:generate",
     "dev": "run-p dev:web dev:server",
     "dev:server": "portless --name 'acp-hono' node --watch src/server/main.ts",
     "debug:acp": "node --experimental-strip-types src/scripts/debug-acp.ts",
@@ -17,6 +17,8 @@
     "lint": "run-p lint:*",
     "lint:oxfmt": "pnpm fix:oxfmt --check",
     "lint:oxlint": "oxlint --ignore-path .gitignore --no-error-on-unmatched-pattern",
+    "migrate:generate": "drizzle-kit generate",
+    "migrate:local": "node --experimental-strip-types src/scripts/migrate-local.ts",
     "prepare": "lefthook install",
     "test": "vitest run",
     "typecheck": "tsgo -p . --noEmit"

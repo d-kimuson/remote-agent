@@ -7,11 +7,11 @@ import {
   modelOptionSchema,
   type AgentModelCatalogResponse,
   type AgentProviderStatus,
-} from "../../shared/acp.ts";
-import { agentProviderCatalogsTable, enabledAgentProvidersTable } from "../db/schema.ts";
-import { type AppDatabase, getDefaultDatabase } from "../db/sqlite.ts";
-import { agentPresets } from "./presets.ts";
-import { emitAcpSse } from "./sse-broadcast.ts";
+} from "../../../shared/acp.ts";
+import { agentProviderCatalogsTable, enabledAgentProvidersTable } from "../../db/schema.ts";
+import { type AppDatabase, getDefaultDatabase } from "../../db/sqlite.ts";
+import { agentPresets } from "../presets.ts";
+import { emitAcpSse } from "../services/sse-broadcast.ts";
 
 const parseCatalog = (
   record: typeof agentProviderCatalogsTable.$inferSelect | undefined,

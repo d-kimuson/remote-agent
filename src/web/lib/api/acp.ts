@@ -12,6 +12,7 @@ import {
   messageResponseSchema,
   prepareAgentSessionResponseSchema,
   projectResponseSchema,
+  projectSettingsResponseSchema,
   projectsResponseSchema,
   resumableSessionsResponseSchema,
   sessionMessagesResponseSchema,
@@ -32,6 +33,7 @@ import {
   type PrepareAgentSessionRequest,
   type PrepareAgentSessionResponse,
   type ProjectResponse,
+  type ProjectSettingsResponse,
   type ProjectsResponse,
   type ResumableSessionsResponse,
   type SessionMessagesResponse,
@@ -40,6 +42,7 @@ import {
   type UploadAttachmentsResponse,
   type UpdateSessionRequest,
   type UpdateAgentProviderRequest,
+  type UpdateProjectModelPreferenceRequest,
 } from "../../../shared/acp.ts";
 import { apiFetch, honoClient } from "./client.ts";
 
@@ -76,6 +79,28 @@ export const fetchProjects = async (): Promise<ProjectsResponse> => {
 export const fetchProject = async (projectId: string): Promise<ProjectResponse> => {
   const response = await honoClient.projects[":projectId"].$get({ param: { projectId } });
   return parse(projectResponseSchema, await response.json());
+};
+
+export const fetchProjectSettings = async (projectId: string): Promise<ProjectSettingsResponse> => {
+  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
+    method: "GET",
+  });
+  return parse(projectSettingsResponseSchema, await response.json());
+};
+
+export const updateProjectModelPreferenceRequest = async (
+  projectId: string,
+  request: UpdateProjectModelPreferenceRequest,
+): Promise<ProjectSettingsResponse> => {
+  const response = await apiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/model-preferences`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  return parse(projectSettingsResponseSchema, await response.json());
 };
 
 export const createProjectRequest = async (

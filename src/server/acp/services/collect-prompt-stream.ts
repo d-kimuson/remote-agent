@@ -1,7 +1,7 @@
 import { streamText } from "ai";
 
-import type { ChatMessage, ChatMessageKind, RawEvent } from "../../shared/acp.ts";
-import { normalizeRawEvent } from "./raw-event.pure.ts";
+import type { ChatMessage, ChatMessageKind, RawEvent } from "../../../shared/acp.ts";
+import { normalizeRawEvent } from "../raw-event.pure.ts";
 
 const stringifyForPersistence = (value: unknown): string => {
   if (value === null || value === undefined) {

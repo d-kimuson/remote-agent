@@ -245,6 +245,40 @@ export const projectsResponseSchema = object({
 
 export type ProjectsResponse = InferOutput<typeof projectsResponseSchema>;
 
+export const projectModelPreferenceSchema = object({
+  presetId: pipe(string(), trim()),
+  modelId: pipe(string(), trim()),
+  isFavorite: boolean(),
+  lastUsedAt: nullable(optional(pipe(string(), trim()))),
+  updatedAt: pipe(string(), trim()),
+});
+
+export type ProjectModelPreference = InferOutput<typeof projectModelPreferenceSchema>;
+
+export const projectSettingsSchema = object({
+  projectId: pipe(string(), trim()),
+  modelPreferences: array(projectModelPreferenceSchema),
+});
+
+export type ProjectSettings = InferOutput<typeof projectSettingsSchema>;
+
+export const projectSettingsResponseSchema = object({
+  settings: projectSettingsSchema,
+});
+
+export type ProjectSettingsResponse = InferOutput<typeof projectSettingsResponseSchema>;
+
+export const updateProjectModelPreferenceRequestSchema = object({
+  presetId: pipe(string(), trim()),
+  modelId: pipe(string(), trim()),
+  isFavorite: optional(boolean()),
+  markLastUsed: optional(boolean()),
+});
+
+export type UpdateProjectModelPreferenceRequest = InferOutput<
+  typeof updateProjectModelPreferenceRequestSchema
+>;
+
 export const createSessionRequestSchema = object({
   projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),

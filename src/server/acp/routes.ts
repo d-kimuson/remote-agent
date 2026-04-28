@@ -25,10 +25,14 @@ import {
   type SessionSummary,
 } from "../../shared/acp.ts";
 import { errorResponseSchema, jsonResponse, validationErrorHook } from "../hono-utils.ts";
-import { getProject } from "../project-store.ts";
-import { discoverResumableSessions } from "./agent-session-client.ts";
+import {
+  getProject,
+  getProjectSettings,
+  updateProjectModelPreference,
+} from "../projects/project-store.ts";
+import { discoverResumableSessions } from "./services/agent-session-client.ts";
 import { parseArgsText } from "./args.pure.ts";
-import { probeAgentModelCatalog } from "./probe-agent-catalog.ts";
+import { probeAgentModelCatalog } from "./services/probe-agent-catalog.ts";
 import { agentPresets } from "./presets.ts";
 import {
   getProviderCatalog,
@@ -36,7 +40,7 @@ import {
   listProviderStatuses,
   setProviderEnabled,
   upsertProviderCatalog,
-} from "./provider-catalog-store.ts";
+} from "./repositories/provider-catalog-store.ts";
 import {
   createPreparedSession,
   createSession,
@@ -46,8 +50,8 @@ import {
   removeSession,
   sendPrompt,
   updateSession,
-} from "./session-store.ts";
-import { subscribeAcpSse } from "./sse-broadcast.ts";
+} from "./services/session-store.ts";
+import { subscribeAcpSse } from "./services/sse-broadcast.ts";
 
 const deleteSessionResponseSchema = object({
   ok: boolean(),
@@ -115,6 +119,53 @@ const cacheCatalogFromSession = async (session: SessionSummary): Promise<void> =
       currentModeId: session.currentModeId ?? null,
       lastError: null,
     },
+  });
+};
+
+const nonEmpty = (value: string | null | undefined): string | null =>
+  value !== null && value !== undefined && value.length > 0 ? value : null;
+
+const resolveInitialModelId = async ({
+  modelId,
+  presetId,
+  projectId,
+}: {
+  readonly projectId: string | null | undefined;
+  readonly presetId: string;
+  readonly modelId: string | null | undefined;
+}): Promise<string | null> => {
+  const requested = nonEmpty(modelId);
+  if (requested !== null) {
+    return requested;
+  }
+  if (projectId === null || projectId === undefined) {
+    return null;
+  }
+
+  const settings = await getProjectSettings(projectId);
+  const preferences = settings.modelPreferences.filter((entry) => entry.presetId === presetId);
+  const lastUsed = preferences
+    .filter((entry) => entry.lastUsedAt !== null && entry.lastUsedAt !== undefined)
+    .sort((left, right) => (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? ""))[0];
+  if (lastUsed !== undefined) {
+    return lastUsed.modelId;
+  }
+
+  return preferences.find((entry) => entry.isFavorite)?.modelId ?? null;
+};
+
+const markProjectModelUsed = async (session: SessionSummary): Promise<void> => {
+  const projectId = nonEmpty(session.projectId);
+  const presetId = nonEmpty(session.presetId);
+  const modelId = nonEmpty(session.currentModelId);
+  if (projectId === null || presetId === null || modelId === null) {
+    return;
+  }
+
+  await updateProjectModelPreference(projectId, {
+    presetId,
+    modelId,
+    markLastUsed: true,
   });
 };
 
@@ -303,6 +354,11 @@ export const acpRoutes = new Hono()
           projectId: request.projectId,
           cwd: request.cwd,
         });
+        const initialModelId = await resolveInitialModelId({
+          projectId: context.project?.id ?? null,
+          presetId: preset.id,
+          modelId: request.modelId ?? null,
+        });
         const prepareId = crypto.randomUUID();
         const sessionPromise = createPreparedSession({
           projectId: context.project?.id ?? null,
@@ -310,10 +366,11 @@ export const acpRoutes = new Hono()
           command: preset.command,
           args: preset.args,
           cwd: context.cwd,
-          initialModelId: request.modelId ?? null,
+          initialModelId,
           initialModeId: request.modeId ?? null,
         }).then(async (session) => {
           await cacheCatalogFromSession(session);
+          await markProjectModelUsed(session);
           return session;
         });
         preparedSessions.set(prepareId, sessionPromise);
@@ -397,16 +454,25 @@ export const acpRoutes = new Hono()
           cwd: request.cwd,
         });
         const preset = findPreset(resolved.presetId);
+        if (preset === null) {
+          throw new Error(`Unknown ACP provider preset: ${resolved.presetId ?? "codex"}`);
+        }
+        const initialModelId = await resolveInitialModelId({
+          projectId: context.project?.id ?? null,
+          presetId: preset.id,
+          modelId: request.modelId ?? null,
+        });
         const session = await createSession({
           projectId: context.project?.id ?? null,
           preset,
           command: resolved.command,
           args: resolved.args,
           cwd: context.cwd,
-          initialModelId: request.modelId ?? null,
+          initialModelId,
           initialModeId: request.modeId ?? null,
         });
         await cacheCatalogFromSession(session);
+        await markProjectModelUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
@@ -459,6 +525,7 @@ export const acpRoutes = new Hono()
           title: request.title ?? candidate?.title ?? null,
           updatedAt: request.updatedAt ?? candidate?.updatedAt ?? null,
         });
+        await markProjectModelUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
@@ -486,6 +553,7 @@ export const acpRoutes = new Hono()
         const session = await sessionPromise;
         const request = c.req.valid("json");
         const response = parse(messageResponseSchema, await sendPrompt(session.sessionId, request));
+        await markProjectModelUsed(response.session);
         return c.json(response);
       } catch (error) {
         const message =
@@ -509,6 +577,7 @@ export const acpRoutes = new Hono()
         const request = c.req.valid("json");
         const sessionId = c.req.param("sessionId");
         const session = await updateSession(sessionId, request);
+        await markProjectModelUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response);
       } catch (error) {
@@ -548,6 +617,7 @@ export const acpRoutes = new Hono()
         const request = c.req.valid("json");
         const sessionId = c.req.param("sessionId");
         const response = parse(messageResponseSchema, await sendPrompt(sessionId, request));
+        await markProjectModelUsed(response.session);
         return c.json(response);
       } catch (error) {
         const message = error instanceof Error ? error.message : "failed to send prompt";

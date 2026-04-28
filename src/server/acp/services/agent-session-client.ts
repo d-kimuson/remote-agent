@@ -11,8 +11,11 @@ import {
   type SessionInfo,
 } from "@agentclientprotocol/sdk";
 
-import type { ResumableSessionsResponse } from "../../shared/acp.ts";
-import { inspectResumeCapabilities, mapResumableSessionCandidates } from "./session-resume.pure.ts";
+import type { ResumableSessionsResponse } from "../../../shared/acp.ts";
+import {
+  inspectResumeCapabilities,
+  mapResumableSessionCandidates,
+} from "../session-resume.pure.ts";
 
 type AgentCommand = {
   readonly command: string;

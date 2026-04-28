@@ -1,13 +1,13 @@
 import { createACPProvider } from "@mcpc-tech/acp-ai-provider";
 
-import type { ModeOption, ModelOption } from "../../shared/acp.ts";
+import type { ModeOption, ModelOption } from "../../../shared/acp.ts";
 import { resolveCommandPath } from "./command-path.ts";
-import { agentPresets } from "./presets.ts";
-import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from "./session-catalog.pure.ts";
+import { agentPresets } from "../presets.ts";
+import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from "../session-catalog.pure.ts";
 import {
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
-} from "./session-acp-response.pure.ts";
+} from "../session-acp-response.pure.ts";
 
 export type AgentModelCatalog = {
   readonly availableModels: readonly ModelOption[];

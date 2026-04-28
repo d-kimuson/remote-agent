@@ -31,11 +31,11 @@ export const AcpToolUseCard: FC<{
         className,
       )}
     >
-      <div className="flex items-center gap-1 border-b border-blue-200/70 pr-1.5 dark:border-blue-800/50">
+      <div className="flex items-center gap-1 border-b border-blue-200/70 p-1 dark:border-blue-800/50">
         <button
           aria-expanded={open}
           className={cn(
-            "inline-flex min-w-0 flex-1 items-center justify-between gap-2 border-0 bg-transparent px-2.5 py-2 text-left font-inherit transition-colors hover:bg-blue-100/50 sm:px-3 dark:hover:bg-blue-900/20",
+            "inline-flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left font-inherit transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/20",
           )}
           onClick={() => {
             setOpen((o) => !o);
@@ -51,15 +51,23 @@ export const AcpToolUseCard: FC<{
               {title}
             </span>
           </div>
-          <ChevronDown
-            className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform",
-              open ? "rotate-180" : "",
-            )}
-            aria-hidden
-          />
         </button>
-        <CopyBlockButton className="opacity-80 hover:opacity-100" text={copyText} />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <CopyBlockButton className="opacity-80 hover:opacity-100" text={copyText} />
+          <button
+            aria-label={open ? "ツール詳細を閉じる" : "ツール詳細を開く"}
+            className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-blue-100/50 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none dark:hover:bg-blue-900/20"
+            onClick={() => {
+              setOpen((o) => !o);
+            }}
+            type="button"
+          >
+            <ChevronDown
+              className={cn("size-4 transition-transform", open ? "rotate-180" : "")}
+              aria-hidden
+            />
+          </button>
+        </div>
       </div>
       {open ? (
         <CardContent className="space-y-2.5 border-0 px-2.5 py-2.5 sm:px-3">

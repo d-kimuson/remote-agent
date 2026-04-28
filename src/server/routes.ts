@@ -8,7 +8,7 @@ import { agentPresets } from "./acp/presets.ts";
 import { attachmentRoutes } from "./attachments/routes.ts";
 import { filesystemRoutes } from "./filesystem/routes.ts";
 import { jsonResponse } from "./hono-utils.ts";
-import { getProjectsFilePath } from "./project-store.ts";
+import { getProjectsFilePath } from "./projects/project-store.ts";
 import { projectRoutes } from "./projects/routes.ts";
 
 export const routes = new Hono()

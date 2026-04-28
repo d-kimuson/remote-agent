@@ -1,4 +1,5 @@
-import { index, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { sql } from "drizzle-orm";
+import { index, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 export const projectsTable = sqliteTable(
   "projects",
@@ -68,6 +69,28 @@ export const agentProviderCatalogsTable = sqliteTable(
   ],
 );
 
+export const projectModelPreferencesTable = sqliteTable(
+  "project_model_preferences",
+  {
+    projectId: text("project_id")
+      .notNull()
+      .references(() => projectsTable.id, {
+        onDelete: "cascade",
+        onUpdate: "cascade",
+      }),
+    presetId: text("preset_id").notNull(),
+    modelId: text("model_id").notNull(),
+    isFavorite: text("is_favorite").notNull().default("false"),
+    lastUsedAt: text("last_used_at"),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.presetId, table.modelId] }),
+    index("idx_project_model_preferences_project_preset").on(table.projectId, table.presetId),
+    index("idx_project_model_preferences_last_used").on(table.lastUsedAt),
+  ],
+);
+
 export const sessionMessagesTable = sqliteTable(
   "session_messages",
   {
@@ -90,5 +113,8 @@ export const sessionMessagesTable = sqliteTable(
   (table) => [
     index("idx_session_messages_session_id").on(table.sessionId),
     index("idx_session_messages_created_at").on(table.createdAt),
+    uniqueIndex("idx_session_messages_stream_part")
+      .on(table.sessionId, table.streamPartId)
+      .where(sql`${table.streamPartId} IS NOT NULL`),
   ],
 );

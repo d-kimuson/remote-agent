@@ -23,7 +23,7 @@ import { streamText } from "ai";
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
-import { resolveCommandPath } from "../server/acp/command-path.ts";
+import { resolveCommandPath } from "../server/acp/services/command-path.ts";
 import { agentPresets } from "../server/acp/presets.ts";
 
 const log = (step: string, detail?: Readonly<Record<string, unknown>>) => {

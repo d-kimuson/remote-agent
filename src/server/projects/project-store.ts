@@ -1,18 +1,22 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { parse } from "valibot";
 
 import {
+  projectSettingsSchema,
   projectSchema,
   projectsResponseSchema,
   type CreateProjectRequest,
   type Project,
-} from "../shared/acp.ts";
-import { envService } from "./env.ts";
-import { type AppDatabase, getDefaultDatabase } from "./db/sqlite.ts";
-import { projectsTable } from "./db/schema.ts";
+  type ProjectModelPreference,
+  type ProjectSettings,
+  type UpdateProjectModelPreferenceRequest,
+} from "../../shared/acp.ts";
+import { envService } from "../env.ts";
+import { type AppDatabase, getDefaultDatabase } from "../db/sqlite.ts";
+import { projectModelPreferencesTable, projectsTable } from "../db/schema.ts";
 
 const slugify = (value: string): string => {
   return (
@@ -64,6 +68,16 @@ const mapProjectRecord = (record: typeof projectsTable.$inferSelect): Project =>
     workingDirectory: record.workingDirectory,
   });
 };
+
+const mapProjectModelPreferenceRecord = (
+  record: typeof projectModelPreferencesTable.$inferSelect,
+): ProjectModelPreference => ({
+  presetId: record.presetId,
+  modelId: record.modelId,
+  isFavorite: record.isFavorite === "true",
+  lastUsedAt: record.lastUsedAt,
+  updatedAt: record.updatedAt,
+});
 
 export const createProjectStore = (database: AppDatabase = getDefaultDatabase()) => {
   const ensureDefaultProject = async (): Promise<void> => {
@@ -132,11 +146,102 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     return nextProject;
   };
 
+  const getProjectSettings = async (projectId: string): Promise<ProjectSettings> => {
+    await getProject(projectId);
+    const records = await database.db
+      .select()
+      .from(projectModelPreferencesTable)
+      .where(eq(projectModelPreferencesTable.projectId, projectId));
+
+    const modelPreferences = records.map(mapProjectModelPreferenceRecord).sort((left, right) => {
+      if (left.presetId !== right.presetId) {
+        return left.presetId.localeCompare(right.presetId);
+      }
+      if (left.isFavorite !== right.isFavorite) {
+        return left.isFavorite ? -1 : 1;
+      }
+      return (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
+    });
+
+    return parse(projectSettingsSchema, {
+      projectId,
+      modelPreferences,
+    });
+  };
+
+  const updateProjectModelPreference = async (
+    projectId: string,
+    request: UpdateProjectModelPreferenceRequest,
+  ): Promise<ProjectSettings> => {
+    await getProject(projectId);
+    const now = new Date().toISOString();
+    const [existing] = await database.db
+      .select()
+      .from(projectModelPreferencesTable)
+      .where(
+        and(
+          eq(projectModelPreferencesTable.projectId, projectId),
+          eq(projectModelPreferencesTable.presetId, request.presetId),
+          eq(projectModelPreferencesTable.modelId, request.modelId),
+        ),
+      )
+      .limit(1);
+
+    if (request.markLastUsed === true) {
+      await database.db
+        .update(projectModelPreferencesTable)
+        .set({ lastUsedAt: null, updatedAt: now })
+        .where(
+          and(
+            eq(projectModelPreferencesTable.projectId, projectId),
+            eq(projectModelPreferencesTable.presetId, request.presetId),
+          ),
+        );
+    }
+
+    await database.db
+      .insert(projectModelPreferencesTable)
+      .values({
+        projectId,
+        presetId: request.presetId,
+        modelId: request.modelId,
+        isFavorite:
+          request.isFavorite === undefined
+            ? (existing?.isFavorite ?? "false")
+            : request.isFavorite
+              ? "true"
+              : "false",
+        lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          projectModelPreferencesTable.projectId,
+          projectModelPreferencesTable.presetId,
+          projectModelPreferencesTable.modelId,
+        ],
+        set: {
+          isFavorite:
+            request.isFavorite === undefined
+              ? (existing?.isFavorite ?? "false")
+              : request.isFavorite
+                ? "true"
+                : "false",
+          lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
+          updatedAt: now,
+        },
+      });
+
+    return getProjectSettings(projectId);
+  };
+
   return {
     storagePath: database.storagePath,
     listProjects,
     getProject,
     createProject,
+    getProjectSettings,
+    updateProjectModelPreference,
   };
 };
 
@@ -161,4 +266,15 @@ export const getProject = async (projectId: string): Promise<Project> => {
 
 export const createProject = async (request: CreateProjectRequest): Promise<Project> => {
   return getProjectStore().createProject(request);
+};
+
+export const getProjectSettings = async (projectId: string): Promise<ProjectSettings> => {
+  return getProjectStore().getProjectSettings(projectId);
+};
+
+export const updateProjectModelPreference = async (
+  projectId: string,
+  request: UpdateProjectModelPreferenceRequest,
+): Promise<ProjectSettings> => {
+  return getProjectStore().updateProjectModelPreference(projectId, request);
 };

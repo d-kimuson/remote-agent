@@ -5,10 +5,18 @@ import { parse } from "valibot";
 import {
   createProjectRequestSchema,
   projectResponseSchema,
+  projectSettingsResponseSchema,
   projectsResponseSchema,
+  updateProjectModelPreferenceRequestSchema,
 } from "../../shared/acp.ts";
 import { errorResponseSchema, jsonResponse, validationErrorHook } from "../hono-utils.ts";
-import { createProject, getProject, listProjects } from "../project-store.ts";
+import {
+  createProject,
+  getProject,
+  getProjectSettings,
+  listProjects,
+  updateProjectModelPreference,
+} from "./project-store.ts";
 
 export const projectRoutes = new Hono()
   .get(
@@ -61,6 +69,53 @@ export const projectRoutes = new Hono()
       } catch (error) {
         const message = error instanceof Error ? error.message : "failed to read project";
         return c.json({ error: message }, 404);
+      }
+    },
+  )
+  .get(
+    "/:projectId/settings",
+    describeRoute({
+      summary: "Get project settings",
+      responses: {
+        200: jsonResponse("Project settings", projectSettingsResponseSchema),
+        404: jsonResponse("Project not found", errorResponseSchema),
+      },
+    }),
+    async (c) => {
+      try {
+        const response = parse(projectSettingsResponseSchema, {
+          settings: await getProjectSettings(c.req.param("projectId")),
+        });
+        return c.json(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to read project settings";
+        return c.json({ error: message }, 404);
+      }
+    },
+  )
+  .patch(
+    "/:projectId/model-preferences",
+    describeRoute({
+      summary: "Update project model preferences",
+      responses: {
+        200: jsonResponse("Project settings", projectSettingsResponseSchema),
+        400: jsonResponse("Project settings update error", errorResponseSchema),
+      },
+    }),
+    vValidator("json", updateProjectModelPreferenceRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const response = parse(projectSettingsResponseSchema, {
+          settings: await updateProjectModelPreference(
+            c.req.param("projectId"),
+            c.req.valid("json"),
+          ),
+        });
+        return c.json(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "failed to update project settings";
+        return c.json({ error: message }, 400);
       }
     },
   );
