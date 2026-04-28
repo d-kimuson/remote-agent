@@ -1,6 +1,14 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { ArrowDown, Loader2, MessageSquareDashed, Paperclip, Send, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  Info,
+  Loader2,
+  MessageSquareDashed,
+  Paperclip,
+  Send,
+  Trash2,
+} from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -15,6 +23,7 @@ import {
 } from "react";
 
 import type {
+  AgentPreset,
   AgentModelCatalogResponse,
   ChatMessage,
   ChatMessageKind,
@@ -38,17 +47,25 @@ import {
   createSessionRequest,
   deleteSessionRequest,
   fetchAgentModelCatalog,
+  fetchAgentProviders,
   fetchAppInfo,
   fetchProject,
   fetchSessionMessages,
   fetchSessions,
+  prepareAgentSessionRequest,
   sendPromptRequest,
+  sendPreparedPromptRequest,
   updateSessionRequest,
   uploadAttachmentsRequest,
 } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
 import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
 import { AttachFilesDialog } from "./attach-files-dialog.tsx";
+import {
+  formatAcpSelectOptionLabel,
+  formatAcpSelectOptionInfo,
+  formatAcpSelectValueLabel,
+} from "./acp-select-display.pure.ts";
 import { chatMessageClipboardText } from "./chat-block-copy.pure.ts";
 import { isNearScrollBottom } from "./chat-scroll.pure.ts";
 import {
@@ -70,6 +87,7 @@ import {
 import { mergeToolCallResultMessages } from "./transcript-tool-merge.pure.ts";
 import {
   agentModelCatalogQueryKey,
+  agentProvidersQueryKey,
   appInfoQueryKey,
   projectQueryKey,
   sessionMessagesQueryKey,
@@ -78,9 +96,6 @@ import {
 import { ProjectMenuContent } from "./project-menu-content.tsx";
 import { RichPromptEditor } from "./rich-prompt-editor.tsx";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
-
-/** 既存セッションからモデル/モード一覧を借りられないときの Select 用プレースホルダー（送信時は undefined を送る） */
-const DRAFT_FALLBACK_SELECT_VALUE = "__acp_agent_default__";
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = "w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl";
@@ -145,6 +160,40 @@ const presetLabelFrom = ({
   readonly presetId: string | null | undefined;
   readonly presets: readonly { readonly id: string; readonly label: string }[];
 }): string => presets.find((preset) => preset.id === presetId)?.label ?? presetId ?? "custom";
+
+const presetFrom = ({
+  presetId,
+  presets,
+}: {
+  readonly presetId: string | null | undefined;
+  readonly presets: readonly AgentPreset[];
+}): AgentPreset | null => {
+  if (presetId === null || presetId === undefined) {
+    return null;
+  }
+
+  return presets.find((preset) => preset.id === presetId) ?? null;
+};
+
+const modelSelectLabelFromPreset = (preset: AgentPreset | null): string =>
+  preset?.modelSelectLabel ?? "Model";
+
+const modeSelectLabelFromPreset = (preset: AgentPreset | null): string =>
+  preset?.modeSelectLabel ?? "Mode";
+
+const AcpSelectItemLabel: FC<{
+  readonly children: string;
+  readonly info: string | null;
+}> = ({ children, info }) => (
+  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+    <span className="min-w-0 truncate">{children}</span>
+    {info === null ? null : (
+      <span className="inline-flex shrink-0 text-muted-foreground" title={info}>
+        <Info aria-label={info} className="size-3.5" role="img" />
+      </span>
+    )}
+  </span>
+);
 
 const LoadingConversation: FC = () => (
   <div className="mx-auto flex max-w-md items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-card/35 px-5 py-8 text-sm text-muted-foreground">
@@ -217,13 +266,21 @@ export const ProjectChatPage: FC<{
     queryKey: appInfoQueryKey,
     queryFn: fetchAppInfo,
   });
+  const { data: providerData } = useSuspenseQuery({
+    queryKey: agentProvidersQueryKey,
+    queryFn: fetchAgentProviders,
+  });
   const { data: sessionsData } = useSuspenseQuery({
     queryKey: sessionsQueryKey,
     queryFn: fetchSessions,
   });
 
   const project = projectData.project;
-  const preferredPresetId = defaultPresetId(appInfoData.agentPresets);
+  const selectablePresets = useMemo(
+    () => providerData.providers.filter((entry) => entry.enabled).map((entry) => entry.preset),
+    [providerData.providers],
+  );
+  const preferredPresetId = defaultPresetId(selectablePresets);
 
   const [draftPresetId, setDraftPresetId] = useState("");
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
@@ -240,6 +297,16 @@ export const ProjectChatPage: FC<{
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
+  const [preparedSessionIdsByScope, setPreparedSessionIdsByScope] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const [prepareErrorsByScope, setPrepareErrorsByScope] = useState<
+    Readonly<Record<string, string>>
+  >({});
+  const [preparingScopesByKey, setPreparingScopesByKey] = useState<Readonly<Record<string, true>>>(
+    {},
+  );
+  const preparingScopeKeysRef = useRef(new Set<string>());
   const chatContentRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -271,26 +338,25 @@ export const ProjectChatPage: FC<{
       buildDraftSession({
         cwd: project.workingDirectory,
         presetId: activePresetId,
-        presets: appInfoData.agentPresets,
+        presets: selectablePresets,
       }),
-    [activePresetId, appInfoData.agentPresets, project.workingDirectory],
+    [activePresetId, project.workingDirectory, selectablePresets],
   );
-  const modelModeTemplateSession = useMemo((): SessionSummary | null => {
-    const inProject = projectSessions.find((entry) => entry.presetId === activePresetId);
-    if (inProject !== undefined) {
-      return inProject;
-    }
-    if (projectSessions[0] !== undefined) {
-      return projectSessions[0];
-    }
-    return (
-      sessionsData.sessions.find((entry) => entry.presetId === activePresetId) ??
-      sessionsData.sessions[0] ??
-      null
-    );
-  }, [activePresetId, projectSessions, sessionsData.sessions]);
+  const activePreset = presetFrom({
+    presetId: activePresetId,
+    presets: appInfoData.agentPresets,
+  });
+  const selectedSessionPreset = presetFrom({
+    presetId: selectedSession?.presetId,
+    presets: appInfoData.agentPresets,
+  });
+  const draftModelSelectLabel = modelSelectLabelFromPreset(activePreset);
+  const draftModeSelectLabel = modeSelectLabelFromPreset(activePreset);
+  const sessionModelSelectLabel = modelSelectLabelFromPreset(selectedSessionPreset);
+  const sessionModeSelectLabel = modeSelectLabelFromPreset(selectedSessionPreset);
 
   const draftCatalogScopeKey = `${projectId}\0${activePresetId}`;
+  const preparedSessionScopeKey = `${projectId}\0${activePresetId}\0${project.workingDirectory}`;
 
   useEffect(() => {
     if (!shouldUseDraftSession) {
@@ -304,33 +370,91 @@ export const ProjectChatPage: FC<{
     }
   }, [draftCatalogScopeKey, shouldUseDraftSession]);
 
-  /** 永続セッションが 0 件でも initSession 由来の一覧を使えるように、既存サマリと probe をマージ。 */
-  const draftModelModeListSource = useMemo(() => {
-    const t = modelModeTemplateSession;
-    const c = probedModelCatalog;
-    if (t === null) {
-      return {
-        availableModels: c?.availableModels ?? [],
-        availableModes: c?.availableModes ?? [],
-        currentModelId: c?.currentModelId ?? null,
-        currentModeId: c?.currentModeId ?? null,
-      };
+  useEffect(() => {
+    if (!shouldUseDraftSession || activePresetId.length === 0) {
+      return;
     }
-    const modelsFromSession = t.availableModels.length > 0;
-    const modesFromSession = t.availableModes.length > 0;
-    return {
-      availableModels: modelsFromSession
-        ? t.availableModels
-        : (c?.availableModels ?? t.availableModels),
-      availableModes: modesFromSession ? t.availableModes : (c?.availableModes ?? t.availableModes),
-      currentModelId:
-        (modelsFromSession ? t.currentModelId : c?.currentModelId) ?? t.currentModelId ?? null,
-      currentModeId: (modesFromSession ? t.currentModeId : c?.currentModeId) ?? t.currentModeId,
+    if (preparedSessionIdsByScope[preparedSessionScopeKey] !== undefined) {
+      return;
+    }
+    if (preparingScopeKeysRef.current.has(preparedSessionScopeKey)) {
+      return;
+    }
+
+    preparingScopeKeysRef.current.add(preparedSessionScopeKey);
+    setPreparingScopesByKey((current) => ({
+      ...current,
+      [preparedSessionScopeKey]: true,
+    }));
+    setPrepareErrorsByScope((current) => {
+      const next = { ...current };
+      delete next[preparedSessionScopeKey];
+      return next;
+    });
+    let ignore = false;
+    void prepareAgentSessionRequest({
+      projectId,
+      presetId: activePresetId,
+      cwd: project.workingDirectory,
+    })
+      .then((response) => {
+        if (ignore) {
+          return;
+        }
+        setPreparedSessionIdsByScope((current) => ({
+          ...current,
+          [preparedSessionScopeKey]: response.prepareId,
+        }));
+      })
+      .finally(() => {
+        preparingScopeKeysRef.current.delete(preparedSessionScopeKey);
+        setPreparingScopesByKey((current) => {
+          const next = { ...current };
+          delete next[preparedSessionScopeKey];
+          return next;
+        });
+      })
+      .catch(() => {
+        setPreparedSessionIdsByScope((current) => {
+          const next = { ...current };
+          delete next[preparedSessionScopeKey];
+          return next;
+        });
+        setPrepareErrorsByScope((current) => ({
+          ...current,
+          [preparedSessionScopeKey]: "Provider preconnect failed. Check Settings or agent auth.",
+        }));
+      });
+
+    return () => {
+      ignore = true;
     };
-  }, [modelModeTemplateSession, probedModelCatalog]);
+  }, [
+    activePresetId,
+    preparedSessionIdsByScope,
+    preparedSessionScopeKey,
+    project.workingDirectory,
+    projectId,
+    shouldUseDraftSession,
+  ]);
+
+  /** draft の候補は provider catalog table 由来だけを見る。既存 session DB からは借りない。 */
+  const draftModelModeListSource = useMemo(() => {
+    const c = probedModelCatalog;
+    return {
+      availableModels: c?.availableModels ?? [],
+      availableModes: c?.availableModes ?? [],
+      currentModelId: c?.currentModelId ?? null,
+      currentModeId: c?.currentModeId ?? null,
+    };
+  }, [probedModelCatalog]);
 
   const draftModelSourceHasList = draftModelModeListSource.availableModels.length > 0;
   const draftModeSourceHasList = draftModelModeListSource.availableModes.length > 0;
+  const isPreparingDraftProvider =
+    shouldUseDraftSession && preparingScopesByKey[preparedSessionScopeKey] === true;
+  const draftPrepareError = prepareErrorsByScope[preparedSessionScopeKey] ?? null;
+  const draftCatalogError = probedModelCatalog?.lastError ?? null;
 
   const activeTranscriptKey = sessionId ?? draftSessionTranscriptKey;
 
@@ -420,6 +544,28 @@ export const ProjectChatPage: FC<{
       }),
   });
 
+  const sendPreparedPromptMutation = useMutation({
+    mutationFn: ({
+      attachmentIds,
+      modeId: tuningModeId,
+      modelId: tuningModelId,
+      nextPrompt,
+      prepareId,
+    }: {
+      readonly attachmentIds: readonly string[];
+      readonly prepareId: string;
+      readonly nextPrompt: string;
+      readonly modelId?: string | null;
+      readonly modeId?: string | null;
+    }) =>
+      sendPreparedPromptRequest(prepareId, {
+        attachmentIds,
+        modelId: tuningModelId,
+        modeId: tuningModeId,
+        prompt: nextPrompt,
+      }),
+  });
+
   const uploadAttachmentsMutation = useMutation({
     mutationFn: uploadAttachmentsRequest,
   });
@@ -427,9 +573,13 @@ export const ProjectChatPage: FC<{
   const isSending =
     createSessionMutation.isPending ||
     sendPromptMutation.isPending ||
+    sendPreparedPromptMutation.isPending ||
     updateSessionMutation.isPending ||
     uploadAttachmentsMutation.isPending;
-  const isAssistantRequestPending = createSessionMutation.isPending || sendPromptMutation.isPending;
+  const isAssistantRequestPending =
+    createSessionMutation.isPending ||
+    sendPromptMutation.isPending ||
+    sendPreparedPromptMutation.isPending;
   const isEditorDisabled = isAssistantRequestPending;
   const isAwaitingActiveAssistantResponse =
     isAssistantRequestPending && awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
@@ -470,7 +620,10 @@ export const ProjectChatPage: FC<{
     [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
-  const canSend = buildPromptText(prompt, attachmentNames).length > 0 && !isSending;
+  const canSend =
+    buildPromptText(prompt, attachmentNames).length > 0 &&
+    !isSending &&
+    (!shouldUseDraftSession || activePresetId.length > 0);
 
   const thinkingModelLabel = useMemo((): string => {
     if (shouldUseDraftSession) {
@@ -618,6 +771,7 @@ export const ProjectChatPage: FC<{
 
     try {
       if (activeSessionId === null) {
+        const preparedSessionId = preparedSessionIdsByScope[preparedSessionScopeKey];
         const modelIdForCreate = draftModelSourceHasList
           ? (draftModelId ??
             draftModelModeListSource.currentModelId ??
@@ -630,6 +784,46 @@ export const ProjectChatPage: FC<{
             draftModelModeListSource.availableModes[0]?.id ??
             undefined)
           : undefined;
+        if (preparedSessionId !== undefined) {
+          const response = await sendPreparedPromptMutation.mutateAsync({
+            attachmentIds: attachedFiles.map((attachment) => attachment.attachmentId),
+            prepareId: preparedSessionId,
+            nextPrompt,
+            modelId: modelIdForCreate,
+            modeId: modeIdForCreate,
+          });
+
+          activeSessionId = response.session.sessionId;
+          setAwaitingAssistantTranscriptKeys([initialTranscriptKey, response.session.sessionId]);
+          upsertSessionInCache(response.session);
+          setTranscripts((current) =>
+            moveTranscript({
+              from: draftSessionTranscriptKey,
+              to: response.session.sessionId,
+              transcripts: current,
+            }),
+          );
+          navigateToSession(response.session.sessionId);
+          if (document.visibilityState === "hidden") {
+            void showAssistantResponseNotification({
+              projectId: project.id,
+              projectName: project.name,
+              sessionId: response.session.sessionId,
+              text: response.text,
+              timestamp: Date.now(),
+              url: projectUrl,
+            });
+          }
+          void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+          void queryClient.invalidateQueries({
+            queryKey: sessionMessagesQueryKey(response.session.sessionId),
+          });
+          setPendingTuningModelId(null);
+          setPendingTuningModeId(null);
+          setAttachedFiles([]);
+          setAwaitingAssistantTranscriptKeys([]);
+          return;
+        }
         const sessionResponse = await createSessionMutation.mutateAsync({
           projectId: project.id,
           presetId: draftSession.presetId,
@@ -778,12 +972,14 @@ export const ProjectChatPage: FC<{
     <div className="app-page h-full">
       {shouldUseDraftSession && (
         <Suspense fallback={null}>
-          <DraftAgentModelCatalogLoader
-            key={draftCatalogScopeKey}
-            presetId={activePresetId}
-            projectId={projectId}
-            onReady={onAgentCatalogReady}
-          />
+          {activePresetId.length > 0 ? (
+            <DraftAgentModelCatalogLoader
+              key={draftCatalogScopeKey}
+              presetId={activePresetId}
+              projectId={projectId}
+              onReady={onAgentCatalogReady}
+            />
+          ) : null}
         </Suspense>
       )}
       {sessionId === null ? null : (
@@ -996,7 +1192,7 @@ export const ProjectChatPage: FC<{
                             <SelectValue placeholder="Provider" />
                           </SelectTrigger>
                           <SelectContent>
-                            {appInfoData.agentPresets.map((preset) => (
+                            {selectablePresets.map((preset) => (
                               <SelectItem key={preset.id} value={preset.id}>
                                 {preset.label}
                               </SelectItem>
@@ -1004,10 +1200,10 @@ export const ProjectChatPage: FC<{
                           </SelectContent>
                         </Select>
                       </FieldControl>
-                      <FieldControl htmlFor="draft-model-select" label="Model">
+                      <FieldControl htmlFor="draft-model-select" label={draftModelSelectLabel}>
                         <Select
                           onValueChange={(value) => {
-                            if (!draftModelSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
+                            if (!draftModelSourceHasList || value === null) {
                               return;
                             }
                             setDraftModelId(value);
@@ -1016,9 +1212,8 @@ export const ProjectChatPage: FC<{
                             draftModelSourceHasList
                               ? (draftModelId ??
                                 draftModelModeListSource.currentModelId ??
-                                draftModelModeListSource.availableModels[0]?.id ??
-                                DRAFT_FALLBACK_SELECT_VALUE)
-                              : DRAFT_FALLBACK_SELECT_VALUE
+                                draftModelModeListSource.availableModels[0]?.id)
+                              : undefined
                           }
                         >
                           <SelectTrigger
@@ -1031,27 +1226,52 @@ export const ProjectChatPage: FC<{
                                 : undefined
                             }
                           >
-                            <SelectValue placeholder="Model" />
+                            <SelectValue
+                              placeholder={
+                                draftModelSourceHasList
+                                  ? draftModelSelectLabel
+                                  : "Loading models..."
+                              }
+                            >
+                              {(value) =>
+                                formatAcpSelectValueLabel({
+                                  fallback: draftModelSelectLabel,
+                                  kind: "model",
+                                  options: draftModelModeListSource.availableModels,
+                                  presetId: activePresetId,
+                                  value,
+                                })
+                              }
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
-                            {draftModelSourceHasList ? (
-                              draftModelModeListSource.availableModels.map((model) => (
-                                <SelectItem key={model.id} value={model.id}>
-                                  {model.name}
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
-                                既定（エージェント既定・一覧取得待ち）
-                              </SelectItem>
-                            )}
+                            {draftModelSourceHasList
+                              ? draftModelModeListSource.availableModels.map((model) => (
+                                  <SelectItem key={model.id} value={model.id}>
+                                    <AcpSelectItemLabel
+                                      info={formatAcpSelectOptionInfo({
+                                        kind: "model",
+                                        option: model,
+                                        presetId: activePresetId,
+                                      })}
+                                    >
+                                      {formatAcpSelectOptionLabel({
+                                        kind: "model",
+                                        option: model,
+                                        options: draftModelModeListSource.availableModels,
+                                        presetId: activePresetId,
+                                      })}
+                                    </AcpSelectItemLabel>
+                                  </SelectItem>
+                                ))
+                              : null}
                           </SelectContent>
                         </Select>
                       </FieldControl>
-                      <FieldControl htmlFor="draft-mode-select" label="Mode">
+                      <FieldControl htmlFor="draft-mode-select" label={draftModeSelectLabel}>
                         <Select
                           onValueChange={(value) => {
-                            if (!draftModeSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
+                            if (!draftModeSourceHasList || value === null) {
                               return;
                             }
                             setDraftModeId(value);
@@ -1060,9 +1280,8 @@ export const ProjectChatPage: FC<{
                             draftModeSourceHasList
                               ? (draftModeId ??
                                 draftModelModeListSource.currentModeId ??
-                                draftModelModeListSource.availableModes[0]?.id ??
-                                DRAFT_FALLBACK_SELECT_VALUE)
-                              : DRAFT_FALLBACK_SELECT_VALUE
+                                draftModelModeListSource.availableModes[0]?.id)
+                              : undefined
                           }
                         >
                           <SelectTrigger
@@ -1075,27 +1294,50 @@ export const ProjectChatPage: FC<{
                                 : undefined
                             }
                           >
-                            <SelectValue placeholder="Mode" />
+                            <SelectValue
+                              placeholder={
+                                draftModeSourceHasList ? draftModeSelectLabel : "Loading modes..."
+                              }
+                            >
+                              {(value) =>
+                                formatAcpSelectValueLabel({
+                                  fallback: draftModeSelectLabel,
+                                  kind: "mode",
+                                  options: draftModelModeListSource.availableModes,
+                                  presetId: activePresetId,
+                                  value,
+                                })
+                              }
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
-                            {draftModeSourceHasList ? (
-                              draftModelModeListSource.availableModes.map((mode) => (
-                                <SelectItem key={mode.id} value={mode.id}>
-                                  {mode.name}
-                                </SelectItem>
-                              ))
-                            ) : (
-                              <SelectItem value={DRAFT_FALLBACK_SELECT_VALUE}>
-                                既定（エージェント既定・一覧取得待ち）
-                              </SelectItem>
-                            )}
+                            {draftModeSourceHasList
+                              ? draftModelModeListSource.availableModes.map((mode) => (
+                                  <SelectItem key={mode.id} value={mode.id}>
+                                    <AcpSelectItemLabel
+                                      info={formatAcpSelectOptionInfo({
+                                        kind: "mode",
+                                        option: mode,
+                                        presetId: activePresetId,
+                                      })}
+                                    >
+                                      {formatAcpSelectOptionLabel({
+                                        kind: "mode",
+                                        option: mode,
+                                        options: draftModelModeListSource.availableModes,
+                                        presetId: activePresetId,
+                                      })}
+                                    </AcpSelectItemLabel>
+                                  </SelectItem>
+                                ))
+                              : null}
                           </SelectContent>
                         </Select>
                       </FieldControl>
                     </>
                   ) : selectedSession !== null ? (
                     <>
-                      <FieldControl htmlFor="session-model-select" label="Model">
+                      <FieldControl htmlFor="session-model-select" label={sessionModelSelectLabel}>
                         <Select
                           onValueChange={(value) => {
                             if (value !== null) {
@@ -1111,19 +1353,42 @@ export const ProjectChatPage: FC<{
                           }
                         >
                           <SelectTrigger className="w-full" id="session-model-select">
-                            <SelectValue placeholder="Model" />
+                            <SelectValue placeholder={sessionModelSelectLabel}>
+                              {(value) =>
+                                formatAcpSelectValueLabel({
+                                  fallback: sessionModelSelectLabel,
+                                  kind: "model",
+                                  options: selectedSession.availableModels,
+                                  presetId: selectedSession.presetId,
+                                  value,
+                                })
+                              }
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {selectedSession.availableModels.map((model) => (
                               <SelectItem key={model.id} value={model.id}>
-                                {model.name}
+                                <AcpSelectItemLabel
+                                  info={formatAcpSelectOptionInfo({
+                                    kind: "model",
+                                    option: model,
+                                    presetId: selectedSession.presetId,
+                                  })}
+                                >
+                                  {formatAcpSelectOptionLabel({
+                                    kind: "model",
+                                    option: model,
+                                    options: selectedSession.availableModels,
+                                    presetId: selectedSession.presetId,
+                                  })}
+                                </AcpSelectItemLabel>
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
                       </FieldControl>
                       {selectedSession.availableModes.length > 0 ? (
-                        <FieldControl htmlFor="session-mode-select" label="Mode">
+                        <FieldControl htmlFor="session-mode-select" label={sessionModeSelectLabel}>
                           <Select
                             onValueChange={(value) => {
                               if (value !== null) {
@@ -1139,12 +1404,35 @@ export const ProjectChatPage: FC<{
                             }
                           >
                             <SelectTrigger className="w-full" id="session-mode-select">
-                              <SelectValue placeholder="Mode" />
+                              <SelectValue placeholder={sessionModeSelectLabel}>
+                                {(value) =>
+                                  formatAcpSelectValueLabel({
+                                    fallback: sessionModeSelectLabel,
+                                    kind: "mode",
+                                    options: selectedSession.availableModes,
+                                    presetId: selectedSession.presetId,
+                                    value,
+                                  })
+                                }
+                              </SelectValue>
                             </SelectTrigger>
                             <SelectContent>
                               {selectedSession.availableModes.map((mode) => (
                                 <SelectItem key={mode.id} value={mode.id}>
-                                  {mode.name}
+                                  <AcpSelectItemLabel
+                                    info={formatAcpSelectOptionInfo({
+                                      kind: "mode",
+                                      option: mode,
+                                      presetId: selectedSession.presetId,
+                                    })}
+                                  >
+                                    {formatAcpSelectOptionLabel({
+                                      kind: "mode",
+                                      option: mode,
+                                      options: selectedSession.availableModes,
+                                      presetId: selectedSession.presetId,
+                                    })}
+                                  </AcpSelectItemLabel>
                                 </SelectItem>
                               ))}
                             </SelectContent>
@@ -1165,6 +1453,23 @@ export const ProjectChatPage: FC<{
                     Attach
                   </Button>
                 </div>
+
+                {shouldUseDraftSession &&
+                (isPreparingDraftProvider ||
+                  draftPrepareError !== null ||
+                  draftCatalogError !== null) ? (
+                  <p
+                    className={
+                      draftPrepareError !== null || draftCatalogError !== null
+                        ? "text-xs text-destructive"
+                        : "text-xs text-muted-foreground"
+                    }
+                  >
+                    {draftPrepareError ??
+                      draftCatalogError ??
+                      `${draftSession.label} に接続しています...`}
+                  </p>
+                ) : null}
 
                 <Button
                   className="min-w-36"

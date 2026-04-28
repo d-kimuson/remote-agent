@@ -2,7 +2,6 @@ import type { NewSessionResponse } from "@agentclientprotocol/sdk";
 import { createACPProvider, type ACPProvider } from "@mcpc-tech/acp-ai-provider";
 import type { DatabaseSync } from "node:sqlite";
 import { and, eq } from "drizzle-orm";
-import type { ToolSet } from "ai";
 import { array, parse, string } from "valibot";
 
 import {
@@ -442,6 +441,7 @@ export const createSessionStore = ({
   };
 
   const createSession = async ({
+    persistInitial = true,
     projectId,
     preset,
     command,
@@ -450,6 +450,7 @@ export const createSessionStore = ({
     initialModelId,
     initialModeId,
   }: {
+    readonly persistInitial?: boolean;
     readonly projectId: string | null;
     readonly preset: AgentPreset | null;
     readonly command: string;
@@ -461,7 +462,7 @@ export const createSessionStore = ({
     const resolvedCommandPath = await resolveCommand(command);
     if (resolvedCommandPath === null) {
       throw new Error(
-        `Command not found on PATH: ${command}. Install the Codex ACP adapter first.`,
+        `Command not found on PATH: ${command}. Install the selected ACP provider first.`,
       );
     }
 
@@ -519,7 +520,9 @@ export const createSessionStore = ({
       runningPromptCount: 0,
       session,
     });
-    await persistSession(session);
+    if (persistInitial) {
+      await persistSession(session);
+    }
 
     return session;
   };
@@ -557,7 +560,7 @@ export const createSessionStore = ({
     const resolvedCommandPath = await resolveCommand(command);
     if (resolvedCommandPath === null) {
       throw new Error(
-        `Command not found on PATH: ${command}. Install the Codex ACP adapter first.`,
+        `Command not found on PATH: ${command}. Install the selected ACP provider first.`,
       );
     }
 
@@ -739,6 +742,7 @@ export const createSessionStore = ({
       await persistSession(entry.session);
     }
 
+    await persistSession(entry.session);
     await persistMessage({
       sessionId,
       message: buildMessage({ role: "user", text: effectivePrompt, rawEvents: [], kind: "user" }),
@@ -751,7 +755,7 @@ export const createSessionStore = ({
         const streamed = await collectPromptStream({
           provider: {
             languageModel: () => entry.provider.languageModel(),
-            tools: (entry.provider.tools ?? {}) as ToolSet,
+            tools: entry.provider.tools ?? {},
           },
           prompt: effectivePrompt,
           sessionId,
@@ -884,6 +888,7 @@ export const listSessionMessages = async (sessionId: string): Promise<readonly C
 };
 
 export const createSession = async (options: {
+  readonly persistInitial?: boolean;
   readonly projectId: string | null;
   readonly preset: AgentPreset | null;
   readonly command: string;
@@ -893,6 +898,18 @@ export const createSession = async (options: {
   readonly initialModeId?: string | null;
 }): Promise<SessionSummary> => {
   return getSessionStore().createSession(options);
+};
+
+export const createPreparedSession = async (options: {
+  readonly projectId: string | null;
+  readonly preset: AgentPreset | null;
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly cwd: string;
+  readonly initialModelId?: string | null;
+  readonly initialModeId?: string | null;
+}): Promise<SessionSummary> => {
+  return getSessionStore().createSession({ ...options, persistInitial: false });
 };
 
 export const loadSession = async (options: {

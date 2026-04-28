@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { honoApp } from "../app.ts";
 
 describe("acpRoutes", () => {
-  test("exposes only the Codex preset in app info", async () => {
+  test("exposes supported agent presets in app info", async () => {
     const response = await honoApp.request("/api/info");
     const payload: unknown = await response.json();
 
@@ -13,6 +13,28 @@ describe("acpRoutes", () => {
         {
           id: "codex",
           label: "Codex",
+          command: "codex-acp",
+          modelSelectLabel: "Model / Effort",
+        },
+        {
+          id: "claude-code",
+          label: "Claude Code",
+          command: "claude-agent-acp",
+        },
+        {
+          id: "copilot-cli",
+          label: "Copilot CLI",
+          command: "copilot",
+        },
+        {
+          id: "pi-coding-agent",
+          label: "pi-coding-agent",
+          command: "pi-acp",
+        },
+        {
+          id: "cursor-cli",
+          label: "Cursor CLI",
+          command: "agent",
         },
       ],
     });
@@ -41,7 +63,7 @@ describe("acpRoutes", () => {
     expect(response.headers.get("content-type")).toContain("text/event-stream");
   });
 
-  test("rejects session creation requests for non-Codex presets", async () => {
+  test("rejects session creation requests for unknown presets", async () => {
     const response = await honoApp.request("/api/acp/sessions", {
       method: "POST",
       headers: {
@@ -49,7 +71,7 @@ describe("acpRoutes", () => {
       },
       body: JSON.stringify({
         projectId: null,
-        presetId: "pi",
+        presetId: "unknown-agent",
         command: null,
         argsText: "",
         cwd: null,
@@ -59,7 +81,7 @@ describe("acpRoutes", () => {
 
     expect(response.status).toBe(400);
     expect(payload).toEqual({
-      error: "Only the Codex preset is currently supported.",
+      error: "Unknown ACP provider preset: unknown-agent",
     });
   });
 });

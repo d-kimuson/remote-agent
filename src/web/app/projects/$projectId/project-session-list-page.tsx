@@ -8,14 +8,23 @@ import { Badge } from "../../../components/ui/badge.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import { Input } from "../../../components/ui/input.tsx";
 import {
+  fetchAppInfo,
+  fetchAgentProviders,
   fetchProject,
   fetchResumableSessions,
   fetchSessions,
   loadSessionRequest,
 } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
-import { resolveSessionListTitle } from "./chat-state.pure.ts";
+import { defaultPresetId, resolveSessionListTitle } from "./chat-state.pure.ts";
 import { LoadSessionDialog } from "./load-session-dialog.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../../components/ui/select.tsx";
 import {
   filterSessionsByQuery,
   sessionStatusBadgeClassName,
@@ -25,7 +34,12 @@ import {
   sortSessionsNewestFirst,
 } from "./project-session-list.pure.ts";
 import { ProjectMenuContent } from "./project-menu-content.tsx";
-import { projectQueryKey, sessionsQueryKey } from "./queries.ts";
+import {
+  agentProvidersQueryKey,
+  appInfoQueryKey,
+  projectQueryKey,
+  sessionsQueryKey,
+} from "./queries.ts";
 
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat("ja-JP", {
@@ -76,11 +90,24 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
   });
+  const { data: appInfoData } = useSuspenseQuery({
+    queryKey: appInfoQueryKey,
+    queryFn: fetchAppInfo,
+  });
+  const { data: providerData } = useSuspenseQuery({
+    queryKey: agentProvidersQueryKey,
+    queryFn: fetchAgentProviders,
+  });
   const { data: sessionsData } = useSuspenseQuery({
     queryKey: sessionsQueryKey,
     queryFn: fetchSessions,
   });
   const [query, setQuery] = useState("");
+  const selectablePresets = useMemo(
+    () => providerData.providers.filter((entry) => entry.enabled).map((entry) => entry.preset),
+    [providerData.providers],
+  );
+  const [loadPresetId, setLoadPresetId] = useState(() => defaultPresetId(selectablePresets));
   const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
   const projectSessions = useMemo(
     () => sessionsData.sessions.filter((session) => session.projectId === projectId),
@@ -124,7 +151,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     setIsLoadSessionDialogOpen(true);
     discoverResumableSessionsMutation.mutate({
       projectId,
-      presetId: "codex",
+      presetId: loadPresetId,
       cwd: projectData.project.workingDirectory,
     });
   };
@@ -140,7 +167,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
   }) => {
     const response = await loadSessionMutation.mutateAsync({
       projectId,
-      presetId: "codex",
+      presetId: loadPresetId,
       sessionId: targetSessionId,
       cwd: projectData.project.workingDirectory,
       title,
@@ -198,8 +225,29 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
               <Plus className="size-4" />
               新規セッション
             </Link>
+            <Select
+              disabled={selectablePresets.length === 0}
+              onValueChange={(value) => {
+                if (value !== null) {
+                  setLoadPresetId(value);
+                }
+              }}
+              value={loadPresetId}
+            >
+              <SelectTrigger className="w-full md:w-48" aria-label="読み込み provider">
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectablePresets.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Button
               className="w-full md:w-auto"
+              disabled={selectablePresets.length === 0}
               onClick={handleOpenLoadSessionDialog}
               type="button"
               variant="outline"
@@ -243,6 +291,10 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
               updatedAt: session.updatedAt ?? null,
             });
           }}
+          providerLabel={
+            appInfoData.agentPresets.find((preset) => preset.id === loadPresetId)?.label ??
+            loadPresetId
+          }
           sessions={discoverResumableSessionsMutation.data?.sessions ?? []}
         />
       ) : null}

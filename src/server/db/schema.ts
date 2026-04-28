@@ -1,4 +1,4 @@
-import { index, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 export const projectsTable = sqliteTable(
   "projects",
@@ -35,6 +35,36 @@ export const sessionsTable = sqliteTable(
   (table) => [
     index("idx_sessions_created_at").on(table.createdAt),
     index("idx_sessions_project_id").on(table.projectId),
+  ],
+);
+
+export const enabledAgentProvidersTable = sqliteTable(
+  "enabled_agent_providers",
+  {
+    presetId: text("preset_id").primaryKey(),
+    enabledAt: text("enabled_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [index("idx_enabled_agent_providers_updated_at").on(table.updatedAt)],
+);
+
+export const agentProviderCatalogsTable = sqliteTable(
+  "agent_provider_catalogs",
+  {
+    presetId: text("preset_id").notNull(),
+    cwd: text("cwd").notNull(),
+    availableModesJson: text("available_modes_json").notNull(),
+    availableModelsJson: text("available_models_json").notNull(),
+    currentModeId: text("current_mode_id"),
+    currentModelId: text("current_model_id"),
+    lastError: text("last_error"),
+    refreshedAt: text("refreshed_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.presetId, table.cwd] }),
+    index("idx_agent_provider_catalogs_preset_id").on(table.presetId),
+    index("idx_agent_provider_catalogs_updated_at").on(table.updatedAt),
   ],
 );
 

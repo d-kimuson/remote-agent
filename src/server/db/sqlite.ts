@@ -44,6 +44,34 @@ const initializeSchema = (client: DatabaseSync): void => {
     CREATE INDEX IF NOT EXISTS idx_sessions_project_id
       ON sessions (project_id);
 
+    CREATE TABLE IF NOT EXISTS enabled_agent_providers (
+      preset_id TEXT PRIMARY KEY NOT NULL,
+      enabled_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_enabled_agent_providers_updated_at
+      ON enabled_agent_providers (updated_at);
+
+    CREATE TABLE IF NOT EXISTS agent_provider_catalogs (
+      preset_id TEXT NOT NULL,
+      cwd TEXT NOT NULL,
+      available_modes_json TEXT NOT NULL,
+      available_models_json TEXT NOT NULL,
+      current_mode_id TEXT,
+      current_model_id TEXT,
+      last_error TEXT,
+      refreshed_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (preset_id, cwd)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_agent_provider_catalogs_preset_id
+      ON agent_provider_catalogs (preset_id);
+
+    CREATE INDEX IF NOT EXISTS idx_agent_provider_catalogs_updated_at
+      ON agent_provider_catalogs (updated_at);
+
     CREATE TABLE IF NOT EXISTS session_messages (
       id TEXT PRIMARY KEY NOT NULL,
       session_id TEXT NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE ON UPDATE CASCADE,

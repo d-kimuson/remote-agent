@@ -26,9 +26,19 @@ export const LoadSessionDialog: FC<{
   readonly isLoading: boolean;
   readonly isLoadingSession: boolean;
   readonly error: Error | null;
+  readonly providerLabel: string;
   readonly onLoadSession: (session: ResumableSessionCandidate) => void;
   readonly onClose: () => void;
-}> = ({ capability, sessions, isLoading, isLoadingSession, error, onLoadSession, onClose }) => (
+}> = ({
+  capability,
+  sessions,
+  isLoading,
+  isLoadingSession,
+  error,
+  providerLabel,
+  onLoadSession,
+  onClose,
+}) => (
   <Dialog
     onOpenChange={(open) => {
       if (!open) {
@@ -39,7 +49,7 @@ export const LoadSessionDialog: FC<{
   >
     <DialogContent className="max-w-2xl">
       <DialogHeader>
-        <DialogTitle>Load Codex session</DialogTitle>
+        <DialogTitle>Load {providerLabel} session</DialogTitle>
         <DialogDescription>Select a session from the current working directory.</DialogDescription>
       </DialogHeader>
 

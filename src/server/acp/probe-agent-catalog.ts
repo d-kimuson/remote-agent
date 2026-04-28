@@ -32,7 +32,7 @@ export const probeAgentModelCatalog = async (options: {
   const resolvedCommandPath = await resolveCommandPath(preset.command);
   if (resolvedCommandPath === null) {
     throw new Error(
-      `Command not found on PATH: ${preset.command}. Install the Codex ACP adapter first.`,
+      `Command not found on PATH: ${preset.command}. Install the ${preset.label} ACP adapter first.`,
     );
   }
 

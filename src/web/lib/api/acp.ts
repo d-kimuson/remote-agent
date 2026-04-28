@@ -2,12 +2,15 @@ import { parse } from "valibot";
 
 import {
   agentModelCatalogResponseSchema,
+  agentProvidersResponseSchema,
   appInfoSchema,
+  checkAgentProviderRequestSchema,
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
   filesystemTreeResponseSchema,
   loadSessionRequestSchema,
   messageResponseSchema,
+  prepareAgentSessionResponseSchema,
   projectResponseSchema,
   projectsResponseSchema,
   resumableSessionsResponseSchema,
@@ -16,7 +19,9 @@ import {
   sessionsResponseSchema,
   uploadAttachmentsResponseSchema,
   type AgentModelCatalogResponse,
+  type AgentProvidersResponse,
   type AppInfo,
+  type CheckAgentProviderRequest,
   type CreateProjectRequest,
   type CreateSessionRequest,
   type DirectoryListingResponse,
@@ -24,6 +29,8 @@ import {
   type FilesystemTreeResponse,
   type LoadSessionRequest,
   type MessageResponse,
+  type PrepareAgentSessionRequest,
+  type PrepareAgentSessionResponse,
   type ProjectResponse,
   type ProjectsResponse,
   type ResumableSessionsResponse,
@@ -32,6 +39,7 @@ import {
   type SessionsResponse,
   type UploadAttachmentsResponse,
   type UpdateSessionRequest,
+  type UpdateAgentProviderRequest,
 } from "../../../shared/acp.ts";
 import { apiFetch, honoClient } from "./client.ts";
 
@@ -99,6 +107,33 @@ export const fetchSessions = async (): Promise<SessionsResponse> => {
   return parse(sessionsResponseSchema, await response.json());
 };
 
+export const fetchAgentProviders = async (): Promise<AgentProvidersResponse> => {
+  const response = await honoClient.acp.providers.$get();
+  return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const updateAgentProviderRequest = async (
+  presetId: string,
+  request: UpdateAgentProviderRequest,
+): Promise<AgentProvidersResponse> => {
+  const response = await honoClient.acp.providers[":presetId"].$patch({
+    param: { presetId },
+    json: request,
+  });
+  return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const checkAgentProviderRequest = async (
+  presetId: string,
+  request: CheckAgentProviderRequest,
+): Promise<AgentModelCatalogResponse> => {
+  const response = await honoClient.acp.providers[":presetId"].check.$post({
+    param: { presetId },
+    json: parse(checkAgentProviderRequestSchema, request),
+  });
+  return parse(agentModelCatalogResponseSchema, await response.json());
+};
+
 export const fetchAgentModelCatalog = async (input: {
   readonly projectId: string;
   readonly presetId: string;
@@ -142,6 +177,13 @@ export const createSessionRequest = async (
   return parse(sessionResponseSchema, await response.json());
 };
 
+export const prepareAgentSessionRequest = async (
+  request: PrepareAgentSessionRequest,
+): Promise<PrepareAgentSessionResponse> => {
+  const response = await honoClient.acp.agent.prepare.$post({ json: request });
+  return parse(prepareAgentSessionResponseSchema, await response.json());
+};
+
 export const loadSessionRequest = async (request: LoadSessionRequest): Promise<SessionResponse> => {
   const response = await honoClient.acp.sessions.load.$post({
     json: parse(loadSessionRequestSchema, request),
@@ -178,6 +220,27 @@ export const sendPromptRequest = async (
 ): Promise<MessageResponse> => {
   const response = await honoClient.acp.sessions[":sessionId"].messages.$post({
     param: { sessionId },
+    json: {
+      prompt: request.prompt,
+      attachmentIds: [...request.attachmentIds],
+      ...(request.modelId !== undefined ? { modelId: request.modelId } : {}),
+      ...(request.modeId !== undefined ? { modeId: request.modeId } : {}),
+    },
+  });
+  return parse(messageResponseSchema, await response.json());
+};
+
+export const sendPreparedPromptRequest = async (
+  prepareId: string,
+  request: {
+    readonly prompt: string;
+    readonly attachmentIds: readonly string[];
+    readonly modelId?: string | null;
+    readonly modeId?: string | null;
+  },
+): Promise<MessageResponse> => {
+  const response = await honoClient.acp.sessions.prepared[":prepareId"].messages.$post({
+    param: { prepareId },
     json: {
       prompt: request.prompt,
       attachmentIds: [...request.attachmentIds],

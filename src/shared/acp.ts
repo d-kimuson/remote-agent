@@ -20,6 +20,8 @@ export const agentPresetSchema = object({
   description: pipe(string(), trim()),
   command: pipe(string(), trim()),
   args: array(pipe(string(), trim())),
+  modelSelectLabel: optional(pipe(string(), trim())),
+  modeSelectLabel: optional(pipe(string(), trim())),
 });
 
 export type AgentPreset = InferOutput<typeof agentPresetSchema>;
@@ -285,9 +287,53 @@ export const agentModelCatalogResponseSchema = object({
   availableModes: array(modeOptionSchema),
   currentModelId: nullable(optional(pipe(string(), trim()))),
   currentModeId: nullable(optional(pipe(string(), trim()))),
+  lastError: nullable(optional(string())),
 });
 
 export type AgentModelCatalogResponse = InferOutput<typeof agentModelCatalogResponseSchema>;
+
+export const agentProviderStatusSchema = object({
+  preset: agentPresetSchema,
+  enabled: boolean(),
+  enabledAt: nullable(optional(pipe(string(), trim()))),
+  updatedAt: nullable(optional(pipe(string(), trim()))),
+});
+
+export type AgentProviderStatus = InferOutput<typeof agentProviderStatusSchema>;
+
+export const agentProvidersResponseSchema = object({
+  providers: array(agentProviderStatusSchema),
+});
+
+export type AgentProvidersResponse = InferOutput<typeof agentProvidersResponseSchema>;
+
+export const updateAgentProviderRequestSchema = object({
+  enabled: boolean(),
+});
+
+export type UpdateAgentProviderRequest = InferOutput<typeof updateAgentProviderRequestSchema>;
+
+export const checkAgentProviderRequestSchema = object({
+  cwd: nullable(optional(pipe(string(), trim()))),
+});
+
+export type CheckAgentProviderRequest = InferOutput<typeof checkAgentProviderRequestSchema>;
+
+export const prepareAgentSessionRequestSchema = object({
+  projectId: nullable(optional(pipe(string(), trim()))),
+  presetId: pipe(string(), trim()),
+  cwd: nullable(optional(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
+});
+
+export type PrepareAgentSessionRequest = InferOutput<typeof prepareAgentSessionRequestSchema>;
+
+export const prepareAgentSessionResponseSchema = object({
+  prepareId: pipe(string(), trim()),
+});
+
+export type PrepareAgentSessionResponse = InferOutput<typeof prepareAgentSessionResponseSchema>;
 
 export const resumeCapabilitySchema = object({
   loadSession: boolean(),
@@ -423,6 +469,11 @@ export const acpSseEventSchema = union([
   object({
     type: literal("session_removed"),
     sessionId: pipe(string(), trim()),
+  }),
+  object({
+    type: literal("agent_catalog_updated"),
+    presetId: pipe(string(), trim()),
+    cwd: pipe(string(), trim()),
   }),
 ]);
 

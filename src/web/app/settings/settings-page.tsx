@@ -1,7 +1,10 @@
 import { useEffect, useState, type FC } from "react";
+import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
 
+import type { AgentProvidersResponse } from "../../../shared/acp.ts";
 import { Badge } from "../../components/ui/badge.tsx";
 import { Button } from "../../components/ui/button.tsx";
+import { Checkbox } from "../../components/ui/checkbox.tsx";
 import {
   Card,
   CardContent,
@@ -19,6 +22,12 @@ import {
 } from "../../components/ui/select.tsx";
 import { parseThemePreference, type ThemePreference } from "../../lib/theme.pure.ts";
 import { useTheme } from "../../lib/theme.tsx";
+import {
+  checkAgentProviderRequest,
+  fetchAgentProviders,
+  updateAgentProviderRequest,
+} from "../../lib/api/acp.ts";
+import { agentProvidersQueryKey } from "../projects/$projectId/queries.ts";
 import {
   getNotificationPermissionState,
   requestNotificationPermission,
@@ -48,11 +57,73 @@ const themePreferenceChoices = [
 }[];
 
 export const SettingsPage: FC = () => {
+  const queryClient = useQueryClient();
   const { preference, resolvedTheme, setPreference } = useTheme();
+  const { data: providerData } = useSuspenseQuery({
+    queryKey: agentProvidersQueryKey,
+    queryFn: fetchAgentProviders,
+  });
   const [notificationPermission, setNotificationPermission] = useState(
     getNotificationPermissionState,
   );
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [providerCheckState, setProviderCheckState] = useState<
+    Readonly<
+      Record<string, { readonly status: "checking" | "ok" | "error"; readonly message: string }>
+    >
+  >({});
+  const updateProviderMutation = useMutation({
+    mutationFn: ({ enabled, presetId }: { readonly presetId: string; readonly enabled: boolean }) =>
+      updateAgentProviderRequest(presetId, { enabled }),
+    onSuccess: (data) => {
+      queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, data);
+    },
+  });
+  const checkProviderMutation = useMutation({
+    mutationFn: ({ presetId }: { readonly presetId: string }) =>
+      checkAgentProviderRequest(presetId, { cwd: null }),
+  });
+
+  const handleProviderToggle = async ({
+    enabled,
+    presetId,
+  }: {
+    readonly presetId: string;
+    readonly enabled: boolean;
+  }) => {
+    const response = await updateProviderMutation.mutateAsync({ presetId, enabled });
+    if (!enabled) {
+      setProviderCheckState((current) => ({
+        ...current,
+        [presetId]: { status: "ok", message: "Disabled" },
+      }));
+      return;
+    }
+
+    setProviderCheckState((current) => ({
+      ...current,
+      [presetId]: { status: "checking", message: "Checking..." },
+    }));
+    try {
+      const catalog = await checkProviderMutation.mutateAsync({ presetId });
+      setProviderCheckState((current) => ({
+        ...current,
+        [presetId]: {
+          status: "ok",
+          message: `OK · ${String(catalog.availableModels.length)} models · ${String(catalog.availableModes.length)} modes`,
+        },
+      }));
+    } catch (error) {
+      setProviderCheckState((current) => ({
+        ...current,
+        [presetId]: {
+          status: "error",
+          message: error instanceof Error ? error.message : "Check failed",
+        },
+      }));
+    }
+    queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, response);
+  };
 
   useEffect(() => {
     const syncNotificationPermission = () => {
@@ -104,6 +175,59 @@ export const SettingsPage: FC = () => {
 
   return (
     <div className="space-y-6">
+      <Card className="app-panel">
+        <CardHeader>
+          <CardTitle>Providers</CardTitle>
+          <CardDescription>プロジェクトで利用する ACP provider を選択します。</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {providerData.providers.map((entry) => (
+            <label
+              className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 px-3 py-3"
+              htmlFor={`provider-${entry.preset.id}`}
+              key={entry.preset.id}
+            >
+              <Checkbox
+                checked={entry.enabled}
+                disabled={updateProviderMutation.isPending || checkProviderMutation.isPending}
+                id={`provider-${entry.preset.id}`}
+                onCheckedChange={(checked) => {
+                  void handleProviderToggle({
+                    presetId: entry.preset.id,
+                    enabled: checked === true,
+                  });
+                }}
+              />
+              <span className="min-w-0 flex-1 space-y-1">
+                <span className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{entry.preset.label}</span>
+                  <Badge variant={entry.enabled ? "default" : "outline"}>
+                    {entry.enabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                </span>
+                <span className="block text-sm text-muted-foreground">
+                  {entry.preset.description}
+                </span>
+                <span className="block break-all font-mono text-xs text-muted-foreground">
+                  {entry.preset.command} {entry.preset.args.join(" ")}
+                </span>
+                {providerCheckState[entry.preset.id] === undefined ? null : (
+                  <span
+                    className={
+                      providerCheckState[entry.preset.id]?.status === "error"
+                        ? "block text-xs text-destructive"
+                        : "block text-xs text-muted-foreground"
+                    }
+                  >
+                    {providerCheckState[entry.preset.id]?.message}
+                  </span>
+                )}
+              </span>
+            </label>
+          ))}
+        </CardContent>
+      </Card>
+
       <Card className="app-panel">
         <CardHeader>
           <CardTitle>Appearance</CardTitle>

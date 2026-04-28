@@ -1,6 +1,7 @@
 import type { SessionSummary } from "../../../../shared/acp.ts";
 
 export const appInfoQueryKey = ["app-info"] as const;
+export const agentProvidersQueryKey = ["agent-providers"] as const;
 export const projectsQueryKey = ["projects"] as const;
 export const sessionsQueryKey = ["sessions"] as const;
 export const sessionMessagesQueryKey = (sessionId: string) =>

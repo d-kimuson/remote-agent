@@ -16,15 +16,19 @@ const candidatePaths = (command: string): readonly string[] => {
     return [command];
   }
 
+  const localBinCandidate = path.join(process.cwd(), "node_modules", ".bin", command);
   const pathValue = process.env["PATH"] ?? "";
   if (pathValue.length === 0) {
-    return [];
+    return [localBinCandidate];
   }
 
-  return pathValue
-    .split(path.delimiter)
-    .filter((entry) => entry.length > 0)
-    .map((entry) => path.join(entry, command));
+  return [
+    localBinCandidate,
+    ...pathValue
+      .split(path.delimiter)
+      .filter((entry) => entry.length > 0)
+      .map((entry) => path.join(entry, command)),
+  ];
 };
 
 export const resolveCommandPath = async (command: string): Promise<string | null> => {

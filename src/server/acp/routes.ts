@@ -5,18 +5,24 @@ import { boolean, object, parse } from "valibot";
 import {
   agentModelCatalogQuerySchema,
   agentModelCatalogResponseSchema,
+  agentProvidersResponseSchema,
+  checkAgentProviderRequestSchema,
   createSessionRequestSchema,
   discoverResumableSessionsRequestSchema,
   loadSessionRequestSchema,
   messageResponseSchema,
+  prepareAgentSessionRequestSchema,
+  prepareAgentSessionResponseSchema,
   resumableSessionsResponseSchema,
   sendMessageRequestSchema,
   sessionMessagesResponseSchema,
   sessionResponseSchema,
   sessionsResponseSchema,
+  updateAgentProviderRequestSchema,
   updateSessionRequestSchema,
   type CreateSessionRequest,
   type DiscoverResumableSessionsRequest,
+  type SessionSummary,
 } from "../../shared/acp.ts";
 import { errorResponseSchema, jsonResponse, validationErrorHook } from "../hono-utils.ts";
 import { getProject } from "../project-store.ts";
@@ -25,6 +31,14 @@ import { parseArgsText } from "./args.pure.ts";
 import { probeAgentModelCatalog } from "./probe-agent-catalog.ts";
 import { agentPresets } from "./presets.ts";
 import {
+  getProviderCatalog,
+  markProviderCatalogError,
+  listProviderStatuses,
+  setProviderEnabled,
+  upsertProviderCatalog,
+} from "./provider-catalog-store.ts";
+import {
+  createPreparedSession,
   createSession,
   loadSession,
   listSessionMessages,
@@ -39,12 +53,11 @@ const deleteSessionResponseSchema = object({
   ok: boolean(),
 });
 
-const findPreset = (presetId: string | null | undefined) => {
-  if (presetId === null || presetId === undefined || presetId === "codex") {
-    return agentPresets[0] ?? null;
-  }
+const preparedSessions = new Map<string, Promise<SessionSummary>>();
 
-  return null;
+const findPreset = (presetId: string | null | undefined) => {
+  const id = presetId ?? "codex";
+  return agentPresets.find((preset) => preset.id === id) ?? null;
 };
 
 const resolveAgentCommand = (
@@ -58,11 +71,11 @@ const resolveAgentCommand = (
   const parsedArgs = parseArgsText(request.argsText);
 
   if (preset === null) {
-    throw new Error("Only the Codex preset is currently supported.");
+    throw new Error(`Unknown ACP provider preset: ${request.presetId ?? "codex"}`);
   }
 
   if (request.command !== null && request.command !== undefined) {
-    throw new Error("Custom ACP commands are temporarily disabled. Use the Codex preset.");
+    throw new Error("Custom ACP commands are temporarily disabled. Use a provider preset.");
   }
 
   return {
@@ -88,18 +101,35 @@ const resolveProjectContext = async ({
   };
 };
 
-const resolveCodexPreset = (presetId: string | null | undefined) => {
+const cacheCatalogFromSession = async (session: SessionSummary): Promise<void> => {
+  if (session.presetId === null || session.presetId === undefined) {
+    return;
+  }
+  await upsertProviderCatalog({
+    presetId: session.presetId,
+    cwd: session.cwd,
+    catalog: {
+      availableModels: session.availableModels,
+      availableModes: session.availableModes,
+      currentModelId: session.currentModelId ?? null,
+      currentModeId: session.currentModeId ?? null,
+      lastError: null,
+    },
+  });
+};
+
+const resolvePreset = (presetId: string | null | undefined) => {
   const preset = findPreset(presetId ?? "codex");
 
-  if (preset?.id !== "codex") {
-    throw new Error("Existing session load PoC is currently limited to the Codex preset.");
+  if (preset === null) {
+    throw new Error(`Unknown ACP provider preset: ${presetId ?? "codex"}`);
   }
 
   return preset;
 };
 
-const resolveCodexResumeCommand = (presetId: string | null | undefined) => {
-  const preset = resolveCodexPreset(presetId);
+const resolveResumeCommand = (presetId: string | null | undefined) => {
+  const preset = resolvePreset(presetId);
 
   return {
     preset,
@@ -143,6 +173,72 @@ export const acpRoutes = new Hono()
     },
   )
   .get(
+    "/providers",
+    describeRoute({
+      summary: "List ACP provider presets and enabled state",
+      responses: { 200: jsonResponse("ACP providers", agentProvidersResponseSchema) },
+    }),
+    async (c) => {
+      const response = parse(agentProvidersResponseSchema, {
+        providers: await listProviderStatuses(),
+      });
+      return c.json(response);
+    },
+  )
+  .patch(
+    "/providers/:presetId",
+    describeRoute({
+      summary: "Enable or disable an ACP provider preset",
+      responses: {
+        200: jsonResponse("ACP providers", agentProvidersResponseSchema),
+        400: jsonResponse("ACP provider update error", errorResponseSchema),
+      },
+    }),
+    vValidator("json", updateAgentProviderRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const request = c.req.valid("json");
+        const providers = await setProviderEnabled({
+          presetId: c.req.param("presetId"),
+          enabled: request.enabled,
+        });
+        return c.json(parse(agentProvidersResponseSchema, { providers }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to update provider";
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    "/providers/:presetId/check",
+    describeRoute({
+      summary: "Check ACP provider connectivity and refresh catalog",
+      responses: {
+        200: jsonResponse("Model/mode options", agentModelCatalogResponseSchema),
+        400: jsonResponse("ACP provider check error", errorResponseSchema),
+      },
+    }),
+    vValidator("json", checkAgentProviderRequestSchema, validationErrorHook),
+    async (c) => {
+      const presetId = c.req.param("presetId");
+      const request = c.req.valid("json");
+      const cwd = request.cwd ?? process.cwd();
+      try {
+        const raw = await probeAgentModelCatalog({ cwd, presetId });
+        const catalog = parse(agentModelCatalogResponseSchema, {
+          ...raw,
+          lastError: null,
+        });
+        await upsertProviderCatalog({ presetId, cwd, catalog });
+        return c.json(catalog);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to check provider";
+        await markProviderCatalogError({ presetId, cwd, error: message });
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .get(
     "/agent/model-catalog",
     describeRoute({
       summary: "Probe agent for model and mode list (ephemeral initSession)",
@@ -167,13 +263,72 @@ export const acpRoutes = new Hono()
       }
 
       try {
-        const raw = await probeAgentModelCatalog({
-          cwd: project.workingDirectory,
+        const raw = await getProviderCatalog({
           presetId: request.presetId,
+          cwd: project.workingDirectory,
         });
-        return c.json(parse(agentModelCatalogResponseSchema, raw));
+        return c.json(
+          parse(
+            agentModelCatalogResponseSchema,
+            raw ?? {
+              availableModels: [],
+              availableModes: [],
+              currentModelId: null,
+              currentModeId: null,
+              lastError: null,
+            },
+          ),
+        );
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to probe model catalog";
+        const message = error instanceof Error ? error.message : "failed to read model catalog";
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    "/agent/prepare",
+    describeRoute({
+      summary: "Start an ACP provider session in the background for a draft chat",
+      responses: {
+        202: jsonResponse("Prepared session handle", prepareAgentSessionResponseSchema),
+        400: jsonResponse("ACP prepare error", errorResponseSchema),
+      },
+    }),
+    vValidator("json", prepareAgentSessionRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const request = c.req.valid("json");
+        const preset = resolvePreset(request.presetId);
+        const context = await resolveProjectContext({
+          projectId: request.projectId,
+          cwd: request.cwd,
+        });
+        const prepareId = crypto.randomUUID();
+        const sessionPromise = createPreparedSession({
+          projectId: context.project?.id ?? null,
+          preset,
+          command: preset.command,
+          args: preset.args,
+          cwd: context.cwd,
+          initialModelId: request.modelId ?? null,
+          initialModeId: request.modeId ?? null,
+        }).then(async (session) => {
+          await cacheCatalogFromSession(session);
+          return session;
+        });
+        preparedSessions.set(prepareId, sessionPromise);
+        sessionPromise.catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "failed to prepare agent";
+          void markProviderCatalogError({
+            presetId: preset.id,
+            cwd: context.cwd,
+            error: message,
+          });
+          preparedSessions.delete(prepareId);
+        });
+        return c.json(parse(prepareAgentSessionResponseSchema, { prepareId }), 202);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to prepare agent";
         return c.json({ error: message }, 400);
       }
     },
@@ -202,7 +357,7 @@ export const acpRoutes = new Hono()
     async (c) => {
       try {
         const request = c.req.valid("query") satisfies DiscoverResumableSessionsRequest;
-        const resolved = resolveCodexResumeCommand(request.presetId);
+        const resolved = resolveResumeCommand(request.presetId);
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,
@@ -251,6 +406,7 @@ export const acpRoutes = new Hono()
           initialModelId: request.modelId ?? null,
           initialModeId: request.modeId ?? null,
         });
+        await cacheCatalogFromSession(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
@@ -272,7 +428,7 @@ export const acpRoutes = new Hono()
     async (c) => {
       try {
         const request = c.req.valid("json");
-        const resolved = resolveCodexResumeCommand(request.presetId);
+        const resolved = resolveResumeCommand(request.presetId);
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,
@@ -307,6 +463,33 @@ export const acpRoutes = new Hono()
         return c.json(response, 201);
       } catch (error) {
         const message = error instanceof Error ? error.message : "failed to load session";
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    "/sessions/prepared/:prepareId/messages",
+    describeRoute({
+      summary: "Send message to a prepared ACP session",
+      responses: {
+        200: jsonResponse("ACP message response", messageResponseSchema),
+        400: jsonResponse("ACP prepared message error", errorResponseSchema),
+      },
+    }),
+    vValidator("json", sendMessageRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const sessionPromise = preparedSessions.get(c.req.param("prepareId"));
+        if (sessionPromise === undefined) {
+          throw new Error(`Prepared session not found: ${c.req.param("prepareId")}`);
+        }
+        const session = await sessionPromise;
+        const request = c.req.valid("json");
+        const response = parse(messageResponseSchema, await sendPrompt(session.sessionId, request));
+        return c.json(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : "failed to send prompt to prepared session";
         return c.json({ error: message }, 400);
       }
     },

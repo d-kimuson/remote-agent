@@ -1,4 +1,4 @@
-import { streamText, type ToolSet } from "ai";
+import { streamText } from "ai";
 
 import type { ChatMessage, ChatMessageKind, RawEvent } from "../../shared/acp.ts";
 import { normalizeRawEvent } from "./raw-event.pure.ts";
@@ -65,13 +65,13 @@ const toChatMessage = (row: PromptStreamInsertRow): ChatMessage => ({
 
 const streamBufferKey = (kind: StreamBuffer, id: string): string => `${kind}:${id}`;
 
-export const collectPromptStream = async <TOOLS extends ToolSet>(input: {
+export const collectPromptStream = async (input: {
   readonly provider: {
     /**
      * Vercel `ai` SDK `LanguageModel` (the value for `streamText` `model`).
      */
     readonly languageModel: () => Parameters<typeof streamText>[0]["model"];
-    readonly tools: TOOLS;
+    readonly tools: Parameters<typeof streamText>[0]["tools"];
   };
   readonly prompt: string;
   readonly sessionId: string;
