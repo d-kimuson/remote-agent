@@ -23,7 +23,7 @@
     "check": "gatecheck check",
     "db:generate": "pnpm migrate:generate",
     "dev": "run-p dev:web dev:server",
-    "dev:server": "portless --name 'acp-hono' node --watch src/server/main.ts",
+    "dev:server": "RA_DIR=./data/.ra-dir portless --name 'acp-hono' node --watch src/server/main.ts",
     "debug:acp": "node --experimental-strip-types src/scripts/debug-acp.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get acp-hono) portless --name 'acp-vite' vite",
     "fix": "run-p fix:*",
