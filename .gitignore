@@ -67,6 +67,7 @@ web_modules/
 
 # dotenv environment variable files
 .env
+.env.local
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -157,3 +158,6 @@ docs/tmp/*
 
 # agent
 .pi
+
+# ra
+data/.ra-dir/data.sql
