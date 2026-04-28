@@ -9,8 +9,8 @@ export default defineConfig({
   target: 'node24',
   format: 'esm',
   dts: false,
-  clean: false,
-  sourcemap: true,
+  clean: true,
+  sourcemap: false,
   banner: '#!/usr/bin/env node',
   copy: [{ from: 'drizzle/migrations', to: 'dist' }],
   deps: {
