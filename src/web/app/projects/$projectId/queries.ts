@@ -16,6 +16,9 @@ export const resumableSessionsQueryKey = (projectId: string) =>
 export const agentModelCatalogQueryKey = (projectId: string, presetId: string) =>
   ["acp", "agent-model-catalog", projectId, presetId] as const;
 
+export const agentSlashCommandsQueryKey = (projectId: string, presetId: string) =>
+  ["acp", "agent-slash-commands", projectId, presetId] as const;
+
 export const selectedSessionFrom = (
   sessions: readonly SessionSummary[],
   selectedSessionId: string | null,

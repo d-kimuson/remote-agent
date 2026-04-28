@@ -59,6 +59,7 @@ import {
   deleteSessionRequest,
   fetchAgentModelCatalog,
   fetchAgentProviders,
+  fetchAgentSlashCommands,
   fetchAppInfo,
   fetchProject,
   fetchProjectSettings,
@@ -101,6 +102,7 @@ import { mergeToolCallResultMessages } from "./transcript-tool-merge.pure.ts";
 import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
+  agentSlashCommandsQueryKey,
   appInfoQueryKey,
   projectQueryKey,
   projectSettingsQueryKey,
@@ -558,6 +560,16 @@ export const ProjectChatPage: FC<{
     presetId: activePresetId,
     presets: appInfoData.agentPresets,
   });
+  const slashCommandPresetId = selectedSession?.presetId ?? activePresetId;
+  const { data: slashCommandsData } = useSuspenseQuery({
+    queryKey: agentSlashCommandsQueryKey(projectId, slashCommandPresetId),
+    queryFn: () =>
+      fetchAgentSlashCommands({
+        projectId,
+        presetId: slashCommandPresetId,
+      }),
+    staleTime: 60_000,
+  });
   const selectedSessionPreset = presetFrom({
     presetId: selectedSession?.presetId,
     presets: appInfoData.agentPresets,
@@ -742,14 +754,20 @@ export const ProjectChatPage: FC<{
     selectedSessionModelCatalog !== null &&
     selectedSession.presetId !== null &&
     selectedSession.presetId !== undefined;
-  const selectedSessionModelOptions =
-    selectedSession?.availableModels.length === 0 && selectedSessionCatalogMatches
-      ? selectedSessionModelCatalog.availableModels
-      : (selectedSession?.availableModels ?? []);
-  const selectedSessionModeOptions =
-    selectedSession?.availableModes.length === 0 && selectedSessionCatalogMatches
-      ? selectedSessionModelCatalog.availableModes
-      : (selectedSession?.availableModes ?? []);
+  const selectedSessionModelOptions = useMemo(
+    () =>
+      selectedSession?.availableModels.length === 0 && selectedSessionCatalogMatches
+        ? selectedSessionModelCatalog.availableModels
+        : (selectedSession?.availableModels ?? []),
+    [selectedSession, selectedSessionCatalogMatches, selectedSessionModelCatalog],
+  );
+  const selectedSessionModeOptions = useMemo(
+    () =>
+      selectedSession?.availableModes.length === 0 && selectedSessionCatalogMatches
+        ? selectedSessionModelCatalog.availableModes
+        : (selectedSession?.availableModes ?? []),
+    [selectedSession, selectedSessionCatalogMatches, selectedSessionModelCatalog],
+  );
   const selectedSessionAvailableModels = useMemo(
     () =>
       orderModelOptions({
@@ -1711,7 +1729,7 @@ export const ProjectChatPage: FC<{
             </div>
 
             <div className="bg-transparent px-1 pt-0 pb-1 md:px-2 md:pb-1.5">
-              <div className="overflow-hidden">
+              <div className="overflow-visible">
                 {attachedFiles.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
                     {attachedFiles.map((attachment) => (
@@ -1788,6 +1806,7 @@ export const ProjectChatPage: FC<{
                   }}
                   onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
+                  slashCommands={slashCommandsData?.commands ?? []}
                 />
 
                 <div className="flex min-h-9 items-end gap-1.5 bg-transparent px-1.5 py-1 sm:px-2">

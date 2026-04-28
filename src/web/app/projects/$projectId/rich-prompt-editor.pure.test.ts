@@ -3,7 +3,10 @@ import { describe, expect, test } from "vitest";
 import {
   appendRichPromptText,
   applyRichPromptFormat,
+  filterSlashCommands,
   replaceRichPromptSelection,
+  replaceSlashCommandQuery,
+  slashCommandQueryFromPrompt,
 } from "./rich-prompt-editor.pure.ts";
 
 describe("rich-prompt-editor.pure", () => {
@@ -77,5 +80,41 @@ describe("rich-prompt-editor.pure", () => {
     expect(appendRichPromptText({ value: "hello", addition: "world" })).toBe("hello world");
     expect(appendRichPromptText({ value: "hello ", addition: "world" })).toBe("hello world");
     expect(appendRichPromptText({ value: "hello", addition: " " })).toBe("hello");
+  });
+
+  test("detects slash command queries only at the active token", () => {
+    expect(slashCommandQueryFromPrompt({ value: "/", selection: { start: 1, end: 1 } })).toBe("");
+    expect(slashCommandQueryFromPrompt({ value: "/rev", selection: { start: 4, end: 4 } })).toBe(
+      "rev",
+    );
+    expect(
+      slashCommandQueryFromPrompt({ value: "hello /rev", selection: { start: 10, end: 10 } }),
+    ).toBeNull();
+    expect(
+      slashCommandQueryFromPrompt({ value: "/review now", selection: { start: 11, end: 11 } }),
+    ).toBeNull();
+  });
+
+  test("filters and inserts slash command completions", () => {
+    const commands = [
+      { name: "test", description: "Run tests", inputHint: null },
+      { name: "review", description: "Review changes", inputHint: "scope" },
+      { name: "research", description: "Research codebase", inputHint: null },
+    ];
+
+    expect(filterSlashCommands({ commands, query: "re" }).map((command) => command.name)).toEqual([
+      "research",
+      "review",
+    ]);
+    expect(
+      replaceSlashCommandQuery({
+        value: "/rev",
+        selection: { start: 4, end: 4 },
+        commandName: "review",
+      }),
+    ).toEqual({
+      value: "/review ",
+      selection: { start: 8, end: 8 },
+    });
   });
 });

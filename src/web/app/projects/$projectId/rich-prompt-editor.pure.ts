@@ -1,3 +1,5 @@
+import type { SlashCommand } from "../../../../shared/acp.ts";
+
 export type RichPromptFormat = "bold" | "italic" | "code" | "bulletList" | "quote";
 
 export type RichPromptSelection = {
@@ -148,4 +150,61 @@ export const appendRichPromptText = ({
 
   const separator = /[\s\n]$/.test(value) ? "" : " ";
   return `${value}${separator}${trimmedAddition}`;
+};
+
+export const slashCommandQueryFromPrompt = ({
+  selection,
+  value,
+}: {
+  readonly value: string;
+  readonly selection: RichPromptSelection;
+}): string | null => {
+  if (selection.start !== selection.end) {
+    return null;
+  }
+
+  const beforeCaret = value.slice(0, selection.start);
+  const activeLineStart = beforeCaret.lastIndexOf("\n") + 1;
+  const activeLineBeforeCaret = beforeCaret.slice(activeLineStart);
+  const match = /^\/([A-Za-z0-9_-]*)$/.exec(activeLineBeforeCaret);
+
+  return match?.[1] ?? null;
+};
+
+export const filterSlashCommands = ({
+  commands,
+  query,
+}: {
+  readonly commands: readonly SlashCommand[];
+  readonly query: string;
+}): readonly SlashCommand[] => {
+  const normalizedQuery = query.toLowerCase();
+  return commands
+    .filter((command) => command.name.toLowerCase().startsWith(normalizedQuery))
+    .sort((left, right) => left.name.localeCompare(right.name));
+};
+
+export const replaceSlashCommandQuery = ({
+  commandName,
+  selection,
+  value,
+}: {
+  readonly value: string;
+  readonly selection: RichPromptSelection;
+  readonly commandName: string;
+}): RichPromptEditResult => {
+  const beforeCaret = value.slice(0, selection.start);
+  const activeLineStart = beforeCaret.lastIndexOf("\n") + 1;
+  const nextValue = `${value.slice(0, activeLineStart)}/${commandName} ${value.slice(
+    selection.end,
+  )}`;
+  const nextOffset = activeLineStart + commandName.length + 2;
+
+  return {
+    value: nextValue,
+    selection: {
+      start: nextOffset,
+      end: nextOffset,
+    },
+  };
 };

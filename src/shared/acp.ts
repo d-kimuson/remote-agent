@@ -326,6 +326,28 @@ export const agentModelCatalogResponseSchema = object({
 
 export type AgentModelCatalogResponse = InferOutput<typeof agentModelCatalogResponseSchema>;
 
+export const slashCommandSchema = object({
+  name: pipe(string(), trim()),
+  description: pipe(string(), trim()),
+  inputHint: nullable(optional(pipe(string(), trim()))),
+});
+
+export type SlashCommand = InferOutput<typeof slashCommandSchema>;
+
+export const agentSlashCommandsQuerySchema = object({
+  projectId: pipe(string(), trim()),
+  presetId: optional(pipe(string(), trim()), "codex"),
+});
+
+export type AgentSlashCommandsQuery = InferOutput<typeof agentSlashCommandsQuerySchema>;
+
+export const agentSlashCommandsResponseSchema = object({
+  commands: array(slashCommandSchema),
+  lastError: nullable(optional(string())),
+});
+
+export type AgentSlashCommandsResponse = InferOutput<typeof agentSlashCommandsResponseSchema>;
+
 export const agentProviderStatusSchema = object({
   preset: agentPresetSchema,
   enabled: boolean(),

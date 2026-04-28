@@ -2,19 +2,26 @@ import { Bold, Code2, Italic, List, Quote, type LucideIcon } from "lucide-react"
 import {
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
+  useState,
+  type ChangeEvent,
   type FC,
   type KeyboardEvent,
   type ReactNode,
 } from "react";
 
+import type { SlashCommand } from "../../../../shared/acp.ts";
 import { Button } from "../../../components/ui/button.tsx";
 import { cn } from "../../../lib/utils.ts";
 import {
   applyRichPromptFormat,
+  filterSlashCommands,
+  replaceSlashCommandQuery,
   type RichPromptEditResult,
   type RichPromptFormat,
   type RichPromptSelection,
+  slashCommandQueryFromPrompt,
 } from "./rich-prompt-editor.pure.ts";
 
 type ToolbarItem = {
@@ -41,6 +48,7 @@ export const RichPromptEditor: FC<{
   readonly onSubmit: (value: string) => void;
   readonly onValueReaderReady: (readValue: () => string) => void;
   readonly placeholder: string;
+  readonly slashCommands?: readonly SlashCommand[];
   readonly toolbarTrailing?: ReactNode;
 }> = ({
   className,
@@ -49,10 +57,21 @@ export const RichPromptEditor: FC<{
   onSubmit,
   onValueReaderReady,
   placeholder,
+  slashCommands = [],
   toolbarTrailing,
 }) => {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const valueRef = useRef(externalValue.value);
+  const [slashCommandQuery, setSlashCommandQuery] = useState<string | null>(null);
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+
+  const filteredSlashCommands = useMemo(
+    () =>
+      slashCommandQuery === null
+        ? []
+        : filterSlashCommands({ commands: slashCommands, query: slashCommandQuery }).slice(0, 8),
+    [slashCommandQuery, slashCommands],
+  );
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -64,6 +83,8 @@ export const RichPromptEditor: FC<{
     if (editor.value !== externalValue.value) {
       editor.value = externalValue.value;
     }
+    setSlashCommandQuery(null);
+    setSelectedCommandIndex(0);
   }, [externalValue]);
 
   const applyEditResult = useCallback((result: RichPromptEditResult) => {
@@ -77,6 +98,8 @@ export const RichPromptEditor: FC<{
     valueRef.current = result.value;
     editor.focus();
     editor.setSelectionRange(result.selection.start, result.selection.end);
+    setSlashCommandQuery(slashCommandQueryFromPrompt(result));
+    setSelectedCommandIndex(0);
   }, []);
 
   const readCurrentValue = useCallback((): string => {
@@ -101,6 +124,18 @@ export const RichPromptEditor: FC<{
     };
   }, [readCurrentValue]);
 
+  const refreshSlashCommandQuery = useCallback(() => {
+    const editor = editorRef.current;
+    const value = readCurrentValue();
+    const selection =
+      editor === null
+        ? { start: value.length, end: value.length }
+        : { start: editor.selectionStart, end: editor.selectionEnd };
+
+    setSlashCommandQuery(slashCommandQueryFromPrompt({ value, selection }));
+    setSelectedCommandIndex(0);
+  }, [readCurrentValue]);
+
   const applyFormat = useCallback(
     (format: RichPromptFormat) => {
       applyEditResult(
@@ -114,9 +149,63 @@ export const RichPromptEditor: FC<{
     [applyEditResult, readCurrentSelection, readCurrentValue],
   );
 
+  const insertSlashCommand = useCallback(
+    (command: SlashCommand) => {
+      applyEditResult(
+        replaceSlashCommandQuery({
+          value: readCurrentValue(),
+          selection: readCurrentSelection(),
+          commandName: command.name,
+        }),
+      );
+    },
+    [applyEditResult, readCurrentSelection, readCurrentValue],
+  );
+
+  const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    valueRef.current = event.currentTarget.value;
+    refreshSlashCommandQuery();
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return;
+    }
+
+    if (filteredSlashCommands.length > 0) {
+      const isCommandNavigation = event.metaKey || event.ctrlKey;
+      const isNextCommand = isCommandNavigation && event.key.toLowerCase() === "n";
+      const isPreviousCommand = isCommandNavigation && event.key.toLowerCase() === "p";
+
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setSlashCommandQuery(null);
+        setSelectedCommandIndex(0);
+        return;
+      }
+
+      if (event.key === "ArrowDown" || isNextCommand) {
+        event.preventDefault();
+        setSelectedCommandIndex((current) => (current + 1) % filteredSlashCommands.length);
+        return;
+      }
+
+      if (event.key === "ArrowUp" || isPreviousCommand) {
+        event.preventDefault();
+        setSelectedCommandIndex(
+          (current) => (current + filteredSlashCommands.length - 1) % filteredSlashCommands.length,
+        );
+        return;
+      }
+
+      if (event.key === "Enter" || event.key === "Tab") {
+        event.preventDefault();
+        const command = filteredSlashCommands[selectedCommandIndex] ?? filteredSlashCommands[0];
+        if (command !== undefined) {
+          insertSlashCommand(command);
+        }
+        return;
+      }
     }
 
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
@@ -138,10 +227,26 @@ export const RichPromptEditor: FC<{
     }
   };
 
+  const handleKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    const isCommandNavigation =
+      (event.metaKey || event.ctrlKey) && ["n", "p"].includes(event.key.toLowerCase());
+    const isModifierKey = ["Alt", "Control", "Meta", "Shift"].includes(event.key);
+    if (
+      filteredSlashCommands.length > 0 &&
+      (["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key) ||
+        isModifierKey ||
+        isCommandNavigation)
+    ) {
+      return;
+    }
+
+    refreshSlashCommandQuery();
+  };
+
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border border-input bg-transparent shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20",
+        "overflow-visible rounded-lg border border-input bg-transparent shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20",
         className,
       )}
     >
@@ -180,12 +285,52 @@ export const RichPromptEditor: FC<{
           disabled={disabled}
           autoCapitalize="off"
           autoCorrect="off"
+          onBlur={() => {
+            window.setTimeout(() => {
+              setSlashCommandQuery(null);
+            }, 100);
+          }}
+          onChange={handleChange}
+          onClick={refreshSlashCommandQuery}
           onKeyDown={handleKeyDown}
+          onKeyUp={handleKeyUp}
           placeholder={placeholder}
           ref={editorRef}
           rows={3}
           spellCheck={false}
         />
+        {filteredSlashCommands.length === 0 ? null : (
+          <div className="absolute right-2 bottom-full left-2 z-[60] mb-2 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-lg">
+            {filteredSlashCommands.map((command, index) => (
+              <button
+                className={cn(
+                  "flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors",
+                  index === selectedCommandIndex ? "bg-accent text-accent-foreground" : "",
+                )}
+                key={command.name}
+                onMouseDown={(event) => {
+                  event.preventDefault();
+                }}
+                onClick={() => {
+                  insertSlashCommand(command);
+                }}
+                type="button"
+              >
+                <span className="shrink-0 font-mono text-xs text-muted-foreground">
+                  /{command.name}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{command.description}</span>
+                  {command.inputHint === null || command.inputHint === undefined ? null : (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {command.inputHint}
+                    </span>
+                  )}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

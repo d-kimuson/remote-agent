@@ -3,6 +3,7 @@ import { parse } from "valibot";
 import {
   agentModelCatalogResponseSchema,
   agentProvidersResponseSchema,
+  agentSlashCommandsResponseSchema,
   appInfoSchema,
   checkAgentProviderRequestSchema,
   directoryListingResponseSchema,
@@ -21,6 +22,7 @@ import {
   uploadAttachmentsResponseSchema,
   type AgentModelCatalogResponse,
   type AgentProvidersResponse,
+  type AgentSlashCommandsResponse,
   type AppInfo,
   type CheckAgentProviderRequest,
   type CreateProjectRequest,
@@ -167,6 +169,16 @@ export const fetchAgentModelCatalog = async (input: {
     query: { projectId: input.projectId, presetId: input.presetId },
   });
   return parse(agentModelCatalogResponseSchema, await response.json());
+};
+
+export const fetchAgentSlashCommands = async (input: {
+  readonly projectId: string;
+  readonly presetId: string;
+}): Promise<AgentSlashCommandsResponse> => {
+  const response = await honoClient.acp.agent["slash-commands"].$get({
+    query: { projectId: input.projectId, presetId: input.presetId },
+  });
+  return parse(agentSlashCommandsResponseSchema, await response.json());
 };
 
 export const fetchResumableSessions = async (

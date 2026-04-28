@@ -6,6 +6,8 @@ import {
   agentModelCatalogQuerySchema,
   agentModelCatalogResponseSchema,
   agentProvidersResponseSchema,
+  agentSlashCommandsQuerySchema,
+  agentSlashCommandsResponseSchema,
   checkAgentProviderRequestSchema,
   createSessionRequestSchema,
   discoverResumableSessionsRequestSchema,
@@ -34,6 +36,7 @@ import { discoverResumableSessions } from "./services/agent-session-client.ts";
 import { parseArgsText } from "./args.pure.ts";
 import { excludeManagedResumableSessions } from "./session-resume.pure.ts";
 import { probeAgentModelCatalog } from "./services/probe-agent-catalog.ts";
+import { probeAgentSlashCommands } from "./services/probe-agent-slash-commands.ts";
 import { agentPresets } from "./presets.ts";
 import {
   getProviderCatalog,
@@ -335,6 +338,47 @@ export const acpRoutes = new Hono()
       } catch (error) {
         const message = error instanceof Error ? error.message : "failed to read model catalog";
         return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .get(
+    "/agent/slash-commands",
+    describeRoute({
+      summary: "Probe agent for slash command list (ephemeral ACP session)",
+      responses: {
+        200: jsonResponse("Slash command options", agentSlashCommandsResponseSchema),
+        400: jsonResponse("Slash command probe error", errorResponseSchema),
+        404: jsonResponse("Project not found", errorResponseSchema),
+      },
+    }),
+    vValidator("query", agentSlashCommandsQuerySchema, validationErrorHook),
+    async (c) => {
+      const request = c.req.valid("query");
+      let project;
+      try {
+        project = await getProject(request.projectId);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "unknown project";
+        if (message.startsWith("Unknown project:")) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 500);
+      }
+
+      try {
+        const commands = await probeAgentSlashCommands({
+          cwd: project.workingDirectory,
+          presetId: request.presetId,
+        });
+        return c.json(parse(agentSlashCommandsResponseSchema, { commands, lastError: null }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed to read slash commands";
+        return c.json(
+          parse(agentSlashCommandsResponseSchema, {
+            commands: [],
+            lastError: message,
+          }),
+        );
       }
     },
   )
