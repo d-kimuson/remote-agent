@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { Suspense } from "react";
 
-import { ProjectChatPage } from "../app/projects/$projectId/project-chat-page.tsx";
+import { ProjectChatPage } from "../../app/projects/$projectId/project-chat-page.tsx";
 
 type ProjectChatSearch = {
   readonly "session-id"?: string;
