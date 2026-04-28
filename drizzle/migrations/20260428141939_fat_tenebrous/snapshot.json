@@ -1,8 +1,8 @@
 {
   "version": "7",
   "dialect": "sqlite",
-  "id": "d7fd0ba7-3d2b-4c6b-b9a8-eec36cf202b6",
-  "prevIds": ["b5ab8444-9d9d-4e13-8b12-b15868bfea48"],
+  "id": "87fde43f-f2df-4d99-8887-d0f7beaf10ee",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
   "ddl": [
     {
       "name": "agent_provider_catalogs",
