@@ -2,6 +2,7 @@
   "name": "@kimuson/remote-agent",
   "version": "0.0.1-beta.1",
   "private": false,
+  "description": "A CLI that serves a web UI for interacting with ACP-compatible agents",
   "bin": {
     "remote-agent": "./dist/cli.mjs"
   },
@@ -41,7 +42,6 @@
     "test": "vitest run",
     "typecheck": "tsgo -p . --noEmit"
   },
-  "dependencies": {},
   "devDependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.30.0",
     "@agentclientprotocol/sdk": "0.14.1",
@@ -67,6 +67,7 @@
     "ai": "6.0.168",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
+    "commander": "14.0.3",
     "drizzle-kit": "1.0.0-beta.20",
     "drizzle-orm": "1.0.0-beta.20",
     "gatecheck": "0.0.1-beta.5",
