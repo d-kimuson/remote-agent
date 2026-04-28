@@ -148,7 +148,7 @@ export const ChatRawEvents: FC<{
   }
 
   return (
-    <div className={cn("w-full space-y-2.5", className)}>
+    <div className={cn("w-full space-y-1.5", className)}>
       {plan.map((item) => {
         if (item.type === "tool") {
           return <AcpToolUseCard item={item} key={item.key} />;

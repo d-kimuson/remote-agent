@@ -130,3 +130,22 @@ export const replaceRichPromptSelection = ({
     },
   };
 };
+
+export const appendRichPromptText = ({
+  addition,
+  value,
+}: {
+  readonly value: string;
+  readonly addition: string;
+}): string => {
+  const trimmedAddition = addition.trim();
+  if (trimmedAddition.length === 0) {
+    return value;
+  }
+  if (value.trimEnd().length === 0) {
+    return trimmedAddition;
+  }
+
+  const separator = /[\s\n]$/.test(value) ? "" : " ";
+  return `${value}${separator}${trimmedAddition}`;
+};

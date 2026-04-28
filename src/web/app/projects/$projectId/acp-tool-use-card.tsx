@@ -27,15 +27,15 @@ export const AcpToolUseCard: FC<{
     <Card
       size="sm"
       className={cn(
-        "!gap-0 !py-0 mb-2 rounded-lg border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30",
+        "!gap-0 !py-0 mb-1.5 rounded-lg border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30",
         className,
       )}
     >
-      <div className="flex items-center gap-1 border-b border-blue-200/70 p-1 dark:border-blue-800/50">
+      <div className="flex items-center gap-1 border-b border-blue-200/70 px-1 py-0.5 dark:border-blue-800/50">
         <button
           aria-expanded={open}
           className={cn(
-            "inline-flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1.5 text-left font-inherit transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/20",
+            "inline-flex min-w-0 flex-1 items-center gap-2 rounded-md border-0 bg-transparent px-2 py-1 text-left font-inherit transition-colors hover:bg-blue-100/50 dark:hover:bg-blue-900/20",
           )}
           onClick={() => {
             setOpen((o) => !o);

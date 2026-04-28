@@ -216,7 +216,7 @@ export const RichPromptEditor: FC<{
         className,
       )}
     >
-      <div className="flex items-center gap-1 border-b bg-transparent px-2 py-1.5">
+      <div className="flex items-center gap-1 border-b bg-transparent px-2 py-1">
         {toolbarItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -245,7 +245,7 @@ export const RichPromptEditor: FC<{
       </div>
       <div className="relative">
         {value.length === 0 ? (
-          <div className="pointer-events-none absolute top-4 left-4 select-none text-sm text-muted-foreground">
+          <div className="pointer-events-none absolute top-3 left-3 select-none text-sm text-muted-foreground sm:top-4 sm:left-4">
             {placeholder}
           </div>
         ) : null}
@@ -253,7 +253,7 @@ export const RichPromptEditor: FC<{
           aria-label={placeholder}
           aria-disabled={disabled}
           aria-multiline
-          className="min-h-20 w-full whitespace-pre-wrap break-words bg-transparent px-4 py-3 text-sm leading-7 outline-none selection:bg-primary/20 empty:before:text-muted-foreground"
+          className="min-h-16 w-full whitespace-pre-wrap break-words bg-transparent px-3 py-2.5 text-sm leading-6 outline-none selection:bg-primary/20 empty:before:text-muted-foreground sm:min-h-20 sm:px-4 sm:py-3 sm:leading-7"
           contentEditable={!disabled}
           onInput={(event) => {
             onChange(event.currentTarget.textContent ?? "");

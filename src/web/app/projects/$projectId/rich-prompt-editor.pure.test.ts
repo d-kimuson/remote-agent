@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { applyRichPromptFormat, replaceRichPromptSelection } from "./rich-prompt-editor.pure.ts";
+import {
+  appendRichPromptText,
+  applyRichPromptFormat,
+  replaceRichPromptSelection,
+} from "./rich-prompt-editor.pure.ts";
 
 describe("rich-prompt-editor.pure", () => {
   test("wraps the selected text with inline markdown marks", () => {
@@ -66,5 +70,12 @@ describe("rich-prompt-editor.pure", () => {
       value: "hello agent",
       selection: { start: 11, end: 11 },
     });
+  });
+
+  test("appends speech text with a single separator", () => {
+    expect(appendRichPromptText({ value: "", addition: " hello " })).toBe("hello");
+    expect(appendRichPromptText({ value: "hello", addition: "world" })).toBe("hello world");
+    expect(appendRichPromptText({ value: "hello ", addition: "world" })).toBe("hello world");
+    expect(appendRichPromptText({ value: "hello", addition: " " })).toBe("hello");
   });
 });

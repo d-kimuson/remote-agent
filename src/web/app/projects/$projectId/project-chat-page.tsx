@@ -4,6 +4,7 @@ import {
   ArrowDown,
   Info,
   Loader2,
+  Mic,
   MessageSquareDashed,
   Paperclip,
   Send,
@@ -108,11 +109,31 @@ import {
 } from "./queries.ts";
 import { ProjectMenuContent } from "./project-menu-content.tsx";
 import { RichPromptEditor } from "./rich-prompt-editor.tsx";
+import { appendRichPromptText } from "./rich-prompt-editor.pure.ts";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
 import { shouldShowMessageCopyButton } from "./message-copy-display.pure.ts";
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = "w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl";
+
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  abort: () => void;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechRecognitionWindow = Window & {
+  readonly SpeechRecognition?: SpeechRecognitionConstructor;
+  readonly webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
 
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat("ja-JP", {
@@ -121,6 +142,19 @@ const formatDateTime = (iso: string): string =>
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
+
+const resolveSpeechRecognitionConstructor = (
+  browserWindow: SpeechRecognitionWindow = window,
+): SpeechRecognitionConstructor | null =>
+  browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
+
+const finalSpeechTextFromEvent = (event: SpeechRecognitionEvent): string =>
+  Array.from(event.results)
+    .slice(event.resultIndex)
+    .filter((result) => result.isFinal && result.length > 0)
+    .map((result) => result[0]?.transcript.trim() ?? "")
+    .filter((text) => text.length > 0)
+    .join(" ");
 
 const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
@@ -439,6 +473,7 @@ export const ProjectChatPage: FC<{
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
     readonly string[]
   >([]);
+  const [isListeningToSpeech, setIsListeningToSpeech] = useState(false);
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
@@ -453,6 +488,7 @@ export const ProjectChatPage: FC<{
   );
   const preparingScopeKeysRef = useRef(new Set<string>());
   const attachFileInputRef = useRef<HTMLInputElement | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -463,6 +499,12 @@ export const ProjectChatPage: FC<{
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      speechRecognitionRef.current?.abort();
+    };
   }, []);
 
   const projectSessions = useMemo(
@@ -855,10 +897,9 @@ export const ProjectChatPage: FC<{
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
   const shouldShowScrollBanner =
     !isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking);
-  const scrollBannerLabel =
-    unreadMessageCount > 0
-      ? `${unreadMessageCount.toString()}件の新しいメッセージがあります`
-      : "最新へ移動";
+  const scrollBannerMessageCount =
+    unreadMessageCount > 0 ? unreadMessageCount : Math.max(1, visibleTranscript.length);
+  const scrollBannerLabel = `${scrollBannerMessageCount.toString()}件のメッセージ`;
   useEffect(() => {
     if (!shouldUseDraftSession || !isAssistantRequestPending) {
       return;
@@ -1015,6 +1056,57 @@ export const ProjectChatPage: FC<{
     attachFileInputRef.current?.click();
   };
 
+  const handleToggleSpeechInput = () => {
+    if (isEditorDisabled) {
+      return;
+    }
+    const currentRecognition = speechRecognitionRef.current;
+    if (isListeningToSpeech) {
+      currentRecognition?.stop();
+      setIsListeningToSpeech(false);
+      return;
+    }
+
+    const SpeechRecognition = resolveSpeechRecognitionConstructor();
+    if (SpeechRecognition === null) {
+      toast.error("このブラウザは音声入力に対応していません");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = navigator.language.length > 0 ? navigator.language : "ja-JP";
+    recognition.onresult = (event) => {
+      const speechText = finalSpeechTextFromEvent(event);
+      if (speechText.length === 0) {
+        return;
+      }
+      setPrompt((current) => appendRichPromptText({ value: current, addition: speechText }));
+    };
+    recognition.onerror = (event) => {
+      setIsListeningToSpeech(false);
+      speechRecognitionRef.current = null;
+      if (event.error !== "aborted") {
+        toast.error(event.message.length > 0 ? event.message : "音声入力に失敗しました");
+      }
+    };
+    recognition.onend = () => {
+      setIsListeningToSpeech(false);
+      speechRecognitionRef.current = null;
+    };
+
+    speechRecognitionRef.current = recognition;
+    setIsListeningToSpeech(true);
+    try {
+      recognition.start();
+    } catch {
+      speechRecognitionRef.current = null;
+      setIsListeningToSpeech(false);
+      toast.error("音声入力を開始できませんでした");
+    }
+  };
+
   const handleAttachFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const files = input.files === null ? [] : [...input.files];
@@ -1134,6 +1226,8 @@ export const ProjectChatPage: FC<{
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
+    speechRecognitionRef.current?.stop();
+    setIsListeningToSpeech(false);
     setPrompt("");
     setTranscripts((current) =>
       appendTranscriptMessage({
@@ -1447,8 +1541,8 @@ export const ProjectChatPage: FC<{
               >
                 <div
                   className={cn(
-                    "space-y-6 px-1 pt-3 md:px-2",
-                    shouldShowScrollBanner ? "pb-14" : "pb-3",
+                    "space-y-5 px-1 pt-3 md:space-y-6 md:px-2",
+                    shouldShowScrollBanner ? "pb-10" : "pb-2",
                   )}
                   ref={chatContentRef}
                 >
@@ -1490,7 +1584,7 @@ export const ProjectChatPage: FC<{
                         >
                           <div
                             className={cn(
-                              "flex w-full items-center gap-2",
+                              "flex w-full items-center gap-1",
                               isUser ? "justify-end" : "justify-start",
                             )}
                           >
@@ -1500,6 +1594,12 @@ export const ProjectChatPage: FC<{
                             >
                               {formatDateTime(message.createdAt)}
                             </time>
+                            {shouldShowMessageCopyButton(message) ? (
+                              <CopyBlockButton
+                                className="size-6 text-muted-foreground/80 opacity-80 hover:opacity-100"
+                                text={chatMessageClipboardText(message)}
+                              />
+                            ) : null}
                           </div>
                           {isUser ? (
                             <div className="app-user-message w-full rounded-lg border px-3 py-3 text-foreground shadow-sm">
@@ -1510,14 +1610,6 @@ export const ProjectChatPage: FC<{
                               <TranscriptMessageBody message={message} />
                             </div>
                           )}
-                          {shouldShowMessageCopyButton(message) ? (
-                            <div className="flex justify-end">
-                              <CopyBlockButton
-                                className="-mt-1"
-                                text={chatMessageClipboardText(message)}
-                              />
-                            </div>
-                          ) : null}
                         </div>
                       </div>
                     );
@@ -1550,7 +1642,7 @@ export const ProjectChatPage: FC<{
               {shouldShowScrollBanner ? (
                 <Button
                   aria-label="Jump to latest message"
-                  className="absolute right-3 bottom-3 left-3 h-10 justify-center gap-2 rounded-md border bg-background/95 px-3 text-sm shadow-md backdrop-blur md:right-6 md:left-6"
+                  className="absolute right-3 bottom-1 left-3 h-8 justify-center gap-1.5 rounded-md border bg-background/95 px-3 text-xs shadow-md backdrop-blur md:right-6 md:left-6"
                   onClick={handleJumpToLatest}
                   title={scrollBannerLabel}
                   type="button"
@@ -1562,7 +1654,7 @@ export const ProjectChatPage: FC<{
               ) : null}
             </div>
 
-            <div className="bg-transparent px-1 pb-2 pt-1 md:px-2">
+            <div className="bg-transparent px-1 pt-0 pb-1 md:px-2 md:pb-1.5">
               <div className="overflow-hidden">
                 {attachedFiles.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
@@ -1598,21 +1690,39 @@ export const ProjectChatPage: FC<{
                 <RichPromptEditor
                   disabled={isEditorDisabled}
                   toolbarTrailing={
-                    <Button
-                      aria-label="Attach files"
-                      disabled={isEditorDisabled || uploadAttachmentsMutation.isPending}
-                      onClick={handleOpenAttachFilePicker}
-                      size="icon-sm"
-                      title="Attach files"
-                      type="button"
-                      variant="ghost"
-                    >
-                      {uploadAttachmentsMutation.isPending ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Paperclip className="size-4" />
-                      )}
-                    </Button>
+                    <>
+                      <Button
+                        aria-label="Attach files"
+                        disabled={isEditorDisabled || uploadAttachmentsMutation.isPending}
+                        onClick={handleOpenAttachFilePicker}
+                        size="icon-sm"
+                        title="Attach files"
+                        type="button"
+                        variant="ghost"
+                      >
+                        {uploadAttachmentsMutation.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Paperclip className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        aria-label={isListeningToSpeech ? "Stop voice input" : "Start voice input"}
+                        className={cn(
+                          isListeningToSpeech
+                            ? "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
+                            : "",
+                        )}
+                        disabled={isEditorDisabled}
+                        onClick={handleToggleSpeechInput}
+                        size="icon-sm"
+                        title={isListeningToSpeech ? "音声入力を停止" : "音声入力"}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <Mic className="size-4" />
+                      </Button>
+                    </>
                   }
                   onChange={setPrompt}
                   onSubmit={() => {
@@ -1624,9 +1734,9 @@ export const ProjectChatPage: FC<{
                   value={prompt}
                 />
 
-                <div className="flex min-h-11 items-end gap-2 bg-transparent px-2 py-2">
-                  <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                    <div className="flex flex-wrap items-center gap-2">
+                <div className="flex min-h-9 items-end gap-1.5 bg-transparent px-1.5 py-1 sm:px-2">
+                  <div className="flex min-w-0 flex-1 flex-col gap-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {shouldUseDraftSession ? (
                         <>
                           <FieldControl htmlFor="draft-provider-select" label="Provider">
