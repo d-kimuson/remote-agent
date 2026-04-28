@@ -6,12 +6,23 @@ import path, { resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 
-import { envService } from '../env.ts';
+import { envService, type Env } from '../env.ts';
 import * as schema from './schema.ts';
 
-export const migrationsFolder = path.resolve(
+export const resolveMigrationsFolder = (
+  runtime: Env['RA_RUNTIME'],
+  moduleDirectory: string,
+): string => {
+  if (runtime === 'dev') {
+    return path.resolve(moduleDirectory, '../../../drizzle');
+  }
+
+  return moduleDirectory;
+};
+
+export const migrationsFolder = resolveMigrationsFolder(
+  envService.getEnv('RA_RUNTIME'),
   path.dirname(fileURLToPath(import.meta.url)),
-  '../../../drizzle',
 );
 const migrationsRootFolder = path.join(migrationsFolder, 'migrations');
 

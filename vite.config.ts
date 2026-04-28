@@ -2,8 +2,8 @@ import tailwindcss from '@tailwindcss/vite';
 import { tanstackRouter } from '@tanstack/router-plugin/vite';
 import react from '@vitejs/plugin-react';
 import path from 'node:path';
-import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { defineConfig } from 'vitest/config';
 
 const pwaManifest = {
   name: 'Remote Agent',
@@ -85,6 +85,11 @@ export default defineConfig({
     },
     watch: {
       ignored: ['**/routeTree.gen.ts'],
+    },
+  },
+  test: {
+    env: {
+      RA_RUNTIME: 'dev',
     },
   },
 });

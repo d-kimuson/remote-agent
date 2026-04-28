@@ -24,7 +24,7 @@
     "check": "gatecheck check",
     "db:generate": "pnpm migrate:generate",
     "dev": "run-p dev:web dev:server",
-    "dev:server": "RA_DIR=./data/.ra-dir portless --name 'acp-hono' node --watch src/server/main.ts",
+    "dev:server": "RA_DIR=./data/.ra-dir RA_RUNTIME=dev portless --name 'acp-hono' node --watch src/server/main.ts",
     "debug:acp": "node --experimental-strip-types src/scripts/debug-acp.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get acp-hono) portless --name 'acp-vite' vite",
     "fix": "run-p fix:*",
@@ -39,6 +39,7 @@
     "native:check": "cargo check --manifest-path native/Cargo.toml",
     "native:check:android": "cd native && cargo ndk -t arm64-v8a check",
     "prepack": "pnpm build",
+    "smoke:pack": "pnpm build && node --experimental-strip-types src/scripts/smoke-packed-package.ts",
     "test": "vitest run",
     "typecheck": "tsgo -p . --noEmit"
   },

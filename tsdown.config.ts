@@ -12,6 +12,7 @@ export default defineConfig({
   clean: false,
   sourcemap: true,
   banner: '#!/usr/bin/env node',
+  copy: [{ from: 'drizzle/migrations', to: 'dist' }],
   deps: {
     onlyBundle: false,
   },
