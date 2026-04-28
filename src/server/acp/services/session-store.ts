@@ -44,6 +44,7 @@ import {
   preferNonEmptyModeCatalog,
   preferNonEmptyModelCatalog,
 } from '../session-catalog.pure.ts';
+import { installAcpProviderToolResultPatch } from './acp-provider-tool-result-patch.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { importProviderSessionMessages } from './codex-session-log.ts';
 import {
@@ -282,6 +283,8 @@ export const createSessionStore = ({
   resolveCommand = resolveCommandPath,
   importProviderMessages = importProviderSessionMessages,
 }: SessionStoreDependencies = {}) => {
+  installAcpProviderToolResultPatch();
+
   const runtimeSessions = new Map<string, SessionEntry>();
 
   const emitSessionUpdated = (session: SessionSummary): void => {
