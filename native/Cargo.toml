@@ -1,0 +1,47 @@
+[package]
+name = "acp-playground-native"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "acp_playground_native"
+crate-type = ["cdylib", "staticlib", "lib"]
+path = "src/lib.rs"
+
+[[bin]]
+name = "acp-playground-native"
+path = "src/main.rs"
+
+[dependencies]
+gpui-mobile = { git = "https://github.com/itsbalamurali/gpui-mobile", branch = "main" }
+gpui = { git = "https://github.com/zed-industries/zed", rev = "5688167d224b5eca54875d49afb8bfd73a07915a", package = "gpui", default-features = false }
+reqwest_client = { git = "https://github.com/zed-industries/zed", rev = "5688167d224b5eca54875d49afb8bfd73a07915a", package = "reqwest_client" }
+reqwest = { git = "https://github.com/zed-industries/reqwest.git", rev = "c15662463bda39148ba154100dd44d3fba5873a4", package = "zed-reqwest", default-features = false, features = [
+  "json",
+  "rustls-tls",
+  "stream",
+] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+url = "2"
+urlencoding = "2"
+log = "0.4"
+
+[target.'cfg(target_os = "ios")'.dependencies]
+objc2 = "0.6"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.15"
+android-activity = { version = "0.6", features = ["native-activity"] }
+
+[patch.crates-io]
+async-task = { git = "https://github.com/smol-rs/async-task.git", rev = "b4486cd71e4e94fbda54ce6302444de14f4d190e" }
+
+[profile.release]
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
