@@ -80,3 +80,13 @@ export const mapResumableSessionCandidates = (
     loadable: capability.canLoadIntoProvider,
   }));
 };
+
+export const excludeManagedResumableSessions = <Candidate extends { readonly sessionId: string }>({
+  candidates,
+  managedSessionIds,
+}: {
+  readonly candidates: readonly Candidate[];
+  readonly managedSessionIds: ReadonlySet<string>;
+}): readonly Candidate[] => {
+  return candidates.filter((candidate) => !managedSessionIds.has(candidate.sessionId));
+};

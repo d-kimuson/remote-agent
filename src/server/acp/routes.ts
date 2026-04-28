@@ -32,6 +32,7 @@ import {
 } from "../projects/project-store.ts";
 import { discoverResumableSessions } from "./services/agent-session-client.ts";
 import { parseArgsText } from "./args.pure.ts";
+import { excludeManagedResumableSessions } from "./session-resume.pure.ts";
 import { probeAgentModelCatalog } from "./services/probe-agent-catalog.ts";
 import { agentPresets } from "./presets.ts";
 import {
@@ -58,6 +59,7 @@ const deleteSessionResponseSchema = object({
 });
 
 const preparedSessions = new Map<string, Promise<SessionSummary>>();
+const loadableProviderIds = new Set(["codex", "claude-code", "pi-coding-agent"]);
 
 const findPreset = (presetId: string | null | undefined) => {
   const id = presetId ?? "codex";
@@ -415,6 +417,9 @@ export const acpRoutes = new Hono()
       try {
         const request = c.req.valid("query") satisfies DiscoverResumableSessionsRequest;
         const resolved = resolveResumeCommand(request.presetId);
+        if (!loadableProviderIds.has(resolved.preset.id)) {
+          throw new Error(`Loading sessions is not supported for provider: ${resolved.preset.id}`);
+        }
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,
@@ -427,7 +432,18 @@ export const acpRoutes = new Hono()
             cwd: context.cwd,
           }),
         );
-        return c.json(response);
+        const managedSessionIds = new Set(
+          (await listSessions()).map((session) => session.sessionId),
+        );
+        return c.json(
+          parse(resumableSessionsResponseSchema, {
+            ...response,
+            sessions: excludeManagedResumableSessions({
+              candidates: response.sessions,
+              managedSessionIds,
+            }),
+          }),
+        );
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "failed to discover resumable sessions";
@@ -495,6 +511,9 @@ export const acpRoutes = new Hono()
       try {
         const request = c.req.valid("json");
         const resolved = resolveResumeCommand(request.presetId);
+        if (!loadableProviderIds.has(resolved.preset.id)) {
+          throw new Error(`Loading sessions is not supported for provider: ${resolved.preset.id}`);
+        }
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,

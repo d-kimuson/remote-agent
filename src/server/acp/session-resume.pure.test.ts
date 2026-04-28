@@ -1,6 +1,10 @@
 import { describe, expect, test } from "vitest";
 
-import { inspectResumeCapabilities, mapResumableSessionCandidates } from "./session-resume.pure.ts";
+import {
+  excludeManagedResumableSessions,
+  inspectResumeCapabilities,
+  mapResumableSessionCandidates,
+} from "./session-resume.pure.ts";
 
 describe("inspectResumeCapabilities", () => {
   test("reports ready when loadSession and session/list are available", () => {
@@ -109,6 +113,40 @@ describe("mapResumableSessionCandidates", () => {
         title: "Existing session",
         updatedAt: "2026-04-27T00:00:00.000Z",
         loadable: false,
+      },
+    ]);
+  });
+});
+
+describe("excludeManagedResumableSessions", () => {
+  test("removes sessions already managed by the app database", () => {
+    expect(
+      excludeManagedResumableSessions({
+        managedSessionIds: new Set(["session-2"]),
+        candidates: [
+          {
+            sessionId: "session-1",
+            cwd: "/tmp/project",
+            title: "Importable session",
+            updatedAt: null,
+            loadable: true,
+          },
+          {
+            sessionId: "session-2",
+            cwd: "/tmp/project",
+            title: "Already loaded",
+            updatedAt: null,
+            loadable: true,
+          },
+        ],
+      }),
+    ).toEqual([
+      {
+        sessionId: "session-1",
+        cwd: "/tmp/project",
+        title: "Importable session",
+        updatedAt: null,
+        loadable: true,
       },
     ]);
   });

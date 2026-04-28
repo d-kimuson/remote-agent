@@ -28,6 +28,8 @@ import {
 import { ProjectMenuContent } from "./project-menu-content.tsx";
 import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from "./queries.ts";
 
+const loadableProviderIds = new Set(["codex", "claude-code", "pi-coding-agent"]);
+
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat("ja-JP", {
     month: "numeric",
@@ -86,8 +88,12 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     queryFn: fetchSessions,
   });
   const [query, setQuery] = useState("");
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const selectablePresets = useMemo(
-    () => providerData.providers.filter((entry) => entry.enabled).map((entry) => entry.preset),
+    () =>
+      providerData.providers
+        .filter((entry) => entry.enabled && loadableProviderIds.has(entry.preset.id))
+        .map((entry) => entry.preset),
     [providerData.providers],
   );
   const [loadPresetId, setLoadPresetId] = useState<string | null>(null);
@@ -146,40 +152,49 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     });
   };
 
-  const handleLoadExistingSession = async ({
-    sessionId: targetSessionId,
-    title,
-    updatedAt,
-  }: {
-    readonly sessionId: string;
-    readonly title: string | null;
-    readonly updatedAt: string | null;
-  }) => {
-    if (loadPresetId === null) {
+  const handleLoadExistingSessions = async (
+    selectedSessions: readonly {
+      readonly sessionId: string;
+      readonly title: string | null | undefined;
+      readonly updatedAt: string | null | undefined;
+    }[],
+  ) => {
+    if (loadPresetId === null || selectedSessions.length === 0) {
       return;
     }
 
-    const response = await loadSessionMutation.mutateAsync({
-      projectId,
-      presetId: loadPresetId,
-      sessionId: targetSessionId,
-      cwd: projectData.project.workingDirectory,
-      title,
-      updatedAt,
-    });
+    setIsLoadingSessions(true);
+    try {
+      for (const session of selectedSessions) {
+        const response = await loadSessionMutation.mutateAsync({
+          projectId,
+          presetId: loadPresetId,
+          sessionId: session.sessionId,
+          cwd: projectData.project.workingDirectory,
+          title: session.title ?? null,
+          updatedAt: session.updatedAt ?? null,
+        });
 
-    upsertSessionInCache({
-      ...response.session,
-      sessionId: targetSessionId,
-    });
-    setIsLoadSessionDialogOpen(false);
-    void navigate({
-      to: "/projects/$projectId",
-      params: { projectId },
-      search: { "session-id": targetSessionId },
-      replace: true,
-    });
-    void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+        upsertSessionInCache({
+          ...response.session,
+          sessionId: session.sessionId,
+        });
+      }
+
+      const firstSession = selectedSessions[0];
+      setIsLoadSessionDialogOpen(false);
+      if (firstSession !== undefined) {
+        void navigate({
+          to: "/projects/$projectId",
+          params: { projectId },
+          search: { "session-id": firstSession.sessionId },
+          replace: true,
+        });
+      }
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+    } finally {
+      setIsLoadingSessions(false);
+    }
   };
 
   return (
@@ -259,18 +274,14 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
               : null
           }
           isLoading={discoverResumableSessionsMutation.isPending}
-          isLoadingSession={loadSessionMutation.isPending}
+          isLoadingSession={loadSessionMutation.isPending || isLoadingSessions}
           onClose={() => {
             setIsLoadSessionDialogOpen(false);
             setLoadPresetId(null);
             discoverResumableSessionsMutation.reset();
           }}
-          onLoadSession={(session) => {
-            void handleLoadExistingSession({
-              sessionId: session.sessionId,
-              title: session.title ?? null,
-              updatedAt: session.updatedAt ?? null,
-            });
+          onLoadSessions={(sessions) => {
+            void handleLoadExistingSessions(sessions);
           }}
           onSelectProvider={handleSelectLoadProvider}
           providerPresets={selectablePresets}

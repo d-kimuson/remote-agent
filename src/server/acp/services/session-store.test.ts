@@ -444,6 +444,83 @@ describe("createSessionStore", () => {
     ]);
   });
 
+  test("imports Codex session log messages when loading a Codex session with no stored messages", async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
+    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve("/bin/codex"),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: "ignored-by-load",
+            modes: {
+              currentModeId: "balanced",
+              availableModes: [{ id: "balanced", name: "Balanced" }],
+            },
+            models: {
+              currentModelId: "gpt-5-codex",
+              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      importProviderMessages: (_presetId, sessionId) =>
+        Promise.resolve([
+          {
+            id: `codex-log:${sessionId}:0`,
+            role: "user",
+            kind: "user",
+            text: "old prompt",
+            rawEvents: [],
+            createdAt: "2026-04-27T10:00:00.000Z",
+            updatedAt: "2026-04-27T10:00:00.000Z",
+            streamPartId: null,
+            metadataJson: '{"source":"codex-session-log"}',
+          },
+          {
+            id: `codex-log:${sessionId}:1`,
+            role: "assistant",
+            kind: "assistant_text",
+            text: "old answer",
+            rawEvents: [],
+            createdAt: "2026-04-27T10:00:01.000Z",
+            updatedAt: "2026-04-27T10:00:01.000Z",
+            streamPartId: null,
+            metadataJson: '{"source":"codex-session-log"}',
+          },
+        ]),
+    });
+
+    await store.loadSession({
+      projectId: null,
+      preset: codexPreset,
+      command: "npx",
+      args: ["-y", "@zed-industries/codex-acp"],
+      cwd: sandboxDirectory,
+      sessionId: "existing-codex-session",
+      title: null,
+      updatedAt: null,
+    });
+
+    const messages = await store.listMessages("existing-codex-session");
+    expect(messages.map((message) => message.text)).toEqual(["old prompt", "old answer"]);
+
+    const sessions = await store.listSessions();
+    expect(sessions[0]).toMatchObject({
+      sessionId: "existing-codex-session",
+      firstUserMessagePreview: "old prompt",
+    });
+  });
+
   test("loadSession preserves createdAt and origin when rehydrating from the database", async () => {
     const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
     const databasePath = path.join(sandboxDirectory, "playground.sqlite");

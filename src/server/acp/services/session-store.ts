@@ -33,6 +33,7 @@ import { sessionMessagesTable, sessionsTable } from "../../db/schema.ts";
 import { buildPromptWithAttachments } from "../prompt-attachments.pure.ts";
 import { agentPresets } from "../presets.ts";
 import { resolveCommandPath } from "./command-path.ts";
+import { importProviderSessionMessages } from "./codex-session-log.ts";
 import { emitAcpSse } from "./sse-broadcast.ts";
 import {
   buildModelOptionsFromResponse,
@@ -89,6 +90,10 @@ type SessionStoreDependencies = {
     readonly assistantSegmentMessages: readonly ChatMessage[];
   }>;
   readonly resolveCommand?: typeof resolveCommandPath;
+  readonly importProviderMessages?: (
+    presetId: string,
+    sessionId: string,
+  ) => Promise<readonly ChatMessage[]>;
 };
 
 const createSessionSummary = ({
@@ -235,6 +240,7 @@ export const createSessionStore = ({
     }),
   promptCollector,
   resolveCommand = resolveCommandPath,
+  importProviderMessages = importProviderSessionMessages,
 }: SessionStoreDependencies = {}) => {
   const runtimeSessions = new Map<string, SessionEntry>();
 
@@ -374,6 +380,33 @@ export const createSessionStore = ({
       updatedAt: updated,
     });
     emitAcpSse({ type: "session_messages_updated", sessionId });
+  };
+
+  const hasStoredMessages = async (sessionId: string): Promise<boolean> => {
+    const rows = await database.db
+      .select({ id: sessionMessagesTable.id })
+      .from(sessionMessagesTable)
+      .where(eq(sessionMessagesTable.sessionId, sessionId))
+      .limit(1);
+
+    return rows.length > 0;
+  };
+
+  const importProviderMessagesIfEmpty = async ({
+    presetId,
+    sessionId,
+  }: {
+    readonly presetId: string;
+    readonly sessionId: string;
+  }): Promise<void> => {
+    if (await hasStoredMessages(sessionId)) {
+      return;
+    }
+
+    const messages = await importProviderMessages(presetId, sessionId);
+    for (const message of messages) {
+      await persistMessage({ sessionId, message });
+    }
   };
 
   const buildMessage = ({
@@ -631,6 +664,10 @@ export const createSessionStore = ({
       session: restoredSession,
     });
     await persistSession(restoredSession);
+    await importProviderMessagesIfEmpty({
+      presetId: preset.id,
+      sessionId: restoredSession.sessionId,
+    });
 
     return restoredSession;
   };
