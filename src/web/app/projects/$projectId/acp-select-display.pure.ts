@@ -102,3 +102,26 @@ export const formatAcpSelectValueLabel = ({
 
   return formatAcpSelectOptionLabel({ kind, option, options, presetId });
 };
+
+export const formatAcpSelectValueInfo = ({
+  kind,
+  options,
+  presetId,
+  value,
+}: {
+  readonly kind: AcpSelectKind;
+  readonly options: readonly AcpSelectOption[];
+  readonly presetId: string | null | undefined;
+  readonly value: unknown;
+}): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const option = options.find((candidate) => candidate.id === value);
+  if (option === undefined) {
+    return null;
+  }
+
+  return formatAcpSelectOptionInfo({ kind, option, presetId });
+};

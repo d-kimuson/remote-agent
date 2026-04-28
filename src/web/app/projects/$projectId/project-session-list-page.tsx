@@ -191,6 +191,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
   return (
     <div className="app-page">
       <ProjectMenuContent
+        currentSessionId={null}
         projectId={projectId}
         sessionCount={projectSessions.length}
         sessions={projectSessions}

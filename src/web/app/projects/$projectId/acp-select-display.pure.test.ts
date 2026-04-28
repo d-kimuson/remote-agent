@@ -4,6 +4,7 @@ import {
   formatAcpSelectOptionLabel,
   formatAcpSelectOptionInfo,
   formatAcpSelectValueLabel,
+  formatAcpSelectValueInfo,
   parseBracketAttributes,
 } from "./acp-select-display.pure.ts";
 
@@ -72,6 +73,23 @@ describe("formatAcpSelectValueLabel", () => {
         kind: "model",
         option: model,
         presetId: "cursor-cli",
+      }),
+    ).toBe("context=272k\nreasoning=medium\nfast=false");
+  });
+
+  test("Cursor model の選択値から bracket 属性 info を取り出す", () => {
+    const model = {
+      id: "gpt-5.5[context=272k,reasoning=medium,fast=false]",
+      name: "gpt-5.5",
+      description: null,
+    };
+
+    expect(
+      formatAcpSelectValueInfo({
+        kind: "model",
+        options: [model],
+        presetId: "cursor-cli",
+        value: model.id,
       }),
     ).toBe("context=272k\nreasoning=medium\nfast=false");
   });

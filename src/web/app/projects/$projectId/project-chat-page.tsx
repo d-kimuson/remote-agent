@@ -8,6 +8,7 @@ import {
   Paperclip,
   Send,
   Trash2,
+  X,
 } from "lucide-react";
 import {
   Suspense,
@@ -17,10 +18,12 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
   type FC,
   type ReactNode,
   type UIEventHandler,
 } from "react";
+import { toast } from "sonner";
 
 import type {
   AgentPreset,
@@ -32,7 +35,6 @@ import type {
   UploadedAttachment,
 } from "../../../../shared/acp.ts";
 import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
-import { Badge } from "../../../components/ui/badge.tsx";
 import { Button } from "../../../components/ui/button.tsx";
 import { Label } from "../../../components/ui/label.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
@@ -60,11 +62,10 @@ import {
 } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
 import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
-import { AttachFilesDialog } from "./attach-files-dialog.tsx";
 import {
   formatAcpSelectOptionLabel,
-  formatAcpSelectOptionInfo,
   formatAcpSelectValueLabel,
+  formatAcpSelectValueInfo,
 } from "./acp-select-display.pure.ts";
 import { chatMessageClipboardText } from "./chat-block-copy.pure.ts";
 import { isNearScrollBottom } from "./chat-scroll.pure.ts";
@@ -153,14 +154,6 @@ const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message 
   );
 };
 
-const presetLabelFrom = ({
-  presetId,
-  presets,
-}: {
-  readonly presetId: string | null | undefined;
-  readonly presets: readonly { readonly id: string; readonly label: string }[];
-}): string => presets.find((preset) => preset.id === presetId)?.label ?? presetId ?? "custom";
-
 const presetFrom = ({
   presetId,
   presets,
@@ -183,17 +176,37 @@ const modeSelectLabelFromPreset = (preset: AgentPreset | null): string =>
 
 const AcpSelectItemLabel: FC<{
   readonly children: string;
-  readonly info: string | null;
-}> = ({ children, info }) => (
+}> = ({ children }) => (
   <span className="flex min-w-0 flex-1 items-center gap-1.5">
     <span className="min-w-0 truncate">{children}</span>
-    {info === null ? null : (
-      <span className="inline-flex shrink-0 text-muted-foreground" title={info}>
-        <Info aria-label={info} className="size-3.5" role="img" />
-      </span>
-    )}
   </span>
 );
+
+const AcpSelectValueInfo: FC<{
+  readonly info: string | null;
+}> = ({ info }) => {
+  if (info === null) {
+    return null;
+  }
+
+  return (
+    <Button
+      aria-label={info}
+      className="size-8 shrink-0 text-muted-foreground"
+      onClick={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toast.info(info);
+      }}
+      size="icon"
+      title={info}
+      type="button"
+      variant="ghost"
+    >
+      <Info aria-hidden="true" className="size-3.5" />
+    </Button>
+  );
+};
 
 const LoadingConversation: FC = () => (
   <div className="mx-auto flex max-w-md items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-card/35 px-5 py-8 text-sm text-muted-foreground">
@@ -207,8 +220,8 @@ const FieldControl: FC<{
   readonly label: string;
   readonly children: ReactNode;
 }> = ({ htmlFor, label, children }) => (
-  <div className="min-w-44 flex-1 space-y-1.5 sm:flex-none">
-    <Label className="px-1 text-[11px] font-medium text-muted-foreground" htmlFor={htmlFor}>
+  <div className="min-w-32 flex-1 sm:min-w-40 sm:flex-none">
+    <Label className="sr-only" htmlFor={htmlFor}>
       {label}
     </Label>
     {children}
@@ -290,7 +303,6 @@ export const ProjectChatPage: FC<{
   const [prompt, setPrompt] = useState("");
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
-  const [isAttachDialogOpen, setIsAttachDialogOpen] = useState(false);
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
     readonly string[]
   >([]);
@@ -307,6 +319,7 @@ export const ProjectChatPage: FC<{
     {},
   );
   const preparingScopeKeysRef = useRef(new Set<string>());
+  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -455,6 +468,52 @@ export const ProjectChatPage: FC<{
     shouldUseDraftSession && preparingScopesByKey[preparedSessionScopeKey] === true;
   const draftPrepareError = prepareErrorsByScope[preparedSessionScopeKey] ?? null;
   const draftCatalogError = probedModelCatalog?.lastError ?? null;
+  const draftModelSelectValue = draftModelSourceHasList
+    ? (draftModelId ??
+      draftModelModeListSource.currentModelId ??
+      draftModelModeListSource.availableModels[0]?.id)
+    : undefined;
+  const draftModeSelectValue = draftModeSourceHasList
+    ? (draftModeId ??
+      draftModelModeListSource.currentModeId ??
+      draftModelModeListSource.availableModes[0]?.id)
+    : undefined;
+  const sessionModelSelectValue =
+    selectedSession === null
+      ? undefined
+      : selectedSession.isActive
+        ? (selectedSession.currentModelId ?? undefined)
+        : (pendingTuningModelId ?? selectedSession.currentModelId ?? undefined);
+  const sessionModeSelectValue =
+    selectedSession === null
+      ? undefined
+      : selectedSession.isActive
+        ? (selectedSession.currentModeId ?? undefined)
+        : (pendingTuningModeId ?? selectedSession.currentModeId ?? undefined);
+  const draftModelSelectInfo = formatAcpSelectValueInfo({
+    kind: "model",
+    options: draftModelModeListSource.availableModels,
+    presetId: activePresetId,
+    value: draftModelSelectValue,
+  });
+  const draftModeSelectInfo = formatAcpSelectValueInfo({
+    kind: "mode",
+    options: draftModelModeListSource.availableModes,
+    presetId: activePresetId,
+    value: draftModeSelectValue,
+  });
+  const sessionModelSelectInfo = formatAcpSelectValueInfo({
+    kind: "model",
+    options: selectedSession?.availableModels ?? [],
+    presetId: selectedSession?.presetId,
+    value: sessionModelSelectValue,
+  });
+  const sessionModeSelectInfo = formatAcpSelectValueInfo({
+    kind: "mode",
+    options: selectedSession?.availableModes ?? [],
+    presetId: selectedSession?.presetId,
+    value: sessionModeSelectValue,
+  });
 
   const activeTranscriptKey = sessionId ?? draftSessionTranscriptKey;
 
@@ -676,6 +735,22 @@ export const ProjectChatPage: FC<{
   const handleAttachFiles = async (files: readonly File[]) => {
     const response = await uploadAttachmentsMutation.mutateAsync(files);
     setAttachedFiles((current) => [...current, ...response.attachments]);
+  };
+
+  const handleOpenAttachFilePicker = () => {
+    attachFileInputRef.current?.click();
+  };
+
+  const handleAttachFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = input.files === null ? [] : [...input.files];
+    if (files.length === 0) {
+      return;
+    }
+
+    void handleAttachFiles(files).finally(() => {
+      input.value = "";
+    });
   };
 
   const handleRemoveFile = (attachmentId: string) => {
@@ -920,16 +995,24 @@ export const ProjectChatPage: FC<{
     }
   };
 
-  const headerSubtitle = shouldUseDraftSession
-    ? draftSession.label
-    : selectedSession !== null
-      ? `${presetLabelFrom({ presetId: selectedSession.presetId, presets: appInfoData.agentPresets })} · ${selectedSession.command} · ${formatDateTime(selectedSession.createdAt)}`
-      : sessionId !== null
-        ? `Session ${sessionId}`
-        : "";
-
   const firstUserTextInTranscript = (targetSessionId: string) =>
     transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
+  const pageTitle = shouldUseDraftSession
+    ? "New session"
+    : selectedSession !== null
+      ? resolveSessionListTitle(
+          selectedSession,
+          firstUserTextInTranscript(selectedSession.sessionId),
+        )
+      : sessionId !== null
+        ? (firstUserTextInTranscript(sessionId) ?? sessionId)
+        : "Session";
+  const pageAgentLabel = shouldUseDraftSession
+    ? draftSession.label
+    : (selectedSessionPreset?.label ??
+      selectedSession?.presetId ??
+      selectedSession?.command ??
+      "custom");
 
   const handleChatScroll: UIEventHandler<HTMLDivElement> = (event) => {
     const target = event.target;
@@ -992,58 +1075,42 @@ export const ProjectChatPage: FC<{
         </Suspense>
       )}
       <ProjectMenuContent
+        currentSessionId={sessionId}
         projectId={projectId}
         sessionCount={projectSessions.length}
         sessions={projectSessions}
       />
-      <div className="mx-auto flex h-full max-w-[1600px] flex-col px-4 py-4 md:px-6">
-        <header className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <Badge variant={shouldUseDraftSession ? "secondary" : "outline"}>
-              {shouldUseDraftSession ? "Draft" : "Connected"}
-            </Badge>
-            <Badge variant="outline">{projectSessions.length} sessions</Badge>
-            <p className="min-w-0 truncate text-sm text-muted-foreground">{headerSubtitle}</p>
+      <div className="flex h-full flex-col px-2 py-2 md:px-3">
+        <header className="flex h-10 shrink-0 items-center justify-between gap-3 px-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <h1 className="min-w-0 truncate text-sm font-semibold tracking-tight">{pageTitle}</h1>
+            <span className="shrink-0 text-xs text-muted-foreground">{pageAgentLabel}</span>
           </div>
+          {sessionId !== null ? (
+            <Button
+              aria-label="Close session"
+              className="shrink-0"
+              disabled={closeSessionMutation.isPending}
+              onClick={() => {
+                void handleCloseSession(sessionId);
+              }}
+              size="icon-sm"
+              type="button"
+              variant="ghost"
+            >
+              <Trash2 className="size-4" />
+            </Button>
+          ) : null}
         </header>
 
-        <section className="min-h-0 flex-1 pt-4">
-          <div className="app-panel flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
-            {shouldUseDraftSession ? null : (
-              <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
-                <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
-                  {selectedSession !== null
-                    ? resolveSessionListTitle(
-                        selectedSession,
-                        firstUserTextInTranscript(selectedSession.sessionId),
-                      )
-                    : sessionId !== null
-                      ? (firstUserTextInTranscript(sessionId) ?? sessionId)
-                      : ""}
-                </h2>
-                {sessionId !== null ? (
-                  <Button
-                    aria-label="Close session"
-                    className="shrink-0"
-                    disabled={closeSessionMutation.isPending}
-                    onClick={() => {
-                      void handleCloseSession(sessionId);
-                    }}
-                    size="icon"
-                    type="button"
-                    variant="ghost"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                ) : null}
-              </div>
-            )}
+        <section className="min-h-0 flex-1">
+          <div className="flex h-full min-h-0 flex-col overflow-hidden">
             <div className="relative min-h-0 flex-1">
               <ScrollArea
                 className="app-transcript-surface h-full"
                 onScrollCapture={handleChatScroll}
               >
-                <div className="space-y-6 px-3 py-5 md:px-5" ref={chatContentRef}>
+                <div className="space-y-6 px-1 py-3 md:px-2" ref={chatContentRef}>
                   {isTranscriptHydrating ? <LoadingConversation /> : null}
                   {!isTranscriptHydrating && transcript.length === 0 && !shouldShowThinking ? (
                     <div className="mx-auto max-w-md rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
@@ -1067,7 +1134,10 @@ export const ProjectChatPage: FC<{
                     const isUser = message.role === "user";
                     return (
                       <div
-                        className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+                        className={cn(
+                          "group/message flex w-full",
+                          isUser ? "justify-end" : "justify-start",
+                        )}
                         key={message.id}
                       >
                         <div
@@ -1079,22 +1149,16 @@ export const ProjectChatPage: FC<{
                         >
                           <div
                             className={cn(
-                              "flex w-full items-center gap-1",
+                              "flex w-full items-center gap-2",
                               isUser ? "justify-end" : "justify-start",
                             )}
                           >
-                            {!isUser ? (
-                              <CopyBlockButton text={chatMessageClipboardText(message)} />
-                            ) : null}
                             <time
                               className="select-none text-xs tabular-nums text-muted-foreground"
                               dateTime={message.createdAt}
                             >
                               {formatDateTime(message.createdAt)}
                             </time>
-                            {isUser ? (
-                              <CopyBlockButton text={chatMessageClipboardText(message)} />
-                            ) : null}
                           </div>
                           {isUser ? (
                             <div className="app-user-message w-full rounded-lg border px-3 py-3 text-foreground shadow-sm">
@@ -1105,6 +1169,12 @@ export const ProjectChatPage: FC<{
                               <TranscriptMessageBody message={message} />
                             </div>
                           )}
+                          <div className="flex justify-end">
+                            <CopyBlockButton
+                              className="-mt-1"
+                              text={chatMessageClipboardText(message)}
+                            />
+                          </div>
                         </div>
                       </div>
                     );
@@ -1149,287 +1219,250 @@ export const ProjectChatPage: FC<{
               ) : null}
             </div>
 
-            <div className="border-t bg-card/80 p-4">
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                {attachedFiles.length === 0 ? (
-                  <span className="text-xs text-muted-foreground">No attached files</span>
-                ) : (
-                  attachedFiles.map((attachment) => (
-                    <Badge key={attachment.attachmentId} variant="outline">
-                      <Paperclip className="size-3" />
-                      {attachment.name}
-                    </Badge>
-                  ))
-                )}
-              </div>
+            <div className="bg-transparent px-1 pb-2 pt-1 md:px-2">
+              <div className="overflow-hidden">
+                {attachedFiles.length > 0 ? (
+                  <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
+                    {attachedFiles.map((attachment) => (
+                      <span
+                        className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs text-foreground"
+                        key={attachment.attachmentId}
+                      >
+                        <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                        <span className="max-w-48 truncate">{attachment.name}</span>
+                        <button
+                          aria-label={`Remove ${attachment.name}`}
+                          className="-mr-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          onClick={() => {
+                            handleRemoveFile(attachment.attachmentId);
+                          }}
+                          type="button"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
 
-              <RichPromptEditor
-                disabled={isEditorDisabled}
-                onChange={setPrompt}
-                onSubmit={() => {
-                  if (canSend) {
-                    void handleSendPrompt();
+                <input
+                  className="hidden"
+                  multiple
+                  onChange={handleAttachFileInputChange}
+                  ref={attachFileInputRef}
+                  type="file"
+                />
+                <RichPromptEditor
+                  disabled={isEditorDisabled}
+                  toolbarTrailing={
+                    <Button
+                      aria-label="Attach files"
+                      disabled={isEditorDisabled || uploadAttachmentsMutation.isPending}
+                      onClick={handleOpenAttachFilePicker}
+                      size="icon-sm"
+                      title="Attach files"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {uploadAttachmentsMutation.isPending ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Paperclip className="size-4" />
+                      )}
+                    </Button>
                   }
-                }}
-                placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
-                value={prompt}
-              />
+                  onChange={setPrompt}
+                  onSubmit={() => {
+                    if (canSend) {
+                      void handleSendPrompt();
+                    }
+                  }}
+                  placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
+                  value={prompt}
+                />
 
-              <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex flex-1 flex-wrap items-center gap-2">
-                  {shouldUseDraftSession ? (
-                    <>
-                      <FieldControl htmlFor="draft-provider-select" label="Provider">
-                        <Select
-                          onValueChange={(value) => {
-                            if (value !== null) {
-                              setDraftPresetId(value);
-                            }
-                          }}
-                          value={activePresetId}
-                        >
-                          <SelectTrigger className="w-full" id="draft-provider-select">
-                            <SelectValue placeholder="Provider" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectablePresets.map((preset) => (
-                              <SelectItem key={preset.id} value={preset.id}>
-                                {preset.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FieldControl>
-                      <FieldControl htmlFor="draft-model-select" label={draftModelSelectLabel}>
-                        <Select
-                          onValueChange={(value) => {
-                            if (!draftModelSourceHasList || value === null) {
-                              return;
-                            }
-                            setDraftModelId(value);
-                          }}
-                          value={
-                            draftModelSourceHasList
-                              ? (draftModelId ??
-                                draftModelModeListSource.currentModelId ??
-                                draftModelModeListSource.availableModels[0]?.id)
-                              : undefined
-                          }
-                        >
-                          <SelectTrigger
-                            className="w-full"
-                            disabled={!draftModelSourceHasList}
-                            id="draft-model-select"
-                            title={
-                              !draftModelSourceHasList
-                                ? "エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません"
-                                : undefined
-                            }
-                          >
-                            <SelectValue
-                              placeholder={
-                                draftModelSourceHasList
-                                  ? draftModelSelectLabel
-                                  : "Loading models..."
-                              }
-                            >
-                              {(value) =>
-                                formatAcpSelectValueLabel({
-                                  fallback: draftModelSelectLabel,
-                                  kind: "model",
-                                  options: draftModelModeListSource.availableModels,
-                                  presetId: activePresetId,
-                                  value,
-                                })
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {draftModelSourceHasList
-                              ? draftModelModeListSource.availableModels.map((model) => (
-                                  <SelectItem key={model.id} value={model.id}>
-                                    <AcpSelectItemLabel
-                                      info={formatAcpSelectOptionInfo({
-                                        kind: "model",
-                                        option: model,
-                                        presetId: activePresetId,
-                                      })}
-                                    >
-                                      {formatAcpSelectOptionLabel({
-                                        kind: "model",
-                                        option: model,
-                                        options: draftModelModeListSource.availableModels,
-                                        presetId: activePresetId,
-                                      })}
-                                    </AcpSelectItemLabel>
-                                  </SelectItem>
-                                ))
-                              : null}
-                          </SelectContent>
-                        </Select>
-                      </FieldControl>
-                      <FieldControl htmlFor="draft-mode-select" label={draftModeSelectLabel}>
-                        <Select
-                          onValueChange={(value) => {
-                            if (!draftModeSourceHasList || value === null) {
-                              return;
-                            }
-                            setDraftModeId(value);
-                          }}
-                          value={
-                            draftModeSourceHasList
-                              ? (draftModeId ??
-                                draftModelModeListSource.currentModeId ??
-                                draftModelModeListSource.availableModes[0]?.id)
-                              : undefined
-                          }
-                        >
-                          <SelectTrigger
-                            className="w-full"
-                            disabled={!draftModeSourceHasList}
-                            id="draft-mode-select"
-                            title={
-                              !draftModeSourceHasList
-                                ? "エージェントに問い合わせて一覧を取得中か、利用可能な mode がありません"
-                                : undefined
-                            }
-                          >
-                            <SelectValue
-                              placeholder={
-                                draftModeSourceHasList ? draftModeSelectLabel : "Loading modes..."
-                              }
-                            >
-                              {(value) =>
-                                formatAcpSelectValueLabel({
-                                  fallback: draftModeSelectLabel,
-                                  kind: "mode",
-                                  options: draftModelModeListSource.availableModes,
-                                  presetId: activePresetId,
-                                  value,
-                                })
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {draftModeSourceHasList
-                              ? draftModelModeListSource.availableModes.map((mode) => (
-                                  <SelectItem key={mode.id} value={mode.id}>
-                                    <AcpSelectItemLabel
-                                      info={formatAcpSelectOptionInfo({
-                                        kind: "mode",
-                                        option: mode,
-                                        presetId: activePresetId,
-                                      })}
-                                    >
-                                      {formatAcpSelectOptionLabel({
-                                        kind: "mode",
-                                        option: mode,
-                                        options: draftModelModeListSource.availableModes,
-                                        presetId: activePresetId,
-                                      })}
-                                    </AcpSelectItemLabel>
-                                  </SelectItem>
-                                ))
-                              : null}
-                          </SelectContent>
-                        </Select>
-                      </FieldControl>
-                    </>
-                  ) : selectedSession !== null ? (
-                    <>
-                      <FieldControl htmlFor="session-model-select" label={sessionModelSelectLabel}>
-                        <Select
-                          onValueChange={(value) => {
-                            if (value !== null) {
-                              void handleUpdateSession({ modelId: value });
-                            }
-                          }}
-                          value={
-                            selectedSession.isActive
-                              ? (selectedSession.currentModelId ?? undefined)
-                              : (pendingTuningModelId ??
-                                selectedSession.currentModelId ??
-                                undefined)
-                          }
-                        >
-                          <SelectTrigger className="w-full" id="session-model-select">
-                            <SelectValue placeholder={sessionModelSelectLabel}>
-                              {(value) =>
-                                formatAcpSelectValueLabel({
-                                  fallback: sessionModelSelectLabel,
-                                  kind: "model",
-                                  options: selectedSession.availableModels,
-                                  presetId: selectedSession.presetId,
-                                  value,
-                                })
-                              }
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedSession.availableModels.map((model) => (
-                              <SelectItem key={model.id} value={model.id}>
-                                <AcpSelectItemLabel
-                                  info={formatAcpSelectOptionInfo({
-                                    kind: "model",
-                                    option: model,
-                                    presetId: selectedSession.presetId,
-                                  })}
-                                >
-                                  {formatAcpSelectOptionLabel({
-                                    kind: "model",
-                                    option: model,
-                                    options: selectedSession.availableModels,
-                                    presetId: selectedSession.presetId,
-                                  })}
-                                </AcpSelectItemLabel>
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FieldControl>
-                      {selectedSession.availableModes.length > 0 ? (
-                        <FieldControl htmlFor="session-mode-select" label={sessionModeSelectLabel}>
+                <div className="flex min-h-11 flex-col gap-2 bg-transparent px-2 py-2 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="flex flex-1 flex-wrap items-center gap-2">
+                    {shouldUseDraftSession ? (
+                      <>
+                        <FieldControl htmlFor="draft-provider-select" label="Provider">
                           <Select
                             onValueChange={(value) => {
                               if (value !== null) {
-                                void handleUpdateSession({ modeId: value });
+                                setDraftPresetId(value);
                               }
                             }}
-                            value={
-                              selectedSession.isActive
-                                ? (selectedSession.currentModeId ?? undefined)
-                                : (pendingTuningModeId ??
-                                  selectedSession.currentModeId ??
-                                  undefined)
-                            }
+                            value={activePresetId}
                           >
-                            <SelectTrigger className="w-full" id="session-mode-select">
-                              <SelectValue placeholder={sessionModeSelectLabel}>
-                                {(value) =>
-                                  formatAcpSelectValueLabel({
-                                    fallback: sessionModeSelectLabel,
-                                    kind: "mode",
-                                    options: selectedSession.availableModes,
-                                    presetId: selectedSession.presetId,
-                                    value,
-                                  })
-                                }
-                              </SelectValue>
+                            <SelectTrigger className="w-full" id="draft-provider-select">
+                              <SelectValue placeholder="Provider" />
                             </SelectTrigger>
                             <SelectContent>
-                              {selectedSession.availableModes.map((mode) => (
-                                <SelectItem key={mode.id} value={mode.id}>
-                                  <AcpSelectItemLabel
-                                    info={formatAcpSelectOptionInfo({
+                              {selectablePresets.map((preset) => (
+                                <SelectItem key={preset.id} value={preset.id}>
+                                  {preset.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FieldControl>
+                        <FieldControl htmlFor="draft-model-select" label={draftModelSelectLabel}>
+                          <Select
+                            onValueChange={(value) => {
+                              if (!draftModelSourceHasList || value === null) {
+                                return;
+                              }
+                              setDraftModelId(value);
+                            }}
+                            value={draftModelSelectValue}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <SelectTrigger
+                                className="min-w-0 flex-1"
+                                disabled={!draftModelSourceHasList}
+                                id="draft-model-select"
+                                title={
+                                  !draftModelSourceHasList
+                                    ? "エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません"
+                                    : undefined
+                                }
+                              >
+                                <SelectValue
+                                  placeholder={
+                                    draftModelSourceHasList
+                                      ? draftModelSelectLabel
+                                      : "Loading models..."
+                                  }
+                                >
+                                  {(value) =>
+                                    formatAcpSelectValueLabel({
+                                      fallback: draftModelSelectLabel,
+                                      kind: "model",
+                                      options: draftModelModeListSource.availableModels,
+                                      presetId: activePresetId,
+                                      value,
+                                    })
+                                  }
+                                </SelectValue>
+                              </SelectTrigger>
+                              <AcpSelectValueInfo info={draftModelSelectInfo} />
+                            </div>
+                            <SelectContent>
+                              {draftModelSourceHasList
+                                ? draftModelModeListSource.availableModels.map((model) => (
+                                    <SelectItem key={model.id} value={model.id}>
+                                      <AcpSelectItemLabel>
+                                        {formatAcpSelectOptionLabel({
+                                          kind: "model",
+                                          option: model,
+                                          options: draftModelModeListSource.availableModels,
+                                          presetId: activePresetId,
+                                        })}
+                                      </AcpSelectItemLabel>
+                                    </SelectItem>
+                                  ))
+                                : null}
+                            </SelectContent>
+                          </Select>
+                        </FieldControl>
+                        <FieldControl htmlFor="draft-mode-select" label={draftModeSelectLabel}>
+                          <Select
+                            onValueChange={(value) => {
+                              if (!draftModeSourceHasList || value === null) {
+                                return;
+                              }
+                              setDraftModeId(value);
+                            }}
+                            value={draftModeSelectValue}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <SelectTrigger
+                                className="min-w-0 flex-1"
+                                disabled={!draftModeSourceHasList}
+                                id="draft-mode-select"
+                                title={
+                                  !draftModeSourceHasList
+                                    ? "エージェントに問い合わせて一覧を取得中か、利用可能な mode がありません"
+                                    : undefined
+                                }
+                              >
+                                <SelectValue
+                                  placeholder={
+                                    draftModeSourceHasList
+                                      ? draftModeSelectLabel
+                                      : "Loading modes..."
+                                  }
+                                >
+                                  {(value) =>
+                                    formatAcpSelectValueLabel({
+                                      fallback: draftModeSelectLabel,
                                       kind: "mode",
-                                      option: mode,
+                                      options: draftModelModeListSource.availableModes,
+                                      presetId: activePresetId,
+                                      value,
+                                    })
+                                  }
+                                </SelectValue>
+                              </SelectTrigger>
+                              <AcpSelectValueInfo info={draftModeSelectInfo} />
+                            </div>
+                            <SelectContent>
+                              {draftModeSourceHasList
+                                ? draftModelModeListSource.availableModes.map((mode) => (
+                                    <SelectItem key={mode.id} value={mode.id}>
+                                      <AcpSelectItemLabel>
+                                        {formatAcpSelectOptionLabel({
+                                          kind: "mode",
+                                          option: mode,
+                                          options: draftModelModeListSource.availableModes,
+                                          presetId: activePresetId,
+                                        })}
+                                      </AcpSelectItemLabel>
+                                    </SelectItem>
+                                  ))
+                                : null}
+                            </SelectContent>
+                          </Select>
+                        </FieldControl>
+                      </>
+                    ) : selectedSession !== null ? (
+                      <>
+                        <FieldControl
+                          htmlFor="session-model-select"
+                          label={sessionModelSelectLabel}
+                        >
+                          <Select
+                            onValueChange={(value) => {
+                              if (value !== null) {
+                                void handleUpdateSession({ modelId: value });
+                              }
+                            }}
+                            value={sessionModelSelectValue}
+                          >
+                            <div className="flex items-center gap-1.5">
+                              <SelectTrigger className="min-w-0 flex-1" id="session-model-select">
+                                <SelectValue placeholder={sessionModelSelectLabel}>
+                                  {(value) =>
+                                    formatAcpSelectValueLabel({
+                                      fallback: sessionModelSelectLabel,
+                                      kind: "model",
+                                      options: selectedSession.availableModels,
                                       presetId: selectedSession.presetId,
-                                    })}
-                                  >
+                                      value,
+                                    })
+                                  }
+                                </SelectValue>
+                              </SelectTrigger>
+                              <AcpSelectValueInfo info={sessionModelSelectInfo} />
+                            </div>
+                            <SelectContent>
+                              {selectedSession.availableModels.map((model) => (
+                                <SelectItem key={model.id} value={model.id}>
+                                  <AcpSelectItemLabel>
                                     {formatAcpSelectOptionLabel({
-                                      kind: "mode",
-                                      option: mode,
-                                      options: selectedSession.availableModes,
+                                      kind: "model",
+                                      option: model,
+                                      options: selectedSession.availableModels,
                                       presetId: selectedSession.presetId,
                                     })}
                                   </AcpSelectItemLabel>
@@ -1438,72 +1471,97 @@ export const ProjectChatPage: FC<{
                             </SelectContent>
                           </Select>
                         </FieldControl>
-                      ) : null}
-                    </>
-                  ) : null}
+                        {selectedSession.availableModes.length > 0 ? (
+                          <FieldControl
+                            htmlFor="session-mode-select"
+                            label={sessionModeSelectLabel}
+                          >
+                            <Select
+                              onValueChange={(value) => {
+                                if (value !== null) {
+                                  void handleUpdateSession({ modeId: value });
+                                }
+                              }}
+                              value={sessionModeSelectValue}
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <SelectTrigger className="min-w-0 flex-1" id="session-mode-select">
+                                  <SelectValue placeholder={sessionModeSelectLabel}>
+                                    {(value) =>
+                                      formatAcpSelectValueLabel({
+                                        fallback: sessionModeSelectLabel,
+                                        kind: "mode",
+                                        options: selectedSession.availableModes,
+                                        presetId: selectedSession.presetId,
+                                        value,
+                                      })
+                                    }
+                                  </SelectValue>
+                                </SelectTrigger>
+                                <AcpSelectValueInfo info={sessionModeSelectInfo} />
+                              </div>
+                              <SelectContent>
+                                {selectedSession.availableModes.map((mode) => (
+                                  <SelectItem key={mode.id} value={mode.id}>
+                                    <AcpSelectItemLabel>
+                                      {formatAcpSelectOptionLabel({
+                                        kind: "mode",
+                                        option: mode,
+                                        options: selectedSession.availableModes,
+                                        presetId: selectedSession.presetId,
+                                      })}
+                                    </AcpSelectItemLabel>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </FieldControl>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </div>
 
+                  {shouldUseDraftSession &&
+                  (isPreparingDraftProvider ||
+                    draftPrepareError !== null ||
+                    draftCatalogError !== null) ? (
+                    <p
+                      className={
+                        draftPrepareError !== null || draftCatalogError !== null
+                          ? "text-xs text-destructive"
+                          : "text-xs text-muted-foreground"
+                      }
+                    >
+                      {draftPrepareError ??
+                        draftCatalogError ??
+                        `${draftSession.label} に接続しています...`}
+                    </p>
+                  ) : null}
                   <Button
+                    aria-label={
+                      isSending ? "Sending" : shouldUseDraftSession ? "Start session" : "Send"
+                    }
+                    className="self-end lg:self-auto"
+                    disabled={!canSend}
                     onClick={() => {
-                      setIsAttachDialogOpen(true);
+                      void handleSendPrompt();
                     }}
+                    size="icon"
+                    title={isSending ? "Sending..." : shouldUseDraftSession ? "Start" : "Send"}
                     type="button"
-                    variant="outline"
                   >
-                    <Paperclip className="size-4" />
-                    Attach
+                    {isSending ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Send className="size-4" />
+                    )}
                   </Button>
                 </div>
-
-                {shouldUseDraftSession &&
-                (isPreparingDraftProvider ||
-                  draftPrepareError !== null ||
-                  draftCatalogError !== null) ? (
-                  <p
-                    className={
-                      draftPrepareError !== null || draftCatalogError !== null
-                        ? "text-xs text-destructive"
-                        : "text-xs text-muted-foreground"
-                    }
-                  >
-                    {draftPrepareError ??
-                      draftCatalogError ??
-                      `${draftSession.label} に接続しています...`}
-                  </p>
-                ) : null}
-
-                <Button
-                  className="min-w-36"
-                  disabled={!canSend}
-                  onClick={() => {
-                    void handleSendPrompt();
-                  }}
-                  type="button"
-                >
-                  <Send className="size-4" />
-                  {isSending ? "Sending..." : shouldUseDraftSession ? "Start session" : "Send"}
-                </Button>
               </div>
             </div>
           </div>
         </section>
       </div>
-
-      {isAttachDialogOpen ? (
-        <AttachFilesDialog
-          attachedFiles={attachedFiles}
-          error={
-            uploadAttachmentsMutation.error instanceof Error
-              ? uploadAttachmentsMutation.error
-              : null
-          }
-          isUploading={uploadAttachmentsMutation.isPending}
-          onAttachFiles={handleAttachFiles}
-          onClose={() => {
-            setIsAttachDialogOpen(false);
-          }}
-          onRemoveFile={handleRemoveFile}
-        />
-      ) : null}
     </div>
   );
 };

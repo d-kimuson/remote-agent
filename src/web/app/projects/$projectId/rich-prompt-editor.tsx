@@ -6,6 +6,7 @@ import {
   type ClipboardEvent,
   type FC,
   type KeyboardEvent,
+  type ReactNode,
 } from "react";
 
 import { Button } from "../../../components/ui/button.tsx";
@@ -101,8 +102,9 @@ export const RichPromptEditor: FC<{
   readonly onChange: (value: string) => void;
   readonly onSubmit: () => void;
   readonly placeholder: string;
+  readonly toolbarTrailing?: ReactNode;
   readonly value: string;
-}> = ({ className, disabled = false, onChange, onSubmit, placeholder, value }) => {
+}> = ({ className, disabled = false, onChange, onSubmit, placeholder, toolbarTrailing, value }) => {
   const editorRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
@@ -210,11 +212,11 @@ export const RichPromptEditor: FC<{
   return (
     <div
       className={cn(
-        "overflow-hidden rounded-lg border border-input bg-card shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20",
+        "overflow-hidden rounded-lg border border-input bg-transparent shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20",
         className,
       )}
     >
-      <div className="flex items-center gap-1 border-b bg-muted/25 px-2 py-1.5">
+      <div className="flex items-center gap-1 border-b bg-transparent px-2 py-1.5">
         {toolbarItems.map((item) => {
           const Icon = item.icon;
           return (
@@ -237,6 +239,9 @@ export const RichPromptEditor: FC<{
             </Button>
           );
         })}
+        {toolbarTrailing === undefined ? null : (
+          <div className="ml-auto flex shrink-0 items-center gap-1">{toolbarTrailing}</div>
+        )}
       </div>
       <div className="relative">
         {value.length === 0 ? (
@@ -248,7 +253,7 @@ export const RichPromptEditor: FC<{
           aria-label={placeholder}
           aria-disabled={disabled}
           aria-multiline
-          className="min-h-32 w-full whitespace-pre-wrap break-words bg-[color-mix(in_oklab,var(--background)_82%,var(--card))] px-4 py-4 text-sm leading-7 outline-none selection:bg-primary/20 empty:before:text-muted-foreground"
+          className="min-h-20 w-full whitespace-pre-wrap break-words bg-transparent px-4 py-3 text-sm leading-7 outline-none selection:bg-primary/20 empty:before:text-muted-foreground"
           contentEditable={!disabled}
           onInput={(event) => {
             onChange(event.currentTarget.textContent ?? "");

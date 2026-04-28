@@ -25,16 +25,17 @@ export const AcpToolUseCard: FC<{
 
   return (
     <Card
+      size="sm"
       className={cn(
-        "!gap-0 !py-0 mb-2.5 border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30",
+        "!gap-0 !py-0 mb-2 rounded-lg border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30",
         className,
       )}
     >
-      <div className="flex items-center gap-1 border-b border-blue-200/70 pr-2 dark:border-blue-800/50">
+      <div className="flex items-center gap-1 border-b border-blue-200/70 pr-1.5 dark:border-blue-800/50">
         <button
           aria-expanded={open}
           className={cn(
-            "inline-flex min-w-0 flex-1 items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 text-left font-inherit transition-colors hover:bg-blue-100/50 sm:px-3.5 dark:hover:bg-blue-900/20",
+            "inline-flex min-w-0 flex-1 items-center justify-between gap-2 border-0 bg-transparent px-2.5 py-2 text-left font-inherit transition-colors hover:bg-blue-100/50 sm:px-3 dark:hover:bg-blue-900/20",
           )}
           onClick={() => {
             setOpen((o) => !o);
@@ -61,33 +62,33 @@ export const AcpToolUseCard: FC<{
         <CopyBlockButton className="opacity-80 hover:opacity-100" text={copyText} />
       </div>
       {open ? (
-        <CardContent className="space-y-3 border-0 py-3">
+        <CardContent className="space-y-2.5 border-0 px-2.5 py-2.5 sm:px-3">
           {call !== null ? (
             <div>
-              <h4 className="mb-1.5 text-xs font-medium text-muted-foreground">入力 (args)</h4>
-              <pre className="max-h-64 overflow-y-auto rounded-md border border-border/50 bg-background/80 p-2.5 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+              <h4 className="mb-1 text-xs font-medium text-muted-foreground">入力 (args)</h4>
+              <pre className="max-h-64 overflow-y-auto rounded-md border border-border/50 bg-background/80 p-2 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
                 {take(call.inputText.length > 0 ? call.inputText : "（空）")}
               </pre>
             </div>
           ) : null}
           {error !== null ? (
             <div>
-              <h4 className="mb-1.5 flex items-center gap-1 text-xs font-medium text-destructive">
+              <h4 className="mb-1 flex items-center gap-1 text-xs font-medium text-destructive">
                 <AlertCircle className="size-3" />
                 エラー
               </h4>
-              <pre className="max-h-48 overflow-y-auto rounded-md border border-destructive/25 bg-destructive/5 p-2.5 text-[11px] leading-relaxed break-words whitespace-pre-wrap text-destructive">
+              <pre className="max-h-48 overflow-y-auto rounded-md border border-destructive/25 bg-destructive/5 p-2 text-[11px] leading-relaxed break-words whitespace-pre-wrap text-destructive">
                 {take(error.errorText)}
               </pre>
             </div>
           ) : null}
           {result !== null ? (
             <div>
-              <h4 className="mb-1.5 flex items-center gap-1 text-xs font-medium text-muted-foreground">
+              <h4 className="mb-1 flex items-center gap-1 text-xs font-medium text-muted-foreground">
                 <CheckCircle2 className="size-3 text-emerald-600 dark:text-emerald-400" />
                 戻り値 (output)
               </h4>
-              <pre className="max-h-64 overflow-y-auto rounded-md border border-border/50 bg-background/80 p-2.5 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
+              <pre className="max-h-64 overflow-y-auto rounded-md border border-border/50 bg-background/80 p-2 text-[11px] leading-relaxed break-words whitespace-pre-wrap">
                 {take(result.outputText)}
               </pre>
             </div>

@@ -141,7 +141,10 @@ const NotificationButton: FC = () => {
   );
 };
 
-export const AppHeader: FC<{ readonly onOpenMenu: () => void }> = ({ onOpenMenu }) => {
+export const AppHeader: FC<{
+  readonly isDesktopMenuExpanded: boolean;
+  readonly onOpenMenu: () => void;
+}> = ({ isDesktopMenuExpanded, onOpenMenu }) => {
   const location = useLocation();
   const navigate = useNavigate();
   const currentProjectId = currentProjectIdFromPath(location.pathname);
@@ -156,7 +159,7 @@ export const AppHeader: FC<{ readonly onOpenMenu: () => void }> = ({ onOpenMenu 
     <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
       <Button
         aria-label="Open menu"
-        className="shrink-0"
+        className={isDesktopMenuExpanded ? "shrink-0 md:hidden" : "shrink-0"}
         onClick={onOpenMenu}
         size="icon-sm"
         type="button"

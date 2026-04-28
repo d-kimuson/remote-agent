@@ -29,9 +29,10 @@ const formatDateTime = (iso: string): string =>
 
 export const ProjectMenuContent: FC<{
   readonly projectId: string;
+  readonly currentSessionId: string | null;
   readonly sessions: readonly SessionSummary[];
   readonly sessionCount: number;
-}> = ({ projectId, sessions, sessionCount }) => {
+}> = ({ currentSessionId, projectId, sessions, sessionCount }) => {
   const closeAppMenu = useCloseAppMenu();
   const sortedSessions = sortSessionsNewestFirst(sessions);
 
@@ -87,10 +88,15 @@ export const ProjectMenuContent: FC<{
               ) : null}
               {sortedSessions.map((session) => {
                 const timestamp = sessionTimestamp(session);
+                const isCurrentSession = session.sessionId === currentSessionId;
                 return (
                   <Link
+                    aria-current={isCurrentSession ? "page" : undefined}
                     className={cn(
                       "block rounded-lg border border-l-4 border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70",
+                      isCurrentSession
+                        ? "border-sidebar-primary bg-sidebar-primary/15 ring-1 ring-sidebar-primary/35"
+                        : "",
                       sessionStatusRowClassName(session.status),
                     )}
                     key={session.sessionId}
