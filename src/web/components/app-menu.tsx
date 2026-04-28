@@ -139,7 +139,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
   const [mobileTarget, setMobileTarget] = useState<HTMLDivElement | null>(null);
   const [hasCustomContent, setHasCustomContent] = useState(false);
   const [desktopExpanded, setDesktopExpanded] = useState(true);
-  const [desktopMenuWidth, setDesktopMenuWidth] = useState(340);
+  const [desktopMenuWidth, setDesktopMenuWidth] = useState(300);
   const [mobileOpen, setMobileOpen] = useState(false);
   const desktopResizeStartRef = useRef<{
     readonly startWidth: number;
