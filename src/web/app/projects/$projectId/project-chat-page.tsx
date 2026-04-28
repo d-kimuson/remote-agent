@@ -1,17 +1,6 @@
-import { Link, useNavigate } from "@tanstack/react-router";
+import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  History as HistoryIcon,
-  MessageSquareDashed,
-  Loader2,
-  Paperclip,
-  Plus,
-  RefreshCw,
-  Send,
-  Settings,
-  Trash2,
-} from "lucide-react";
+import { MessageSquareDashed, Loader2, Paperclip, Send, Trash2 } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -32,7 +21,7 @@ import type {
 } from "../../../../shared/acp.ts";
 import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
 import { Badge } from "../../../components/ui/badge.tsx";
-import { Button, buttonVariants } from "../../../components/ui/button.tsx";
+import { Button } from "../../../components/ui/button.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
 import {
   Select,
@@ -48,10 +37,8 @@ import {
   fetchAgentModelCatalog,
   fetchAppInfo,
   fetchProject,
-  fetchResumableSessions,
   fetchSessionMessages,
   fetchSessions,
-  loadSessionRequest,
   sendPromptRequest,
   updateSessionRequest,
   uploadAttachmentsRequest,
@@ -63,14 +50,12 @@ import {
   appendTranscriptMessage,
   buildDraftSession,
   buildPromptText,
-  buildSessionEntries,
   defaultPresetId,
   draftSessionTranscriptKey,
   moveTranscript,
   resolveSessionListTitle,
 } from "./chat-state.pure.ts";
 import { ChatRawEvents } from "./chat-raw-events.tsx";
-import { LoadSessionDialog } from "./load-session-dialog.tsx";
 import {
   filterDisplayableRawEvents,
   shouldDisplayTranscriptMessage,
@@ -83,7 +68,7 @@ import {
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from "./queries.ts";
-import { SessionListItem } from "./session-list-item.tsx";
+import { ProjectMenuContent } from "./project-menu-content.tsx";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
 
 /** 既存セッションからモデル/モード一覧を借りられないときの Select 用プレースホルダー（送信時は undefined を送る） */
@@ -204,7 +189,7 @@ export const ProjectChatPage: FC<{
     queryKey: appInfoQueryKey,
     queryFn: fetchAppInfo,
   });
-  const { data: sessionsData, refetch: refetchSessions } = useSuspenseQuery({
+  const { data: sessionsData } = useSuspenseQuery({
     queryKey: sessionsQueryKey,
     queryFn: fetchSessions,
   });
@@ -221,7 +206,6 @@ export const ProjectChatPage: FC<{
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [isAttachDialogOpen, setIsAttachDialogOpen] = useState(false);
-  const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
@@ -245,19 +229,6 @@ export const ProjectChatPage: FC<{
         sessionsData.sessions.find((s) => s.sessionId === sessionId) ??
         null);
   const shouldUseDraftSession = sessionId === null;
-  const sessionsInSidebar = useMemo(() => {
-    if (sessionId === null) {
-      return projectSessions;
-    }
-    if (projectSessions.some((s) => s.sessionId === sessionId)) {
-      return projectSessions;
-    }
-    const detached = sessionsData.sessions.find((s) => s.sessionId === sessionId);
-    if (detached === undefined) {
-      return projectSessions;
-    }
-    return [detached, ...projectSessions];
-  }, [projectSessions, sessionId, sessionsData.sessions]);
   const activePresetId = draftPresetId.length > 0 ? draftPresetId : preferredPresetId;
   const draftSession = useMemo(
     () =>
@@ -267,14 +238,6 @@ export const ProjectChatPage: FC<{
         presets: appInfoData.agentPresets,
       }),
     [activePresetId, appInfoData.agentPresets, project.workingDirectory],
-  );
-  const sessionEntries = useMemo(
-    () =>
-      buildSessionEntries({
-        draftSession,
-        sessions: sessionsInSidebar,
-      }),
-    [draftSession, sessionsInSidebar],
   );
   const modelModeTemplateSession = useMemo((): SessionSummary | null => {
     const inProject = projectSessions.find((entry) => entry.presetId === activePresetId);
@@ -382,14 +345,6 @@ export const ProjectChatPage: FC<{
 
   const closeSessionMutation = useMutation({
     mutationFn: deleteSessionRequest,
-  });
-
-  const loadSessionMutation = useMutation({
-    mutationFn: loadSessionRequest,
-  });
-
-  const discoverResumableSessionsMutation = useMutation({
-    mutationFn: fetchResumableSessions,
   });
 
   const sendPromptMutation = useMutation({
@@ -516,14 +471,6 @@ export const ProjectChatPage: FC<{
     );
   };
 
-  const handleSelectExistingSession = (nextSessionId: string) => {
-    navigateToSession(nextSessionId);
-  };
-
-  const handleStartDraftSession = () => {
-    navigateToSession(null);
-  };
-
   const handleUpdateSession = async ({
     modelId,
     modeId,
@@ -582,42 +529,6 @@ export const ProjectChatPage: FC<{
     } catch {
       queryClient.setQueryData(sessionsQueryKey, previousSessions);
     }
-  };
-
-  const handleLoadExistingSession = async ({
-    sessionId: targetSessionId,
-    title,
-    updatedAt,
-  }: {
-    readonly sessionId: string;
-    readonly title: string | null;
-    readonly updatedAt: string | null;
-  }) => {
-    const response = await loadSessionMutation.mutateAsync({
-      projectId,
-      presetId: "codex",
-      sessionId: targetSessionId,
-      cwd: project.workingDirectory,
-      title,
-      updatedAt,
-    });
-
-    upsertSessionInCache({
-      ...response.session,
-      sessionId: targetSessionId,
-    });
-    setIsLoadSessionDialogOpen(false);
-    navigateToSession(targetSessionId, { replace: true });
-    void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-  };
-
-  const handleOpenLoadSessionDialog = () => {
-    setIsLoadSessionDialogOpen(true);
-    discoverResumableSessionsMutation.mutate({
-      projectId,
-      presetId: "codex",
-      cwd: project.workingDirectory,
-    });
   };
 
   const handleSendPrompt = async () => {
@@ -758,7 +669,7 @@ export const ProjectChatPage: FC<{
     transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-full bg-background">
       {shouldUseDraftSession && (
         <Suspense fallback={null}>
           <DraftAgentModelCatalogLoader
@@ -778,106 +689,24 @@ export const ProjectChatPage: FC<{
           />
         </Suspense>
       )}
-      <div className="mx-auto flex h-screen max-w-[1600px] flex-col px-4 py-4 md:px-6">
+      <ProjectMenuContent
+        projectId={projectId}
+        sessionCount={projectSessions.length}
+        sessions={projectSessions}
+      />
+      <div className="mx-auto flex h-full max-w-[1600px] flex-col px-4 py-4 md:px-6">
         <header className="flex flex-col gap-3 border-b pb-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex min-w-0 items-center gap-3">
-            <Link className={cn(buttonVariants({ variant: "outline", size: "sm" }))} to="/projects">
-              <ArrowLeft className="size-4" />
-              Projects
-            </Link>
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-lg font-semibold tracking-tight">{project.name}</h1>
-                <Badge variant={shouldUseDraftSession ? "secondary" : "outline"}>
-                  {shouldUseDraftSession ? "Draft" : "Connected"}
-                </Badge>
-                <Badge variant="outline">{projectSessions.length} sessions</Badge>
-              </div>
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                {project.workingDirectory} · {headerSubtitle}
-              </p>
-            </div>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <Badge variant={shouldUseDraftSession ? "secondary" : "outline"}>
+              {shouldUseDraftSession ? "Draft" : "Connected"}
+            </Badge>
+            <Badge variant="outline">{projectSessions.length} sessions</Badge>
+            <p className="min-w-0 truncate text-sm text-muted-foreground">{headerSubtitle}</p>
           </div>
-          <Link
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0")}
-            to="/settings"
-          >
-            <Settings className="size-4" />
-            Settings
-          </Link>
         </header>
 
-        <section className="grid min-h-0 flex-1 gap-4 pt-4 md:grid-cols-[320px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col rounded-lg border bg-background">
-            <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
-              <p className="text-sm font-medium">Sessions</p>
-              <div className="flex items-center gap-1">
-                <Button
-                  onClick={() => {
-                    void refetchSessions();
-                  }}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <RefreshCw className="size-4" />
-                </Button>
-                <Button
-                  onClick={handleOpenLoadSessionDialog}
-                  size="icon"
-                  type="button"
-                  variant="ghost"
-                >
-                  <HistoryIcon className="size-4" />
-                </Button>
-                <Button onClick={handleStartDraftSession} size="icon" type="button">
-                  <Plus className="size-4" />
-                </Button>
-              </div>
-            </div>
-            <ScrollArea className="flex-1">
-              <div className="space-y-2 p-3">
-                {sessionEntries.length === 0 ? (
-                  <div className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
-                    No sessions yet.
-                  </div>
-                ) : null}
-
-                {sessionEntries.map((entry) => (
-                  <SessionListItem
-                    footerLeft={
-                      entry.kind === "draft" ? "Draft" : formatDateTime(entry.session.createdAt)
-                    }
-                    key={entry.kind === "draft" ? "draft" : entry.session.sessionId}
-                    listTitle={
-                      entry.kind === "draft"
-                        ? "New Session"
-                        : resolveSessionListTitle(
-                            entry.session,
-                            firstUserTextInTranscript(entry.session.sessionId),
-                          )
-                    }
-                    onSelect={() => {
-                      if (entry.kind === "draft") {
-                        handleStartDraftSession();
-                        return;
-                      }
-
-                      handleSelectExistingSession(entry.session.sessionId);
-                    }}
-                    selected={
-                      entry.kind === "draft"
-                        ? shouldUseDraftSession
-                        : entry.session.sessionId === selectedSession?.sessionId
-                    }
-                    session={entry}
-                  />
-                ))}
-              </div>
-            </ScrollArea>
-          </aside>
-
-          <div className="flex min-h-0 flex-col rounded-lg border bg-background">
+        <section className="min-h-0 flex-1 pt-4">
+          <div className="flex h-full min-h-0 flex-col rounded-lg border bg-background">
             {shouldUseDraftSession ? null : (
               <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
                 <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
@@ -1231,30 +1060,6 @@ export const ProjectChatPage: FC<{
             setIsAttachDialogOpen(false);
           }}
           onRemoveFile={handleRemoveFile}
-        />
-      ) : null}
-
-      {isLoadSessionDialogOpen ? (
-        <LoadSessionDialog
-          capability={discoverResumableSessionsMutation.data?.capability ?? null}
-          error={
-            discoverResumableSessionsMutation.error instanceof Error
-              ? discoverResumableSessionsMutation.error
-              : null
-          }
-          isLoading={discoverResumableSessionsMutation.isPending}
-          isLoadingSession={loadSessionMutation.isPending}
-          onClose={() => {
-            setIsLoadSessionDialogOpen(false);
-          }}
-          onLoadSession={(session) => {
-            void handleLoadExistingSession({
-              sessionId: session.sessionId,
-              title: session.title ?? null,
-              updatedAt: session.updatedAt ?? null,
-            });
-          }}
-          sessions={discoverResumableSessionsMutation.data?.sessions ?? []}
         />
       ) : null}
     </div>

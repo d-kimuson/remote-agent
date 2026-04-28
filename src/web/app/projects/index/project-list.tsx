@@ -13,8 +13,7 @@ import {
 } from "../../../components/ui/card.tsx";
 import { fetchProjects } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
-
-const projectsQueryKey = ["projects"] as const;
+import { projectsQueryKey } from "../$projectId/queries.ts";
 
 export const ProjectList: FC = () => {
   const { data } = useSuspenseQuery({
