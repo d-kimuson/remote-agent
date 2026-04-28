@@ -5,18 +5,18 @@ import type {
   SessionConfigSelectGroup,
   SessionConfigSelectOption,
   SessionConfigSelectOptions,
-} from "@agentclientprotocol/sdk";
+} from '@agentclientprotocol/sdk';
 
-import type { ModeOption, ModelOption } from "../../shared/acp.ts";
+import type { ModeOption, ModelOption } from '../../shared/acp.ts';
 
 const normalizeModelOptionId = (value: string): string => {
   const t = value.trim();
-  return t.length > 0 ? t : "—";
+  return t.length > 0 ? t : '—';
 };
 
 export const mapModelInfoToModelOption = (model: ModelInfo): ModelOption => {
   const anyModel = model as { modelId?: string; id?: string };
-  const id = model.modelId ?? anyModel.id ?? "";
+  const id = model.modelId ?? anyModel.id ?? '';
   return {
     id: normalizeModelOptionId(String(id)),
     name: String(model.name),
@@ -25,15 +25,15 @@ export const mapModelInfoToModelOption = (model: ModelInfo): ModelOption => {
 };
 
 const isConfigSelectOption = (o: unknown): o is SessionConfigSelectOption => {
-  if (o === null || typeof o !== "object" || !("value" in o) || !("name" in o)) {
+  if (o === null || typeof o !== 'object' || !('value' in o) || !('name' in o)) {
     return false;
   }
   const t = o as { value: unknown; name: unknown };
-  return typeof t.value === "string" && typeof t.name === "string";
+  return typeof t.value === 'string' && typeof t.name === 'string';
 };
 
 const isConfigSelectGroup = (g: unknown): g is SessionConfigSelectGroup => {
-  if (g === null || typeof g !== "object" || !("options" in g)) {
+  if (g === null || typeof g !== 'object' || !('options' in g)) {
     return false;
   }
   const t = (g as { options: unknown }).options;
@@ -61,36 +61,36 @@ const flattenConfigSelectOptions = (
 };
 
 const isModelConfigOption = (c: SessionConfigOption): boolean => {
-  if (c.type !== "select") {
+  if (c.type !== 'select') {
     return false;
   }
-  if (c.category === "model") {
+  if (c.category === 'model') {
     return true;
   }
   const id = c.id.toLowerCase();
-  return id === "model";
+  return id === 'model';
 };
 
 const isModeConfigOption = (c: SessionConfigOption): boolean => {
-  if (c.type !== "select") {
+  if (c.type !== 'select') {
     return false;
   }
-  if (c.category === "mode") {
+  if (c.category === 'mode') {
     return true;
   }
   const id = c.id.toLowerCase();
-  return id === "mode";
+  return id === 'mode';
 };
 
 const readConfigSelects = (
-  configOptions: NewSessionResponse["configOptions"] | null | undefined,
+  configOptions: NewSessionResponse['configOptions'] | null | undefined,
   pick: (c: SessionConfigOption) => boolean,
 ): { readonly options: ModelOption[]; readonly currentId: string | null } => {
   if (configOptions === null || configOptions === undefined) {
     return { options: [], currentId: null };
   }
   const selects: SessionConfigOption[] = (configOptions as readonly SessionConfigOption[]).filter(
-    (c): c is SessionConfigOption => c.type === "select" && pick(c),
+    (c): c is SessionConfigOption => c.type === 'select' && pick(c),
   );
   if (selects.length === 0) {
     return { options: [], currentId: null };

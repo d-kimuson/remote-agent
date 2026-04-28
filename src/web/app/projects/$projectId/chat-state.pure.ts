@@ -1,7 +1,7 @@
-import type { AgentPreset, SessionSummary } from "../../../../shared/acp.ts";
-import type { ChatMessage, TranscriptMap } from "./types.ts";
+import type { AgentPreset, SessionSummary } from '../../../../shared/acp.ts';
+import type { ChatMessage, TranscriptMap } from './types.ts';
 
-export const draftSessionTranscriptKey = "draft-session";
+export const draftSessionTranscriptKey = 'draft-session';
 
 export type DraftSession = {
   readonly presetId: string;
@@ -12,17 +12,17 @@ export type DraftSession = {
 
 export type SessionListEntry =
   | {
-      readonly kind: "draft";
+      readonly kind: 'draft';
       readonly draft: DraftSession;
     }
   | {
-      readonly kind: "existing";
+      readonly kind: 'existing';
       readonly session: SessionSummary;
     };
 
 export const defaultPresetId = (presets: readonly AgentPreset[]): string => {
-  const codexPreset = presets.find((preset) => preset.id === "codex");
-  return codexPreset?.id ?? presets[0]?.id ?? "";
+  const codexPreset = presets.find((preset) => preset.id === 'codex');
+  return codexPreset?.id ?? presets[0]?.id ?? '';
 };
 
 export const buildDraftSession = ({
@@ -39,7 +39,7 @@ export const buildDraftSession = ({
   return {
     presetId: preset?.id ?? presetId,
     label: preset?.label ?? presetId,
-    command: preset?.command ?? "agent",
+    command: preset?.command ?? 'agent',
     cwd,
   };
 };
@@ -66,17 +66,17 @@ export const buildSessionEntries = ({
   readonly sessions: readonly SessionSummary[];
 }): readonly SessionListEntry[] => {
   const persistedEntries = sessions.map<SessionListEntry>((session) => ({
-    kind: "existing",
+    kind: 'existing',
     session,
   }));
 
-  return [{ kind: "draft", draft: draftSession }, ...persistedEntries];
+  return [{ kind: 'draft', draft: draftSession }, ...persistedEntries];
 };
 
 const truncateOneLine = (value: string, maxChars: number): string => {
-  const normalized = value.replace(/\s+/g, " ").trim();
+  const normalized = value.replace(/\s+/g, ' ').trim();
   if (normalized.length === 0) {
-    return "";
+    return '';
   }
   if (normalized.length <= maxChars) {
     return normalized;
@@ -103,19 +103,19 @@ export const resolveSessionListTitle = (
   if (fromTranscript !== undefined && fromTranscript.length > 0) {
     return truncateOneLine(fromTranscript, maxChars);
   }
-  return session.presetId ?? "Session";
+  return session.presetId ?? 'Session';
 };
 
 export const buildPromptText = (prompt: string, attachedFiles: readonly string[]): string => {
   const trimmedPrompt = prompt.trim();
   if (trimmedPrompt.length === 0) {
-    return "";
+    return '';
   }
 
   const attachmentBlock =
     attachedFiles.length === 0
-      ? ""
-      : `\n\nAttached files:\n${attachedFiles.map((path) => `- ${path}`).join("\n")}`;
+      ? ''
+      : `\n\nAttached files:\n${attachedFiles.map((path) => `- ${path}`).join('\n')}`;
 
   return `${trimmedPrompt}${attachmentBlock}`;
 };

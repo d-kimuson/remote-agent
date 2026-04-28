@@ -1,7 +1,7 @@
-import { Outlet, createFileRoute } from "@tanstack/react-router";
+import { Outlet, createFileRoute } from '@tanstack/react-router';
 
 const ProjectLayoutRoute = () => <Outlet />;
 
-export const Route = createFileRoute("/projects/$projectId")({
+export const Route = createFileRoute('/projects/$projectId')({
   component: ProjectLayoutRoute,
 });

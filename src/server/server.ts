@@ -1,5 +1,6 @@
-import { serve } from "@hono/node-server";
-import { honoApp } from "./app.ts";
+import { serve } from '@hono/node-server';
+
+import { honoApp } from './app.ts';
 
 type ServerOptions = {
   port?: number;
@@ -26,11 +27,11 @@ export const startServer = (options?: ServerOptions) => {
     }
   };
 
-  process.on("SIGINT", () => {
+  process.on('SIGINT', () => {
     cleanUp();
   });
 
-  process.on("SIGTERM", () => {
+  process.on('SIGTERM', () => {
     cleanUp();
   });
 

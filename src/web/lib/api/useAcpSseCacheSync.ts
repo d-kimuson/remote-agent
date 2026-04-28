@@ -1,6 +1,6 @@
-import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { useEffect, useRef } from "react";
-import { toast } from "sonner";
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
+import { toast } from 'sonner';
 
 import {
   type AcpSseEvent,
@@ -10,24 +10,24 @@ import {
   type SessionStatus,
   type SessionSummary,
   type SessionsResponse,
-} from "../../../shared/acp.ts";
-import { addSessionPausedAppNotification } from "../../pwa/notification-center.ts";
-import { showSessionPausedNotification } from "../../pwa/notifications.ts";
-import { fetchProjects, fetchSessions } from "./acp.ts";
+} from '../../../shared/acp.ts';
 import {
   agentProvidersQueryKey,
   projectsQueryKey,
   sessionMessagesQueryKey,
   sessionsQueryKey,
-} from "../../app/projects/$projectId/queries.ts";
-import { dispatchAcpSseBrowserEvent } from "./acp-sse-browser-event.ts";
-import { applySessionStreamDeltaToMessages } from "./acp-sse-cache.pure.ts";
+} from '../../app/projects/$projectId/queries.ts';
+import { addSessionPausedAppNotification } from '../../pwa/notification-center.ts';
+import { showSessionPausedNotification } from '../../pwa/notifications.ts';
+import { dispatchAcpSseBrowserEvent } from './acp-sse-browser-event.ts';
+import { applySessionStreamDeltaToMessages } from './acp-sse-cache.pure.ts';
+import { fetchProjects, fetchSessions } from './acp.ts';
 
 /** ACP のストリーミングで SSE が連打されるため、invalidate の間隔を空ける */
 const ACP_SSE_INVALIDATE_DEBOUNCE_MS = 300;
 
 const applyTextDelta = (queryClient: QueryClient, event: AcpSseEvent): boolean => {
-  if (event.type !== "session_text_delta" && event.type !== "session_reasoning_delta") {
+  if (event.type !== 'session_text_delta' && event.type !== 'session_reasoning_delta') {
     return false;
   }
 
@@ -50,26 +50,26 @@ const mergeEventToPending = (
   knownStatuses: Map<string, SessionStatus>,
   statusFromCache: (sessionId: string) => SessionStatus | null,
 ) => {
-  if (event.type === "agent_catalog_updated") {
+  if (event.type === 'agent_catalog_updated') {
     pending.catalogUpdates.add(`${event.presetId}\0${event.cwd}`);
     return;
   }
-  if (event.type === "session_removed") {
+  if (event.type === 'session_removed') {
     pending.removedSessionIds.add(event.sessionId);
     pending.needSessionsList = true;
     knownStatuses.delete(event.sessionId);
     return;
   }
-  if (event.type === "session_messages_updated") {
+  if (event.type === 'session_messages_updated') {
     pending.needSessionsList = true;
     pending.messageSessionIds.add(event.sessionId);
     return;
   }
-  if (event.type === "session_updated") {
+  if (event.type === 'session_updated') {
     pending.needSessionsList = true;
     if (event.status !== undefined) {
       const previousStatus = knownStatuses.get(event.sessionId) ?? statusFromCache(event.sessionId);
-      if (previousStatus === "running" && event.status === "paused") {
+      if (previousStatus === 'running' && event.status === 'paused') {
         pending.pausedSessionIds.add(event.sessionId);
       }
       knownStatuses.set(event.sessionId, event.status);
@@ -83,7 +83,7 @@ const sessionTitleFrom = (session: SessionSummary): string => {
 };
 
 const sessionUrlFrom = (session: SessionSummary): string => {
-  const searchParams = new URLSearchParams({ "session-id": session.sessionId });
+  const searchParams = new URLSearchParams({ 'session-id': session.sessionId });
   return session.projectId === null || session.projectId === undefined
     ? `/projects?${searchParams.toString()}`
     : `/projects/${session.projectId}?${searchParams.toString()}`;
@@ -94,7 +94,7 @@ const projectNameFrom = async (
   projectId: string | null | undefined,
 ): Promise<string> => {
   if (projectId === null || projectId === undefined) {
-    return "ACP Playground";
+    return 'ACP Playground';
   }
 
   const cachedProjects = queryClient.getQueryData<ProjectsResponse>(projectsQueryKey);
@@ -126,18 +126,18 @@ const notifyPausedSessions = async (
     const sessionTitle = sessionTitleFrom(session);
     const url = sessionUrlFrom(session);
     addSessionPausedAppNotification({
-      projectId: session.projectId ?? "unknown",
+      projectId: session.projectId ?? 'unknown',
       projectName,
       sessionId: session.sessionId,
       sessionTitle,
       timestamp,
       url,
     });
-    toast.success("Agent paused", {
+    toast.success('Agent paused', {
       description: sessionTitle.length > 0 ? sessionTitle : session.sessionId,
     });
     void showSessionPausedNotification({
-      projectId: session.projectId ?? "unknown",
+      projectId: session.projectId ?? 'unknown',
       projectName,
       sessionId: session.sessionId,
       sessionTitle,
@@ -188,7 +188,7 @@ const flushPending = async (
         knownStatuses.get(session.sessionId) ??
         cachedSessions?.sessions.find((entry) => entry.sessionId === session.sessionId)?.status ??
         null;
-      if (previousStatus === "running" && session.status === "paused") {
+      if (previousStatus === 'running' && session.status === 'paused') {
         work.pausedSessionIds.add(session.sessionId);
       }
       knownStatuses.set(session.sessionId, session.status);
@@ -196,11 +196,11 @@ const flushPending = async (
   }
   for (const sessionId of work.messageSessionIds) {
     const queryKey = sessionMessagesQueryKey(sessionId);
-    void queryClient.invalidateQueries({ queryKey, refetchType: "all" });
+    void queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
   }
   for (const key of work.catalogUpdates) {
     if (key.length > 0) {
-      void queryClient.invalidateQueries({ queryKey: ["acp", "agent-model-catalog"] });
+      void queryClient.invalidateQueries({ queryKey: ['acp', 'agent-model-catalog'] });
       void queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
     }
   }
@@ -242,9 +242,9 @@ export const useAcpSseCacheSync = (): void => {
       }, ACP_SSE_INVALIDATE_DEBOUNCE_MS);
     };
 
-    const source = new EventSource("/api/acp/sse", { withCredentials: false });
+    const source = new EventSource('/api/acp/sse', { withCredentials: false });
     const onMessage = (ev: MessageEvent<string>) => {
-      if (typeof ev.data !== "string") {
+      if (typeof ev.data !== 'string') {
         return;
       }
       let event: AcpSseEvent;

@@ -1,19 +1,19 @@
-import { Link } from "@tanstack/react-router";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { FolderIcon } from "lucide-react";
-import { useMemo, type FC } from "react";
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { FolderIcon } from 'lucide-react';
+import { useMemo, type FC } from 'react';
 
-import { buttonVariants } from "../../../components/ui/button.tsx";
+import { projectsQueryKey } from '../$projectId/queries.ts';
+import { buttonVariants } from '../../../components/ui/button.tsx';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../../../components/ui/card.tsx";
-import { fetchProjects } from "../../../lib/api/acp.ts";
-import { cn } from "../../../lib/utils.ts";
-import { projectsQueryKey } from "../$projectId/queries.ts";
+} from '../../../components/ui/card.tsx';
+import { fetchProjects } from '../../../lib/api/acp.ts';
+import { cn } from '../../../lib/utils.ts';
 
 export const ProjectList: FC = () => {
   const { data } = useSuspenseQuery({
@@ -24,7 +24,7 @@ export const ProjectList: FC = () => {
   const projects = useMemo(
     () =>
       [...data.projects].sort((left, right) =>
-        left.name.localeCompare(right.name, "ja-JP", { sensitivity: "base" }),
+        left.name.localeCompare(right.name, 'ja-JP', { sensitivity: 'base' }),
       ),
     [data.projects],
   );
@@ -58,7 +58,7 @@ export const ProjectList: FC = () => {
           </CardHeader>
           <CardContent>
             <Link
-              className={cn(buttonVariants({ variant: "default" }), "w-full")}
+              className={cn(buttonVariants({ variant: 'default' }), 'w-full')}
               params={{ projectId: project.id }}
               to="/projects/$projectId"
             >

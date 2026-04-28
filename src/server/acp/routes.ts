@@ -1,6 +1,6 @@
-import { Hono } from "hono";
-import { describeRoute, validator as vValidator } from "hono-openapi";
-import { boolean, object, parse } from "valibot";
+import { Hono } from 'hono';
+import { describeRoute, validator as vValidator } from 'hono-openapi';
+import { boolean, object, parse } from 'valibot';
 
 import {
   agentModelCatalogQuerySchema,
@@ -25,26 +25,25 @@ import {
   type CreateSessionRequest,
   type DiscoverResumableSessionsRequest,
   type SessionSummary,
-} from "../../shared/acp.ts";
-import { errorResponseSchema, jsonResponse, validationErrorHook } from "../hono-utils.ts";
+} from '../../shared/acp.ts';
+import { errorResponseSchema, jsonResponse, validationErrorHook } from '../hono-utils.ts';
 import {
   getProject,
   getProjectSettings,
   updateProjectModelPreference,
-} from "../projects/project-store.ts";
-import { discoverResumableSessions } from "./services/agent-session-client.ts";
-import { parseArgsText } from "./args.pure.ts";
-import { excludeManagedResumableSessions } from "./session-resume.pure.ts";
-import { probeAgentModelCatalog } from "./services/probe-agent-catalog.ts";
-import { probeAgentSlashCommands } from "./services/probe-agent-slash-commands.ts";
-import { agentPresets } from "./presets.ts";
+} from '../projects/project-store.ts';
+import { parseArgsText } from './args.pure.ts';
+import { agentPresets } from './presets.ts';
 import {
   getProviderCatalog,
   markProviderCatalogError,
   listProviderStatuses,
   setProviderEnabled,
   upsertProviderCatalog,
-} from "./repositories/provider-catalog-store.ts";
+} from './repositories/provider-catalog-store.ts';
+import { discoverResumableSessions } from './services/agent-session-client.ts';
+import { probeAgentModelCatalog } from './services/probe-agent-catalog.ts';
+import { probeAgentSlashCommands } from './services/probe-agent-slash-commands.ts';
 import {
   createPreparedSession,
   createSession,
@@ -54,18 +53,19 @@ import {
   removeSession,
   sendPrompt,
   updateSession,
-} from "./services/session-store.ts";
-import { subscribeAcpSse } from "./services/sse-broadcast.ts";
+} from './services/session-store.ts';
+import { subscribeAcpSse } from './services/sse-broadcast.ts';
+import { excludeManagedResumableSessions } from './session-resume.pure.ts';
 
 const deleteSessionResponseSchema = object({
   ok: boolean(),
 });
 
 const preparedSessions = new Map<string, Promise<SessionSummary>>();
-const loadableProviderIds = new Set(["codex", "claude-code", "pi-coding-agent"]);
+const loadableProviderIds = new Set(['codex', 'claude-code', 'pi-coding-agent']);
 
 const findPreset = (presetId: string | null | undefined) => {
-  const id = presetId ?? "codex";
+  const id = presetId ?? 'codex';
   return agentPresets.find((preset) => preset.id === id) ?? null;
 };
 
@@ -76,15 +76,15 @@ const resolveAgentCommand = (
   readonly command: string;
   readonly args: readonly string[];
 } => {
-  const preset = findPreset(request.presetId ?? "codex");
+  const preset = findPreset(request.presetId ?? 'codex');
   const parsedArgs = parseArgsText(request.argsText);
 
   if (preset === null) {
-    throw new Error(`Unknown ACP provider preset: ${request.presetId ?? "codex"}`);
+    throw new Error(`Unknown ACP provider preset: ${request.presetId ?? 'codex'}`);
   }
 
   if (request.command !== null && request.command !== undefined) {
-    throw new Error("Custom ACP commands are temporarily disabled. Use a provider preset.");
+    throw new Error('Custom ACP commands are temporarily disabled. Use a provider preset.');
   }
 
   return {
@@ -151,7 +151,7 @@ const resolveInitialModelId = async ({
   const preferences = settings.modelPreferences.filter((entry) => entry.presetId === presetId);
   const lastUsed = preferences
     .filter((entry) => entry.lastUsedAt !== null && entry.lastUsedAt !== undefined)
-    .sort((left, right) => (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? ""))[0];
+    .sort((left, right) => (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? ''))[0];
   if (lastUsed !== undefined) {
     return lastUsed.modelId;
   }
@@ -175,10 +175,10 @@ const markProjectModelUsed = async (session: SessionSummary): Promise<void> => {
 };
 
 const resolvePreset = (presetId: string | null | undefined) => {
-  const preset = findPreset(presetId ?? "codex");
+  const preset = findPreset(presetId ?? 'codex');
 
   if (preset === null) {
-    throw new Error(`Unknown ACP provider preset: ${presetId ?? "codex"}`);
+    throw new Error(`Unknown ACP provider preset: ${presetId ?? 'codex'}`);
   }
 
   return preset;
@@ -196,10 +196,10 @@ const resolveResumeCommand = (presetId: string | null | undefined) => {
 
 export const acpRoutes = new Hono()
   .get(
-    "/sse",
+    '/sse',
     describeRoute({
-      summary: "Subscribe to ACP session updates (Server-Sent Events, JSON in each data line)",
-      responses: { 200: { description: "Event stream" } },
+      summary: 'Subscribe to ACP session updates (Server-Sent Events, JSON in each data line)',
+      responses: { 200: { description: 'Event stream' } },
     }),
     (c) => {
       const stream = new TransformStream<Uint8Array, Uint8Array>();
@@ -215,24 +215,24 @@ export const acpRoutes = new Hono()
         unsubscribe();
         return writer.close().catch(() => undefined);
       };
-      c.req.raw.signal.addEventListener("abort", () => {
+      c.req.raw.signal.addEventListener('abort', () => {
         void close();
       });
       return c.newResponse(stream.readable, {
         headers: {
-          "Content-Type": "text/event-stream; charset=utf-8",
-          "Cache-Control": "no-cache, no-transform",
-          Connection: "keep-alive",
-          "X-Accel-Buffering": "no",
+          'Content-Type': 'text/event-stream; charset=utf-8',
+          'Cache-Control': 'no-cache, no-transform',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
         },
       });
     },
   )
   .get(
-    "/providers",
+    '/providers',
     describeRoute({
-      summary: "List ACP provider presets and enabled state",
-      responses: { 200: jsonResponse("ACP providers", agentProvidersResponseSchema) },
+      summary: 'List ACP provider presets and enabled state',
+      responses: { 200: jsonResponse('ACP providers', agentProvidersResponseSchema) },
     }),
     async (c) => {
       const response = parse(agentProvidersResponseSchema, {
@@ -242,42 +242,42 @@ export const acpRoutes = new Hono()
     },
   )
   .patch(
-    "/providers/:presetId",
+    '/providers/:presetId',
     describeRoute({
-      summary: "Enable or disable an ACP provider preset",
+      summary: 'Enable or disable an ACP provider preset',
       responses: {
-        200: jsonResponse("ACP providers", agentProvidersResponseSchema),
-        400: jsonResponse("ACP provider update error", errorResponseSchema),
+        200: jsonResponse('ACP providers', agentProvidersResponseSchema),
+        400: jsonResponse('ACP provider update error', errorResponseSchema),
       },
     }),
-    vValidator("json", updateAgentProviderRequestSchema, validationErrorHook),
+    vValidator('json', updateAgentProviderRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
+        const request = c.req.valid('json');
         const providers = await setProviderEnabled({
-          presetId: c.req.param("presetId"),
+          presetId: c.req.param('presetId'),
           enabled: request.enabled,
         });
         return c.json(parse(agentProvidersResponseSchema, { providers }));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to update provider";
+        const message = error instanceof Error ? error.message : 'failed to update provider';
         return c.json({ error: message }, 400);
       }
     },
   )
   .post(
-    "/providers/:presetId/check",
+    '/providers/:presetId/check',
     describeRoute({
-      summary: "Check ACP provider connectivity and refresh catalog",
+      summary: 'Check ACP provider connectivity and refresh catalog',
       responses: {
-        200: jsonResponse("Model/mode options", agentModelCatalogResponseSchema),
-        400: jsonResponse("ACP provider check error", errorResponseSchema),
+        200: jsonResponse('Model/mode options', agentModelCatalogResponseSchema),
+        400: jsonResponse('ACP provider check error', errorResponseSchema),
       },
     }),
-    vValidator("json", checkAgentProviderRequestSchema, validationErrorHook),
+    vValidator('json', checkAgentProviderRequestSchema, validationErrorHook),
     async (c) => {
-      const presetId = c.req.param("presetId");
-      const request = c.req.valid("json");
+      const presetId = c.req.param('presetId');
+      const request = c.req.valid('json');
       const cwd = request.cwd ?? process.cwd();
       try {
         const raw = await probeAgentModelCatalog({ cwd, presetId });
@@ -288,31 +288,31 @@ export const acpRoutes = new Hono()
         await upsertProviderCatalog({ presetId, cwd, catalog });
         return c.json(catalog);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to check provider";
+        const message = error instanceof Error ? error.message : 'failed to check provider';
         await markProviderCatalogError({ presetId, cwd, error: message });
         return c.json({ error: message }, 400);
       }
     },
   )
   .get(
-    "/agent/model-catalog",
+    '/agent/model-catalog',
     describeRoute({
-      summary: "Probe agent for model and mode list (ephemeral initSession)",
+      summary: 'Probe agent for model and mode list (ephemeral initSession)',
       responses: {
-        200: jsonResponse("Model/mode options", agentModelCatalogResponseSchema),
-        400: jsonResponse("Model catalog error", errorResponseSchema),
-        404: jsonResponse("Project not found", errorResponseSchema),
+        200: jsonResponse('Model/mode options', agentModelCatalogResponseSchema),
+        400: jsonResponse('Model catalog error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
       },
     }),
-    vValidator("query", agentModelCatalogQuerySchema, validationErrorHook),
+    vValidator('query', agentModelCatalogQuerySchema, validationErrorHook),
     async (c) => {
-      const request = c.req.valid("query");
+      const request = c.req.valid('query');
       let project;
       try {
         project = await getProject(request.projectId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "unknown project";
-        if (message.startsWith("Unknown project:")) {
+        const message = error instanceof Error ? error.message : 'unknown project';
+        if (message.startsWith('Unknown project:')) {
           return c.json({ error: message }, 404);
         }
         return c.json({ error: message }, 500);
@@ -336,30 +336,30 @@ export const acpRoutes = new Hono()
           ),
         );
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to read model catalog";
+        const message = error instanceof Error ? error.message : 'failed to read model catalog';
         return c.json({ error: message }, 400);
       }
     },
   )
   .get(
-    "/agent/slash-commands",
+    '/agent/slash-commands',
     describeRoute({
-      summary: "Probe agent for slash command list (ephemeral ACP session)",
+      summary: 'Probe agent for slash command list (ephemeral ACP session)',
       responses: {
-        200: jsonResponse("Slash command options", agentSlashCommandsResponseSchema),
-        400: jsonResponse("Slash command probe error", errorResponseSchema),
-        404: jsonResponse("Project not found", errorResponseSchema),
+        200: jsonResponse('Slash command options', agentSlashCommandsResponseSchema),
+        400: jsonResponse('Slash command probe error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
       },
     }),
-    vValidator("query", agentSlashCommandsQuerySchema, validationErrorHook),
+    vValidator('query', agentSlashCommandsQuerySchema, validationErrorHook),
     async (c) => {
-      const request = c.req.valid("query");
+      const request = c.req.valid('query');
       let project;
       try {
         project = await getProject(request.projectId);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "unknown project";
-        if (message.startsWith("Unknown project:")) {
+        const message = error instanceof Error ? error.message : 'unknown project';
+        if (message.startsWith('Unknown project:')) {
           return c.json({ error: message }, 404);
         }
         return c.json({ error: message }, 500);
@@ -372,7 +372,7 @@ export const acpRoutes = new Hono()
         });
         return c.json(parse(agentSlashCommandsResponseSchema, { commands, lastError: null }));
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to read slash commands";
+        const message = error instanceof Error ? error.message : 'failed to read slash commands';
         return c.json(
           parse(agentSlashCommandsResponseSchema, {
             commands: [],
@@ -383,18 +383,18 @@ export const acpRoutes = new Hono()
     },
   )
   .post(
-    "/agent/prepare",
+    '/agent/prepare',
     describeRoute({
-      summary: "Start an ACP provider session in the background for a draft chat",
+      summary: 'Start an ACP provider session in the background for a draft chat',
       responses: {
-        202: jsonResponse("Prepared session handle", prepareAgentSessionResponseSchema),
-        400: jsonResponse("ACP prepare error", errorResponseSchema),
+        202: jsonResponse('Prepared session handle', prepareAgentSessionResponseSchema),
+        400: jsonResponse('ACP prepare error', errorResponseSchema),
       },
     }),
-    vValidator("json", prepareAgentSessionRequestSchema, validationErrorHook),
+    vValidator('json', prepareAgentSessionRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
+        const request = c.req.valid('json');
         const preset = resolvePreset(request.presetId);
         const context = await resolveProjectContext({
           projectId: request.projectId,
@@ -421,7 +421,7 @@ export const acpRoutes = new Hono()
         });
         preparedSessions.set(prepareId, sessionPromise);
         sessionPromise.catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : "failed to prepare agent";
+          const message = error instanceof Error ? error.message : 'failed to prepare agent';
           void markProviderCatalogError({
             presetId: preset.id,
             cwd: context.cwd,
@@ -431,16 +431,16 @@ export const acpRoutes = new Hono()
         });
         return c.json(parse(prepareAgentSessionResponseSchema, { prepareId }), 202);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to prepare agent";
+        const message = error instanceof Error ? error.message : 'failed to prepare agent';
         return c.json({ error: message }, 400);
       }
     },
   )
   .get(
-    "/sessions",
+    '/sessions',
     describeRoute({
-      summary: "List ACP sessions",
-      responses: { 200: jsonResponse("ACP sessions", sessionsResponseSchema) },
+      summary: 'List ACP sessions',
+      responses: { 200: jsonResponse('ACP sessions', sessionsResponseSchema) },
     }),
     async (c) => {
       const response = parse(sessionsResponseSchema, { sessions: await listSessions() });
@@ -448,18 +448,18 @@ export const acpRoutes = new Hono()
     },
   )
   .get(
-    "/sessions/discover",
+    '/sessions/discover',
     describeRoute({
-      summary: "Discover resumable ACP sessions",
+      summary: 'Discover resumable ACP sessions',
       responses: {
-        200: jsonResponse("Resumable ACP sessions", resumableSessionsResponseSchema),
-        400: jsonResponse("ACP session discovery error", errorResponseSchema),
+        200: jsonResponse('Resumable ACP sessions', resumableSessionsResponseSchema),
+        400: jsonResponse('ACP session discovery error', errorResponseSchema),
       },
     }),
-    vValidator("query", discoverResumableSessionsRequestSchema, validationErrorHook),
+    vValidator('query', discoverResumableSessionsRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("query") satisfies DiscoverResumableSessionsRequest;
+        const request = c.req.valid('query') satisfies DiscoverResumableSessionsRequest;
         const resolved = resolveResumeCommand(request.presetId);
         if (!loadableProviderIds.has(resolved.preset.id)) {
           throw new Error(`Loading sessions is not supported for provider: ${resolved.preset.id}`);
@@ -490,24 +490,24 @@ export const acpRoutes = new Hono()
         );
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "failed to discover resumable sessions";
+          error instanceof Error ? error.message : 'failed to discover resumable sessions';
         return c.json({ error: message }, 400);
       }
     },
   )
   .post(
-    "/sessions",
+    '/sessions',
     describeRoute({
-      summary: "Create ACP session",
+      summary: 'Create ACP session',
       responses: {
-        201: jsonResponse("Created ACP session", sessionResponseSchema),
-        400: jsonResponse("ACP session creation error", errorResponseSchema),
+        201: jsonResponse('Created ACP session', sessionResponseSchema),
+        400: jsonResponse('ACP session creation error', errorResponseSchema),
       },
     }),
-    vValidator("json", createSessionRequestSchema, validationErrorHook),
+    vValidator('json', createSessionRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
+        const request = c.req.valid('json');
         const resolved = resolveAgentCommand(request);
         const context = await resolveProjectContext({
           projectId: request.projectId,
@@ -515,7 +515,7 @@ export const acpRoutes = new Hono()
         });
         const preset = findPreset(resolved.presetId);
         if (preset === null) {
-          throw new Error(`Unknown ACP provider preset: ${resolved.presetId ?? "codex"}`);
+          throw new Error(`Unknown ACP provider preset: ${resolved.presetId ?? 'codex'}`);
         }
         const initialModelId = await resolveInitialModelId({
           projectId: context.project?.id ?? null,
@@ -536,24 +536,24 @@ export const acpRoutes = new Hono()
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to create session";
+        const message = error instanceof Error ? error.message : 'failed to create session';
         return c.json({ error: message }, 400);
       }
     },
   )
   .post(
-    "/sessions/load",
+    '/sessions/load',
     describeRoute({
-      summary: "Load existing ACP session",
+      summary: 'Load existing ACP session',
       responses: {
-        201: jsonResponse("Loaded ACP session", sessionResponseSchema),
-        400: jsonResponse("ACP session load error", errorResponseSchema),
+        201: jsonResponse('Loaded ACP session', sessionResponseSchema),
+        400: jsonResponse('ACP session load error', errorResponseSchema),
       },
     }),
-    vValidator("json", loadSessionRequestSchema, validationErrorHook),
+    vValidator('json', loadSessionRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
+        const request = c.req.valid('json');
         const resolved = resolveResumeCommand(request.presetId);
         if (!loadableProviderIds.has(resolved.preset.id)) {
           throw new Error(`Loading sessions is not supported for provider: ${resolved.preset.id}`);
@@ -584,73 +584,73 @@ export const acpRoutes = new Hono()
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to load session";
+        const message = error instanceof Error ? error.message : 'failed to load session';
         return c.json({ error: message }, 400);
       }
     },
   )
   .post(
-    "/sessions/prepared/:prepareId/messages",
+    '/sessions/prepared/:prepareId/messages',
     describeRoute({
-      summary: "Send message to a prepared ACP session",
+      summary: 'Send message to a prepared ACP session',
       responses: {
-        200: jsonResponse("ACP message response", messageResponseSchema),
-        400: jsonResponse("ACP prepared message error", errorResponseSchema),
+        200: jsonResponse('ACP message response', messageResponseSchema),
+        400: jsonResponse('ACP prepared message error', errorResponseSchema),
       },
     }),
-    vValidator("json", sendMessageRequestSchema, validationErrorHook),
+    vValidator('json', sendMessageRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const sessionPromise = preparedSessions.get(c.req.param("prepareId"));
+        const sessionPromise = preparedSessions.get(c.req.param('prepareId'));
         if (sessionPromise === undefined) {
-          throw new Error(`Prepared session not found: ${c.req.param("prepareId")}`);
+          throw new Error(`Prepared session not found: ${c.req.param('prepareId')}`);
         }
         const session = await sessionPromise;
-        const request = c.req.valid("json");
+        const request = c.req.valid('json');
         const response = parse(messageResponseSchema, await sendPrompt(session.sessionId, request));
         await markProjectModelUsed(response.session);
         return c.json(response);
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : "failed to send prompt to prepared session";
+          error instanceof Error ? error.message : 'failed to send prompt to prepared session';
         return c.json({ error: message }, 400);
       }
     },
   )
   .patch(
-    "/sessions/:sessionId",
+    '/sessions/:sessionId',
     describeRoute({
-      summary: "Update ACP session",
+      summary: 'Update ACP session',
       responses: {
-        200: jsonResponse("Updated ACP session", sessionResponseSchema),
-        400: jsonResponse("ACP session update error", errorResponseSchema),
+        200: jsonResponse('Updated ACP session', sessionResponseSchema),
+        400: jsonResponse('ACP session update error', errorResponseSchema),
       },
     }),
-    vValidator("json", updateSessionRequestSchema, validationErrorHook),
+    vValidator('json', updateSessionRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
-        const sessionId = c.req.param("sessionId");
+        const request = c.req.valid('json');
+        const sessionId = c.req.param('sessionId');
         const session = await updateSession(sessionId, request);
         await markProjectModelUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to update session";
+        const message = error instanceof Error ? error.message : 'failed to update session';
         return c.json({ error: message }, 400);
       }
     },
   )
   .get(
-    "/sessions/:sessionId/messages",
+    '/sessions/:sessionId/messages',
     describeRoute({
-      summary: "List ACP session messages",
+      summary: 'List ACP session messages',
       responses: {
-        200: jsonResponse("ACP session messages", sessionMessagesResponseSchema),
+        200: jsonResponse('ACP session messages', sessionMessagesResponseSchema),
       },
     }),
     async (c) => {
-      const sessionId = c.req.param("sessionId");
+      const sessionId = c.req.param('sessionId');
       const response = parse(sessionMessagesResponseSchema, {
         messages: await listSessionMessages(sessionId),
       });
@@ -658,36 +658,36 @@ export const acpRoutes = new Hono()
     },
   )
   .post(
-    "/sessions/:sessionId/messages",
+    '/sessions/:sessionId/messages',
     describeRoute({
-      summary: "Send message to ACP session",
+      summary: 'Send message to ACP session',
       responses: {
-        200: jsonResponse("ACP message response", messageResponseSchema),
-        400: jsonResponse("ACP message error", errorResponseSchema),
+        200: jsonResponse('ACP message response', messageResponseSchema),
+        400: jsonResponse('ACP message error', errorResponseSchema),
       },
     }),
-    vValidator("json", sendMessageRequestSchema, validationErrorHook),
+    vValidator('json', sendMessageRequestSchema, validationErrorHook),
     async (c) => {
       try {
-        const request = c.req.valid("json");
-        const sessionId = c.req.param("sessionId");
+        const request = c.req.valid('json');
+        const sessionId = c.req.param('sessionId');
         const response = parse(messageResponseSchema, await sendPrompt(sessionId, request));
         await markProjectModelUsed(response.session);
         return c.json(response);
       } catch (error) {
-        const message = error instanceof Error ? error.message : "failed to send prompt";
+        const message = error instanceof Error ? error.message : 'failed to send prompt';
         return c.json({ error: message }, 400);
       }
     },
   )
   .delete(
-    "/sessions/:sessionId",
+    '/sessions/:sessionId',
     describeRoute({
-      summary: "Delete ACP session",
-      responses: { 200: jsonResponse("Delete result", deleteSessionResponseSchema) },
+      summary: 'Delete ACP session',
+      responses: { 200: jsonResponse('Delete result', deleteSessionResponseSchema) },
     }),
     async (c) => {
-      const removed = await removeSession(c.req.param("sessionId"));
+      const removed = await removeSession(c.req.param('sessionId'));
       return c.json({ ok: removed });
     },
   );

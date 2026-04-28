@@ -12,7 +12,7 @@ import {
   trim,
   union,
   type InferOutput,
-} from "valibot";
+} from 'valibot';
 
 export const agentPresetSchema = object({
   id: pipe(string(), trim()),
@@ -42,14 +42,14 @@ export const modelOptionSchema = object({
 
 export type ModelOption = InferOutput<typeof modelOptionSchema>;
 
-export const sessionOriginSchema = union([literal("new"), literal("loaded")]);
+export const sessionOriginSchema = union([literal('new'), literal('loaded')]);
 
 export type SessionOrigin = InferOutput<typeof sessionOriginSchema>;
 
 export const sessionStatusSchema = union([
-  literal("running"),
-  literal("paused"),
-  literal("inactive"),
+  literal('running'),
+  literal('paused'),
+  literal('inactive'),
 ]);
 
 export type SessionStatus = InferOutput<typeof sessionStatusSchema>;
@@ -77,13 +77,13 @@ export const sessionSummarySchema = object({
 export type SessionSummary = InferOutput<typeof sessionSummarySchema>;
 
 export const planEventSchema = object({
-  type: literal("plan"),
+  type: literal('plan'),
   entries: array(pipe(string(), trim())),
   rawText: pipe(string(), trim()),
 });
 
 export const diffEventSchema = object({
-  type: literal("diff"),
+  type: literal('diff'),
   path: pipe(string(), trim()),
   oldText: nullable(optional(string())),
   newText: nullable(optional(string())),
@@ -91,20 +91,20 @@ export const diffEventSchema = object({
 });
 
 export const terminalEventSchema = object({
-  type: literal("terminal"),
+  type: literal('terminal'),
   terminalId: nullable(optional(pipe(string(), trim()))),
   text: string(),
   rawText: pipe(string(), trim()),
 });
 
 export const reasoningEventSchema = object({
-  type: literal("reasoning"),
+  type: literal('reasoning'),
   text: string(),
   rawText: string(),
 });
 
 export const toolCallEventSchema = object({
-  type: literal("toolCall"),
+  type: literal('toolCall'),
   toolCallId: pipe(string(), trim()),
   toolName: pipe(string(), trim()),
   inputText: string(),
@@ -112,7 +112,7 @@ export const toolCallEventSchema = object({
 });
 
 export const toolResultEventSchema = object({
-  type: literal("toolResult"),
+  type: literal('toolResult'),
   toolCallId: pipe(string(), trim()),
   toolName: pipe(string(), trim()),
   outputText: string(),
@@ -120,7 +120,7 @@ export const toolResultEventSchema = object({
 });
 
 export const toolErrorEventSchema = object({
-  type: literal("toolError"),
+  type: literal('toolError'),
   toolCallId: pipe(string(), trim()),
   toolName: pipe(string(), trim()),
   errorText: string(),
@@ -129,14 +129,14 @@ export const toolErrorEventSchema = object({
 
 /** fullStream 上の補助パーツ（start / finish 等）のトレース用 */
 export const streamPartEventSchema = object({
-  type: literal("streamPart"),
+  type: literal('streamPart'),
   partType: pipe(string(), trim()),
   text: string(),
   rawText: string(),
 });
 
 export const toolInputEventSchema = object({
-  type: literal("toolInput"),
+  type: literal('toolInput'),
   streamId: pipe(string(), trim()),
   text: string(),
   rawText: string(),
@@ -168,13 +168,13 @@ export type AppInfo = InferOutput<typeof appInfoSchema>;
 export const filesystemEntrySchema = object({
   name: pipe(string(), trim()),
   path: pipe(string(), trim()),
-  kind: union([literal("directory"), literal("file")]),
+  kind: union([literal('directory'), literal('file')]),
   children: optional(
     array(
       object({
         name: pipe(string(), trim()),
         path: pipe(string(), trim()),
-        kind: union([literal("directory"), literal("file")]),
+        kind: union([literal('directory'), literal('file')]),
       }),
     ),
   ),
@@ -191,7 +191,7 @@ export type FilesystemTreeResponse = InferOutput<typeof filesystemTreeResponseSc
 export const directoryEntrySchema = object({
   name: pipe(string(), trim()),
   path: pipe(string(), trim()),
-  type: union([literal("directory"), literal("file")]),
+  type: union([literal('directory'), literal('file')]),
 });
 
 export type DirectoryEntry = InferOutput<typeof directoryEntrySchema>;
@@ -311,7 +311,7 @@ export type DiscoverResumableSessionsRequest = InferOutput<
 /** プロジェクト＋プリセット向け。永続セッションなしで initSession 相当の一覧を返す。 */
 export const agentModelCatalogQuerySchema = object({
   projectId: pipe(string(), trim()),
-  presetId: optional(pipe(string(), trim()), "codex"),
+  presetId: optional(pipe(string(), trim()), 'codex'),
 });
 
 export type AgentModelCatalogQuery = InferOutput<typeof agentModelCatalogQuerySchema>;
@@ -336,7 +336,7 @@ export type SlashCommand = InferOutput<typeof slashCommandSchema>;
 
 export const agentSlashCommandsQuerySchema = object({
   projectId: pipe(string(), trim()),
-  presetId: optional(pipe(string(), trim()), "codex"),
+  presetId: optional(pipe(string(), trim()), 'codex'),
 });
 
 export type AgentSlashCommandsQuery = InferOutput<typeof agentSlashCommandsQuerySchema>;
@@ -450,31 +450,31 @@ export const sessionsResponseSchema = object({
 
 export type SessionsResponse = InferOutput<typeof sessionsResponseSchema>;
 
-export const chatMessageRoleSchema = union([literal("user"), literal("assistant")]);
+export const chatMessageRoleSchema = union([literal('user'), literal('assistant')]);
 
 export type ChatMessageRole = InferOutput<typeof chatMessageRoleSchema>;
 
 /** 1 行の session_messages に対応（ストリーム単位・ツール単位を区別） */
 export const chatMessageKindSchema = union([
-  literal("user"),
-  literal("legacy_assistant_turn"),
-  literal("assistant_text"),
-  literal("reasoning"),
-  literal("tool_input"),
-  literal("tool_call"),
-  literal("tool_result"),
-  literal("tool_error"),
-  literal("tool_output_denied"),
-  literal("tool_approval_request"),
-  literal("source"),
-  literal("file"),
-  literal("stream_start"),
-  literal("stream_finish"),
-  literal("step_start"),
-  literal("step_finish"),
-  literal("abort"),
-  literal("stream_error"),
-  literal("raw_meta"),
+  literal('user'),
+  literal('legacy_assistant_turn'),
+  literal('assistant_text'),
+  literal('reasoning'),
+  literal('tool_input'),
+  literal('tool_call'),
+  literal('tool_result'),
+  literal('tool_error'),
+  literal('tool_output_denied'),
+  literal('tool_approval_request'),
+  literal('source'),
+  literal('file'),
+  literal('stream_start'),
+  literal('stream_finish'),
+  literal('step_start'),
+  literal('step_finish'),
+  literal('abort'),
+  literal('stream_error'),
+  literal('raw_meta'),
 ]);
 
 export type ChatMessageKind = InferOutput<typeof chatMessageKindSchema>;
@@ -514,12 +514,12 @@ export type SessionMessagesResponse = InferOutput<typeof sessionMessagesResponse
  */
 export const acpSseEventSchema = union([
   object({
-    type: literal("session_updated"),
+    type: literal('session_updated'),
     sessionId: pipe(string(), trim()),
     status: optional(sessionStatusSchema),
   }),
   object({
-    type: literal("session_text_delta"),
+    type: literal('session_text_delta'),
     sessionId: pipe(string(), trim()),
     messageId: pipe(string(), trim()),
     streamPartId: pipe(string(), trim()),
@@ -530,7 +530,7 @@ export const acpSseEventSchema = union([
     metadataJson: optional(nullable(pipe(string(), trim()))),
   }),
   object({
-    type: literal("session_reasoning_delta"),
+    type: literal('session_reasoning_delta'),
     sessionId: pipe(string(), trim()),
     messageId: pipe(string(), trim()),
     streamPartId: pipe(string(), trim()),
@@ -541,15 +541,15 @@ export const acpSseEventSchema = union([
     metadataJson: optional(nullable(pipe(string(), trim()))),
   }),
   object({
-    type: literal("session_messages_updated"),
+    type: literal('session_messages_updated'),
     sessionId: pipe(string(), trim()),
   }),
   object({
-    type: literal("session_removed"),
+    type: literal('session_removed'),
     sessionId: pipe(string(), trim()),
   }),
   object({
-    type: literal("agent_catalog_updated"),
+    type: literal('agent_catalog_updated'),
     presetId: pipe(string(), trim()),
     cwd: pipe(string(), trim()),
   }),

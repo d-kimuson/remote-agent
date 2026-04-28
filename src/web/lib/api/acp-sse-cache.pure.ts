@@ -1,21 +1,21 @@
-import type { AcpSseEvent, ChatMessage, SessionMessagesResponse } from "../../../shared/acp.ts";
+import type { AcpSseEvent, ChatMessage, SessionMessagesResponse } from '../../../shared/acp.ts';
 
 type SessionStreamDeltaEvent = Extract<
   AcpSseEvent,
-  { type: "session_text_delta" | "session_reasoning_delta" }
+  { type: 'session_text_delta' | 'session_reasoning_delta' }
 >;
 
 const messageKindFromDelta = (
   event: SessionStreamDeltaEvent,
-): Extract<ChatMessage["kind"], "assistant_text" | "reasoning"> =>
-  event.type === "session_text_delta" ? "assistant_text" : "reasoning";
+): Extract<ChatMessage['kind'], 'assistant_text' | 'reasoning'> =>
+  event.type === 'session_text_delta' ? 'assistant_text' : 'reasoning';
 
 const messageMatchesDelta = (message: ChatMessage, event: SessionStreamDeltaEvent): boolean =>
   message.id === event.messageId || message.streamPartId === event.streamPartId;
 
 const messageFromDelta = (event: SessionStreamDeltaEvent): ChatMessage => ({
   id: event.messageId,
-  role: "assistant",
+  role: 'assistant',
   kind: messageKindFromDelta(event),
   text: event.text,
   rawEvents: [],

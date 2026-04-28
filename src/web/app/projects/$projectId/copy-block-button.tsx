@@ -1,15 +1,15 @@
-import { Check, Copy } from "lucide-react";
-import { useEffect, useRef, useState, type FC, type MouseEvent } from "react";
-import { toast } from "sonner";
+import { Check, Copy } from 'lucide-react';
+import { useEffect, useRef, useState, type FC, type MouseEvent } from 'react';
+import { toast } from 'sonner';
 
-import { Button } from "../../../components/ui/button.tsx";
-import { cn } from "../../../lib/utils.ts";
+import { Button } from '../../../components/ui/button.tsx';
+import { cn } from '../../../lib/utils.ts';
 
 const COPIED_RESET_MS = 1_500;
 
 const writeClipboardText = async (text: string): Promise<void> => {
   if (navigator.clipboard === undefined) {
-    throw new Error("clipboard API is unavailable");
+    throw new Error('clipboard API is unavailable');
   }
   await navigator.clipboard.writeText(text);
 };
@@ -41,7 +41,7 @@ export const CopyBlockButton: FC<{
     void writeClipboardText(text)
       .then(() => {
         setCopied(true);
-        toast.success("コピーしました");
+        toast.success('コピーしました');
         if (resetTimerRef.current !== null) {
           window.clearTimeout(resetTimerRef.current);
         }
@@ -51,18 +51,18 @@ export const CopyBlockButton: FC<{
         }, COPIED_RESET_MS);
       })
       .catch(() => {
-        toast.error("コピーに失敗しました");
+        toast.error('コピーに失敗しました');
       });
   };
 
   return (
     <Button
-      aria-label={copied ? "Copied" : "Copy block"}
-      className={cn("size-7 shrink-0 text-muted-foreground", className)}
+      aria-label={copied ? 'Copied' : 'Copy block'}
+      className={cn('size-7 shrink-0 text-muted-foreground', className)}
       disabled={!canCopy}
       onClick={handleCopy}
       size="icon"
-      title={copied ? "コピーしました" : "ブロックをコピー"}
+      title={copied ? 'コピーしました' : 'ブロックをコピー'}
       type="button"
       variant="ghost"
     >

@@ -1,23 +1,23 @@
-import type { SessionSummary } from "../../../../shared/acp.ts";
+import type { SessionSummary } from '../../../../shared/acp.ts';
 
-export const appInfoQueryKey = ["app-info"] as const;
-export const agentProvidersQueryKey = ["agent-providers"] as const;
-export const projectsQueryKey = ["projects"] as const;
-export const sessionsQueryKey = ["sessions"] as const;
+export const appInfoQueryKey = ['app-info'] as const;
+export const agentProvidersQueryKey = ['agent-providers'] as const;
+export const projectsQueryKey = ['projects'] as const;
+export const sessionsQueryKey = ['sessions'] as const;
 export const sessionMessagesQueryKey = (sessionId: string) =>
-  ["session-messages", sessionId] as const;
-export const projectQueryKey = (projectId: string) => ["project", projectId] as const;
+  ['session-messages', sessionId] as const;
+export const projectQueryKey = (projectId: string) => ['project', projectId] as const;
 export const projectSettingsQueryKey = (projectId: string) =>
-  ["project-settings", projectId] as const;
-export const filesystemTreeQueryKey = (root: string) => ["filesystem-tree", root] as const;
+  ['project-settings', projectId] as const;
+export const filesystemTreeQueryKey = (root: string) => ['filesystem-tree', root] as const;
 export const resumableSessionsQueryKey = (projectId: string) =>
-  ["resumable-sessions", projectId] as const;
+  ['resumable-sessions', projectId] as const;
 
 export const agentModelCatalogQueryKey = (projectId: string, presetId: string) =>
-  ["acp", "agent-model-catalog", projectId, presetId] as const;
+  ['acp', 'agent-model-catalog', projectId, presetId] as const;
 
 export const agentSlashCommandsQueryKey = (projectId: string, presetId: string) =>
-  ["acp", "agent-slash-commands", projectId, presetId] as const;
+  ['acp', 'agent-slash-commands', projectId, presetId] as const;
 
 export const selectedSessionFrom = (
   sessions: readonly SessionSummary[],

@@ -1,7 +1,7 @@
-import { Suspense, type FC } from "react";
+import { Suspense, type FC } from 'react';
 
-import { ProjectList, ProjectListSkeleton } from "./project-list.tsx";
-import { SetupProjectDialog } from "./setup-project-dialog.tsx";
+import { ProjectList, ProjectListSkeleton } from './project-list.tsx';
+import { SetupProjectDialog } from './setup-project-dialog.tsx';
 
 export const ProjectListPage: FC = () => {
   return (

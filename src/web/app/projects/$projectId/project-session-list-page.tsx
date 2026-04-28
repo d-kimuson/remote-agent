@@ -1,22 +1,24 @@
-import { Link, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { History, MessageSquareDashed, Plus, Search } from "lucide-react";
-import { useMemo, useState, type FC } from "react";
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { History, MessageSquareDashed, Plus, Search } from 'lucide-react';
+import { useMemo, useState, type FC } from 'react';
 
-import type { SessionSummary, SessionsResponse } from "../../../../shared/acp.ts";
-import { Badge } from "../../../components/ui/badge.tsx";
-import { Button, buttonVariants } from "../../../components/ui/button.tsx";
-import { Input } from "../../../components/ui/input.tsx";
+import type { SessionSummary, SessionsResponse } from '../../../../shared/acp.ts';
+
+import { Badge } from '../../../components/ui/badge.tsx';
+import { Button, buttonVariants } from '../../../components/ui/button.tsx';
+import { Input } from '../../../components/ui/input.tsx';
 import {
   fetchAgentProviders,
   fetchProject,
   fetchResumableSessions,
   fetchSessions,
   loadSessionRequest,
-} from "../../../lib/api/acp.ts";
-import { cn } from "../../../lib/utils.ts";
-import { resolveSessionListTitle } from "./chat-state.pure.ts";
-import { LoadSessionDialog } from "./load-session-dialog.tsx";
+} from '../../../lib/api/acp.ts';
+import { cn } from '../../../lib/utils.ts';
+import { resolveSessionListTitle } from './chat-state.pure.ts';
+import { LoadSessionDialog } from './load-session-dialog.tsx';
+import { ProjectMenuContent } from './project-menu-content.tsx';
 import {
   filterSessionsByQuery,
   sessionStatusBadgeClassName,
@@ -24,18 +26,17 @@ import {
   sessionStatusRowClassName,
   sessionTimestamp,
   sortSessionsNewestFirst,
-} from "./project-session-list.pure.ts";
-import { ProjectMenuContent } from "./project-menu-content.tsx";
-import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from "./queries.ts";
+} from './project-session-list.pure.ts';
+import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from './queries.ts';
 
-const loadableProviderIds = new Set(["codex", "claude-code", "pi-coding-agent"]);
+const loadableProviderIds = new Set(['codex', 'claude-code', 'pi-coding-agent']);
 
 const formatDateTime = (iso: string): string =>
-  new Intl.DateTimeFormat("ja-JP", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(iso));
 
 const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSummary }> = ({
@@ -48,17 +49,17 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
   return (
     <Link
       className={cn(
-        "app-card-hover flex items-start gap-3 rounded-lg border border-l-4 bg-card/80 px-4 py-3 transition-colors hover:border-foreground/15",
+        'app-card-hover flex items-start gap-3 rounded-lg border border-l-4 bg-card/80 px-4 py-3 transition-colors hover:border-foreground/15',
         sessionStatusRowClassName(session.status),
       )}
       params={{ projectId }}
-      search={{ "session-id": session.sessionId }}
+      search={{ 'session-id': session.sessionId }}
       to="/projects/$projectId"
     >
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</h2>
-          <Badge variant="outline">{session.presetId ?? "custom"}</Badge>
+          <Badge variant="outline">{session.presetId ?? 'custom'}</Badge>
         </div>
         <p className="truncate font-mono text-xs text-muted-foreground">{session.cwd}</p>
       </div>
@@ -74,7 +75,7 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
 
 export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate({ from: "/projects/$projectId/sessions" });
+  const navigate = useNavigate({ from: '/projects/$projectId/sessions' });
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
@@ -87,7 +88,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     queryKey: sessionsQueryKey,
     queryFn: fetchSessions,
   });
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState('');
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const selectablePresets = useMemo(
     () =>
@@ -185,9 +186,9 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
       setIsLoadSessionDialogOpen(false);
       if (firstSession !== undefined) {
         void navigate({
-          to: "/projects/$projectId",
+          to: '/projects/$projectId',
           params: { projectId },
-          search: { "session-id": firstSession.sessionId },
+          search: { 'session-id': firstSession.sessionId },
           replace: true,
         });
       }
@@ -226,7 +227,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
               <Link
                 aria-label="新規セッション"
-                className={buttonVariants({ className: "w-full sm:w-auto", variant: "default" })}
+                className={buttonVariants({ className: 'w-full sm:w-auto', variant: 'default' })}
                 params={{ projectId }}
                 search={{}}
                 to="/projects/$projectId"

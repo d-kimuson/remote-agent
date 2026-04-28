@@ -1,6 +1,6 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute } from '@tanstack/react-router';
 
-import { SettingsPage } from "../app/settings/settings-page.tsx";
+import { SettingsPage } from '../app/settings/settings-page.tsx';
 
 const SettingsRoute = () => {
   return (
@@ -15,6 +15,6 @@ const SettingsRoute = () => {
   );
 };
 
-export const Route = createFileRoute("/settings")({
+export const Route = createFileRoute('/settings')({
   component: SettingsRoute,
 });

@@ -1,4 +1,4 @@
-import { Bold, Code2, Italic, List, Quote, type LucideIcon } from "lucide-react";
+import { Bold, Code2, Italic, List, Quote, type LucideIcon } from 'lucide-react';
 import {
   useCallback,
   useLayoutEffect,
@@ -9,11 +9,12 @@ import {
   type FC,
   type KeyboardEvent,
   type ReactNode,
-} from "react";
+} from 'react';
 
-import type { SlashCommand } from "../../../../shared/acp.ts";
-import { Button } from "../../../components/ui/button.tsx";
-import { cn } from "../../../lib/utils.ts";
+import type { SlashCommand } from '../../../../shared/acp.ts';
+
+import { Button } from '../../../components/ui/button.tsx';
+import { cn } from '../../../lib/utils.ts';
 import {
   applyRichPromptFormat,
   filterSlashCommands,
@@ -22,7 +23,7 @@ import {
   type RichPromptFormat,
   type RichPromptSelection,
   slashCommandQueryFromPrompt,
-} from "./rich-prompt-editor.pure.ts";
+} from './rich-prompt-editor.pure.ts';
 
 type ToolbarItem = {
   readonly format: RichPromptFormat;
@@ -31,11 +32,11 @@ type ToolbarItem = {
 };
 
 const toolbarItems = [
-  { format: "bold", label: "Bold", icon: Bold },
-  { format: "italic", label: "Italic", icon: Italic },
-  { format: "code", label: "Code", icon: Code2 },
-  { format: "bulletList", label: "Bullet list", icon: List },
-  { format: "quote", label: "Quote", icon: Quote },
+  { format: 'bold', label: 'Bold', icon: Bold },
+  { format: 'italic', label: 'Italic', icon: Italic },
+  { format: 'code', label: 'Code', icon: Code2 },
+  { format: 'bulletList', label: 'Bullet list', icon: List },
+  { format: 'quote', label: 'Quote', icon: Quote },
 ] satisfies readonly ToolbarItem[];
 
 export const RichPromptEditor: FC<{
@@ -174,23 +175,23 @@ export const RichPromptEditor: FC<{
 
     if (filteredSlashCommands.length > 0) {
       const isCommandNavigation = event.metaKey || event.ctrlKey;
-      const isNextCommand = isCommandNavigation && event.key.toLowerCase() === "n";
-      const isPreviousCommand = isCommandNavigation && event.key.toLowerCase() === "p";
+      const isNextCommand = isCommandNavigation && event.key.toLowerCase() === 'n';
+      const isPreviousCommand = isCommandNavigation && event.key.toLowerCase() === 'p';
 
-      if (event.key === "Escape") {
+      if (event.key === 'Escape') {
         event.preventDefault();
         setSlashCommandQuery(null);
         setSelectedCommandIndex(0);
         return;
       }
 
-      if (event.key === "ArrowDown" || isNextCommand) {
+      if (event.key === 'ArrowDown' || isNextCommand) {
         event.preventDefault();
         setSelectedCommandIndex((current) => (current + 1) % filteredSlashCommands.length);
         return;
       }
 
-      if (event.key === "ArrowUp" || isPreviousCommand) {
+      if (event.key === 'ArrowUp' || isPreviousCommand) {
         event.preventDefault();
         setSelectedCommandIndex(
           (current) => (current + filteredSlashCommands.length - 1) % filteredSlashCommands.length,
@@ -198,7 +199,7 @@ export const RichPromptEditor: FC<{
         return;
       }
 
-      if (event.key === "Enter" || event.key === "Tab") {
+      if (event.key === 'Enter' || event.key === 'Tab') {
         event.preventDefault();
         const command = filteredSlashCommands[selectedCommandIndex] ?? filteredSlashCommands[0];
         if (command !== undefined) {
@@ -208,32 +209,32 @@ export const RichPromptEditor: FC<{
       }
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
       event.preventDefault();
       onSubmit(readCurrentValue());
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
       event.preventDefault();
-      applyFormat("bold");
+      applyFormat('bold');
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "i") {
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'i') {
       event.preventDefault();
-      applyFormat("italic");
+      applyFormat('italic');
       return;
     }
   };
 
   const handleKeyUp = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     const isCommandNavigation =
-      (event.metaKey || event.ctrlKey) && ["n", "p"].includes(event.key.toLowerCase());
-    const isModifierKey = ["Alt", "Control", "Meta", "Shift"].includes(event.key);
+      (event.metaKey || event.ctrlKey) && ['n', 'p'].includes(event.key.toLowerCase());
+    const isModifierKey = ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key);
     if (
       filteredSlashCommands.length > 0 &&
-      (["ArrowDown", "ArrowUp", "Enter", "Escape", "Tab"].includes(event.key) ||
+      (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key) ||
         isModifierKey ||
         isCommandNavigation)
     ) {
@@ -246,7 +247,7 @@ export const RichPromptEditor: FC<{
   return (
     <div
       className={cn(
-        "overflow-visible rounded-lg border border-input bg-transparent shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20",
+        'overflow-visible rounded-lg border border-input bg-transparent shadow-sm transition-colors focus-within:border-ring/45 focus-within:ring-3 focus-within:ring-ring/20',
         className,
       )}
     >
@@ -304,8 +305,8 @@ export const RichPromptEditor: FC<{
             {filteredSlashCommands.map((command, index) => (
               <button
                 className={cn(
-                  "flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors",
-                  index === selectedCommandIndex ? "bg-accent text-accent-foreground" : "",
+                  'flex w-full items-start gap-2 px-3 py-2 text-left text-sm transition-colors',
+                  index === selectedCommandIndex ? 'bg-accent text-accent-foreground' : '',
                 )}
                 key={command.name}
                 onMouseDown={(event) => {

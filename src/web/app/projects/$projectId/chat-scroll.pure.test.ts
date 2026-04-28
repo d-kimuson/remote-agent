@@ -1,19 +1,19 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from 'vitest';
 
 import {
   distanceFromScrollBottom,
   isNearScrollBottom,
   nextUnreadMessageCount,
-} from "./chat-scroll.pure.ts";
+} from './chat-scroll.pure.ts';
 
-describe("chat scroll helpers", () => {
-  test("computes distance from the bottom", () => {
+describe('chat scroll helpers', () => {
+  test('computes distance from the bottom', () => {
     expect(
       distanceFromScrollBottom({ scrollHeight: 1_000, clientHeight: 300, scrollTop: 500 }),
     ).toBe(200);
   });
 
-  test("treats near-bottom scroll positions as pinned", () => {
+  test('treats near-bottom scroll positions as pinned', () => {
     expect(isNearScrollBottom({ scrollHeight: 1_000, clientHeight: 300, scrollTop: 620 })).toBe(
       true,
     );
@@ -22,7 +22,7 @@ describe("chat scroll helpers", () => {
     );
   });
 
-  test("resets unread count while following the bottom", () => {
+  test('resets unread count while following the bottom', () => {
     expect(
       nextUnreadMessageCount({
         currentUnreadCount: 3,
@@ -33,7 +33,7 @@ describe("chat scroll helpers", () => {
     ).toBe(0);
   });
 
-  test("adds only newly appended messages while not following the bottom", () => {
+  test('adds only newly appended messages while not following the bottom', () => {
     expect(
       nextUnreadMessageCount({
         currentUnreadCount: 2,
@@ -52,7 +52,7 @@ describe("chat scroll helpers", () => {
     ).toBe(2);
   });
 
-  test("does not carry a negative unread count into the next value", () => {
+  test('does not carry a negative unread count into the next value', () => {
     expect(
       nextUnreadMessageCount({
         currentUnreadCount: -2,

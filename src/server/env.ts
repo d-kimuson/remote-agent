@@ -1,14 +1,13 @@
-import path from "node:path";
-
-import * as v from "valibot";
+import path from 'node:path';
+import * as v from 'valibot';
 
 const envSchema = v.object({
   PORT: v.pipe(
-    v.optional(v.string(), "8989"),
+    v.optional(v.string(), '8989'),
     v.transform((v) => Number.parseInt(v)),
   ),
   ACP_PLAYGROUND_DB_PATH: v.pipe(
-    v.optional(v.string(), path.resolve(process.cwd(), ".local", "acp-playground.sqlite")),
+    v.optional(v.string(), path.resolve(process.cwd(), '.local', 'acp-playground.sqlite')),
     v.transform((value) => path.resolve(value)),
   ),
 });

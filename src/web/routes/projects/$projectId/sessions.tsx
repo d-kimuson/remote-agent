@@ -1,7 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { createFileRoute } from '@tanstack/react-router';
+import { Suspense } from 'react';
 
-import { ProjectSessionListPage } from "../../../app/projects/$projectId/project-session-list-page.tsx";
+import { ProjectSessionListPage } from '../../../app/projects/$projectId/project-session-list-page.tsx';
 
 const ProjectSessionsRoute = () => {
   const { projectId } = Route.useParams();
@@ -12,6 +12,6 @@ const ProjectSessionsRoute = () => {
   );
 };
 
-export const Route = createFileRoute("/projects/$projectId/sessions")({
+export const Route = createFileRoute('/projects/$projectId/sessions')({
   component: ProjectSessionsRoute,
 });

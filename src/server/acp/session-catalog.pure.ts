@@ -1,4 +1,4 @@
-import type { ModeOption, ModelOption } from "../../shared/acp.ts";
+import type { ModeOption, ModelOption } from '../../shared/acp.ts';
 
 /**
  * loaded セッションなどで ACP が currentId だけ返し available* カタログが空のとき、

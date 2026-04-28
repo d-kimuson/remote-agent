@@ -1,6 +1,6 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import 'shadcn/tailwind.css';
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -132,7 +132,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: "Geist Variable", ui-sans-serif, sans-serif;
+    font-family: 'Geist Variable', ui-sans-serif, sans-serif;
     background-image:
       linear-gradient(135deg, oklch(0.92 0.035 210 / 0.45), transparent 48%),
       linear-gradient(180deg, oklch(0.992 0.004 235), var(--app-canvas));

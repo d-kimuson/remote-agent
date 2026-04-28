@@ -1,13 +1,13 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from 'vitest';
 
 import {
   excludeManagedResumableSessions,
   inspectResumeCapabilities,
   mapResumableSessionCandidates,
-} from "./session-resume.pure.ts";
+} from './session-resume.pure.ts';
 
-describe("inspectResumeCapabilities", () => {
-  test("reports ready when loadSession and session/list are available", () => {
+describe('inspectResumeCapabilities', () => {
+  test('reports ready when loadSession and session/list are available', () => {
     expect(
       inspectResumeCapabilities({
         loadSession: true,
@@ -27,7 +27,7 @@ describe("inspectResumeCapabilities", () => {
     });
   });
 
-  test("reports a safe fallback when only session/resume is available", () => {
+  test('reports a safe fallback when only session/resume is available', () => {
     expect(
       inspectResumeCapabilities({
         loadSession: false,
@@ -44,11 +44,11 @@ describe("inspectResumeCapabilities", () => {
       resumeSession: true,
       canLoadIntoProvider: false,
       fallbackReason:
-        "Agent advertises session/resume only. This PoC requires loadSession to bind an existing session to the current AI SDK provider.",
+        'Agent advertises session/resume only. This PoC requires loadSession to bind an existing session to the current AI SDK provider.',
     });
   });
 
-  test("reports a safe fallback when sessions can be listed but not loaded", () => {
+  test('reports a safe fallback when sessions can be listed but not loaded', () => {
     expect(
       inspectResumeCapabilities({
         loadSession: false,
@@ -65,11 +65,11 @@ describe("inspectResumeCapabilities", () => {
       resumeSession: false,
       canLoadIntoProvider: false,
       fallbackReason:
-        "Agent can list sessions but does not advertise loadSession. This PoC cannot import the listed sessions safely.",
+        'Agent can list sessions but does not advertise loadSession. This PoC cannot import the listed sessions safely.',
     });
   });
 
-  test("does not treat missing session capabilities as supported", () => {
+  test('does not treat missing session capabilities as supported', () => {
     expect(
       inspectResumeCapabilities({
         loadSession: false,
@@ -81,21 +81,21 @@ describe("inspectResumeCapabilities", () => {
       listSessions: false,
       resumeSession: false,
       canLoadIntoProvider: false,
-      fallbackReason: "Agent does not advertise loadSession, session/list, or session/resume.",
+      fallbackReason: 'Agent does not advertise loadSession, session/list, or session/resume.',
     });
   });
 });
 
-describe("mapResumableSessionCandidates", () => {
-  test("marks candidates as non-loadable when the provider cannot bind them safely", () => {
+describe('mapResumableSessionCandidates', () => {
+  test('marks candidates as non-loadable when the provider cannot bind them safely', () => {
     expect(
       mapResumableSessionCandidates(
         [
           {
-            cwd: "/tmp/project",
-            sessionId: "session-1",
-            title: "Existing session",
-            updatedAt: "2026-04-27T00:00:00.000Z",
+            cwd: '/tmp/project',
+            sessionId: 'session-1',
+            title: 'Existing session',
+            updatedAt: '2026-04-27T00:00:00.000Z',
           },
         ],
         {
@@ -103,38 +103,38 @@ describe("mapResumableSessionCandidates", () => {
           listSessions: true,
           resumeSession: true,
           canLoadIntoProvider: false,
-          fallbackReason: "fallback",
+          fallbackReason: 'fallback',
         },
       ),
     ).toEqual([
       {
-        sessionId: "session-1",
-        cwd: "/tmp/project",
-        title: "Existing session",
-        updatedAt: "2026-04-27T00:00:00.000Z",
+        sessionId: 'session-1',
+        cwd: '/tmp/project',
+        title: 'Existing session',
+        updatedAt: '2026-04-27T00:00:00.000Z',
         loadable: false,
       },
     ]);
   });
 });
 
-describe("excludeManagedResumableSessions", () => {
-  test("removes sessions already managed by the app database", () => {
+describe('excludeManagedResumableSessions', () => {
+  test('removes sessions already managed by the app database', () => {
     expect(
       excludeManagedResumableSessions({
-        managedSessionIds: new Set(["session-2"]),
+        managedSessionIds: new Set(['session-2']),
         candidates: [
           {
-            sessionId: "session-1",
-            cwd: "/tmp/project",
-            title: "Importable session",
+            sessionId: 'session-1',
+            cwd: '/tmp/project',
+            title: 'Importable session',
             updatedAt: null,
             loadable: true,
           },
           {
-            sessionId: "session-2",
-            cwd: "/tmp/project",
-            title: "Already loaded",
+            sessionId: 'session-2',
+            cwd: '/tmp/project',
+            title: 'Already loaded',
             updatedAt: null,
             loadable: true,
           },
@@ -142,9 +142,9 @@ describe("excludeManagedResumableSessions", () => {
       }),
     ).toEqual([
       {
-        sessionId: "session-1",
-        cwd: "/tmp/project",
-        title: "Importable session",
+        sessionId: 'session-1',
+        cwd: '/tmp/project',
+        title: 'Importable session',
         updatedAt: null,
         loadable: true,
       },

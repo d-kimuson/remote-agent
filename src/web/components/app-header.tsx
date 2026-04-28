@@ -1,24 +1,24 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Link, useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, CheckCheck, Menu } from "lucide-react";
-import { useState, type FC } from "react";
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { Link, useLocation, useNavigate } from '@tanstack/react-router';
+import { Bell, CheckCheck, Menu } from 'lucide-react';
+import { useState, type FC } from 'react';
 
-import { Button } from "@/web/components/ui/button";
+import { projectsQueryKey } from '@/web/app/projects/$projectId/queries';
+import { Button } from '@/web/components/ui/button';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/web/components/ui/select";
-import { fetchProjects } from "@/web/lib/api/acp";
+} from '@/web/components/ui/select';
+import { fetchProjects } from '@/web/lib/api/acp';
 import {
   markAllAppNotificationsRead,
   markAppNotificationRead,
   notificationDisplayLimit,
   useNotificationCenter,
-} from "@/web/pwa/notification-center";
-import { projectsQueryKey } from "@/web/app/projects/$projectId/queries";
+} from '@/web/pwa/notification-center';
 
 const currentProjectIdFromPath = (pathname: string): string | null => {
   const match = /^\/projects\/([^/]+)/.exec(pathname);
@@ -26,23 +26,23 @@ const currentProjectIdFromPath = (pathname: string): string | null => {
 };
 
 const compactPath = (path: string): string => {
-  const home = "/home/kaito";
+  const home = '/home/kaito';
   const withHome = path.startsWith(`${home}/`) ? `~/${path.slice(home.length + 1)}` : path;
-  const parts = withHome.split("/").filter((part) => part.length > 0);
-  const prefix = withHome.startsWith("~/") ? "~" : withHome.startsWith("/") ? "" : null;
+  const parts = withHome.split('/').filter((part) => part.length > 0);
+  const prefix = withHome.startsWith('~/') ? '~' : withHome.startsWith('/') ? '' : null;
 
   if (parts.length <= 3) {
     return withHome;
   }
 
-  const tail = parts.slice(-2).join("/");
+  const tail = parts.slice(-2).join('/');
   return prefix === null ? `../${tail}` : `${prefix}/../${tail}`;
 };
 
 const NotificationButton: FC = () => {
   const { notifications, unreadCount } = useNotificationCenter();
   const [isOpen, setIsOpen] = useState(false);
-  const displayCount = unreadCount > 99 ? "99+" : String(unreadCount);
+  const displayCount = unreadCount > 99 ? '99+' : String(unreadCount);
   const visibleNotifications = notifications.slice(0, notificationDisplayLimit);
 
   return (
@@ -50,14 +50,14 @@ const NotificationButton: FC = () => {
       <Button
         aria-expanded={isOpen}
         aria-label={
-          unreadCount > 0 ? `Notifications, ${String(unreadCount)} unread` : "Notifications"
+          unreadCount > 0 ? `Notifications, ${String(unreadCount)} unread` : 'Notifications'
         }
         className="relative"
         onClick={() => {
           setIsOpen((current) => !current);
         }}
         size="icon-sm"
-        title={unreadCount > 0 ? `${String(unreadCount)} unread notifications` : "Notifications"}
+        title={unreadCount > 0 ? `${String(unreadCount)} unread notifications` : 'Notifications'}
         type="button"
         variant="ghost"
       >
@@ -111,11 +111,11 @@ const NotificationButton: FC = () => {
                   >
                     <article
                       className={[
-                        "rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/55",
+                        'rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/55',
                         isUnread
-                          ? "border-primary/30 bg-primary/[0.08]"
-                          : "border-border bg-background/70",
-                      ].join(" ")}
+                          ? 'border-primary/30 bg-primary/[0.08]'
+                          : 'border-border bg-background/70',
+                      ].join(' ')}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <p className="min-w-0 truncate text-sm font-medium">{notification.title}</p>
@@ -153,13 +153,13 @@ export const AppHeader: FC<{
     queryFn: fetchProjects,
   });
   const projects = data.projects;
-  const projectPathSuffix = location.pathname.endsWith("/sessions") ? "sessions" : "chat";
+  const projectPathSuffix = location.pathname.endsWith('/sessions') ? 'sessions' : 'chat';
 
   return (
     <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
       <Button
         aria-label="Open menu"
-        className={isDesktopMenuExpanded ? "shrink-0 md:hidden" : "shrink-0"}
+        className={isDesktopMenuExpanded ? 'shrink-0 md:hidden' : 'shrink-0'}
         onClick={onOpenMenu}
         size="icon-sm"
         type="button"
@@ -181,9 +181,9 @@ export const AppHeader: FC<{
                 }
                 void navigate({
                   to:
-                    projectPathSuffix === "sessions"
-                      ? "/projects/$projectId/sessions"
-                      : "/projects/$projectId",
+                    projectPathSuffix === 'sessions'
+                      ? '/projects/$projectId/sessions'
+                      : '/projects/$projectId',
                   params: { projectId: nextProjectId },
                 });
               }}

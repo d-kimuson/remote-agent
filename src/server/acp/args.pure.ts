@@ -4,7 +4,7 @@ export const parseArgsText = (value: string | undefined): readonly string[] => {
   }
 
   return value
-    .split("\n")
+    .split('\n')
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 };

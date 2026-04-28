@@ -1,6 +1,5 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { useMutation, useSuspenseQuery, useQueryClient } from "@tanstack/react-query";
-import { startTransition, useDeferredValue, useState, type FC } from "react";
+import { useMutation, useSuspenseQuery, useQueryClient } from '@tanstack/react-query';
+import { createFileRoute } from '@tanstack/react-router';
 import {
   Bot,
   FolderRoot,
@@ -10,30 +9,32 @@ import {
   Sparkles,
   SplitSquareVertical,
   TerminalSquare,
-} from "lucide-react";
+} from 'lucide-react';
+import { startTransition, useDeferredValue, useState, type FC } from 'react';
 
-import type { AgentPreset, RawEvent, SessionSummary } from "@/shared/acp";
-import { ChatMarkdown } from "@/web/components/chat-markdown";
-import { Badge } from "@/web/components/ui/badge";
-import { Button } from "@/web/components/ui/button";
+import type { AgentPreset, RawEvent, SessionSummary } from '@/shared/acp';
+
+import { ChatMarkdown } from '@/web/components/chat-markdown';
+import { Badge } from '@/web/components/ui/badge';
+import { Button } from '@/web/components/ui/button';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/web/components/ui/card";
-import { Input } from "@/web/components/ui/input";
-import { ScrollArea } from "@/web/components/ui/scroll-area";
+} from '@/web/components/ui/card';
+import { Input } from '@/web/components/ui/input';
+import { ScrollArea } from '@/web/components/ui/scroll-area';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/web/components/ui/select";
-import { Separator } from "@/web/components/ui/separator";
-import { Textarea } from "@/web/components/ui/textarea";
+} from '@/web/components/ui/select';
+import { Separator } from '@/web/components/ui/separator';
+import { Textarea } from '@/web/components/ui/textarea';
 import {
   createSessionRequest,
   deleteSessionRequest,
@@ -41,23 +42,23 @@ import {
   fetchSessions,
   sendPromptRequest,
   updateSessionRequest,
-} from "@/web/lib/api/acp";
-import { cn } from "@/web/lib/utils";
+} from '@/web/lib/api/acp';
+import { cn } from '@/web/lib/utils';
 
 type TranscriptMessage = {
   readonly id: string;
-  readonly role: "user" | "assistant";
+  readonly role: 'user' | 'assistant';
   readonly text: string;
   readonly rawEvents: readonly RawEvent[];
 };
 
 type SessionTranscriptMap = Record<string, readonly TranscriptMessage[]>;
 
-const sessionQueryKey = ["sessions"] as const;
-const appInfoQueryKey = ["app-info"] as const;
+const sessionQueryKey = ['sessions'] as const;
+const appInfoQueryKey = ['app-info'] as const;
 
 const createMessage = (
-  role: TranscriptMessage["role"],
+  role: TranscriptMessage['role'],
   text: string,
   rawEvents: readonly RawEvent[],
 ): TranscriptMessage => ({
@@ -83,7 +84,7 @@ const transcriptForSession = (
 };
 
 const latestRawEvents = (messages: readonly TranscriptMessage[]): readonly RawEvent[] => {
-  const assistantMessage = [...messages].reverse().find((message) => message.role === "assistant");
+  const assistantMessage = [...messages].reverse().find((message) => message.role === 'assistant');
 
   return assistantMessage?.rawEvents ?? [];
 };
@@ -96,7 +97,7 @@ const AgentPresetSummary: FC<{ readonly preset: AgentPreset }> = ({ preset }) =>
           <p className="font-medium">{preset.label}</p>
           <p className="text-xs text-muted-foreground">{preset.description}</p>
         </div>
-        <Badge variant={preset.id === "custom" ? "outline" : "secondary"}>{preset.id}</Badge>
+        <Badge variant={preset.id === 'custom' ? 'outline' : 'secondary'}>{preset.id}</Badge>
       </div>
     </div>
   );
@@ -110,10 +111,10 @@ const SessionBadge: FC<{
   return (
     <button
       className={cn(
-        "flex w-full flex-col items-start gap-1 rounded-2xl border px-3 py-3 text-left transition",
+        'flex w-full flex-col items-start gap-1 rounded-2xl border px-3 py-3 text-left transition',
         selected
-          ? "border-primary/70 bg-primary/10 shadow-[0_14px_25px_rgb(194_98_52_/_0.12)]"
-          : "border-border/60 bg-white/75 hover:border-primary/40 hover:bg-white",
+          ? 'border-primary/70 bg-primary/10 shadow-[0_14px_25px_rgb(194_98_52_/_0.12)]'
+          : 'border-border/60 bg-white/75 hover:border-primary/40 hover:bg-white',
       )}
       onClick={() => {
         onSelect(session.sessionId);
@@ -122,8 +123,8 @@ const SessionBadge: FC<{
     >
       <div className="flex w-full items-center justify-between gap-3">
         <span className="font-medium">{session.command}</span>
-        <Badge variant={selected ? "default" : "outline"}>
-          {session.currentModeId ?? "default"}
+        <Badge variant={selected ? 'default' : 'outline'}>
+          {session.currentModeId ?? 'default'}
         </Badge>
       </div>
       <p className="font-mono text-[11px] text-muted-foreground">{session.sessionId}</p>
@@ -184,11 +185,11 @@ const ACPPlaygroundPage: FC = () => {
   });
 
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [selectedPresetId, setSelectedPresetId] = useState("codex");
-  const [customCommand, setCustomCommand] = useState("");
-  const [argsText, setArgsText] = useState("");
-  const [cwd, setCwd] = useState("");
-  const [prompt, setPrompt] = useState("");
+  const [selectedPresetId, setSelectedPresetId] = useState('codex');
+  const [customCommand, setCustomCommand] = useState('');
+  const [argsText, setArgsText] = useState('');
+  const [cwd, setCwd] = useState('');
+  const [prompt, setPrompt] = useState('');
   const [transcripts, setTranscripts] = useState<SessionTranscriptMap>({});
 
   const sessions = sessionsQuery.data?.sessions ?? [];
@@ -255,19 +256,19 @@ const ACPPlaygroundPage: FC = () => {
 
     const presets = appInfoQuery.data?.agentPresets ?? [];
     const preset = getPresetById(presets, presetId);
-    if (preset === null || preset.id === "custom") {
+    if (preset === null || preset.id === 'custom') {
       return;
     }
 
     setCustomCommand(preset.command);
-    setArgsText(preset.args.join("\n"));
+    setArgsText(preset.args.join('\n'));
   };
 
   const handleCreateSession = async () => {
     await createSessionMutation.mutateAsync({
       projectId: null,
       presetId: selectedPresetId,
-      command: selectedPresetId === "custom" ? customCommand : null,
+      command: selectedPresetId === 'custom' ? customCommand : null,
       argsText,
       cwd: cwd.length > 0 ? cwd : null,
     });
@@ -279,12 +280,12 @@ const ACPPlaygroundPage: FC = () => {
     }
 
     const currentPrompt = prompt;
-    setPrompt("");
+    setPrompt('');
     setTranscripts((current) => ({
       ...current,
       [selectedSession.sessionId]: [
         ...(current[selectedSession.sessionId] ?? []),
-        createMessage("user", currentPrompt, []),
+        createMessage('user', currentPrompt, []),
       ],
     }));
 
@@ -298,17 +299,17 @@ const ACPPlaygroundPage: FC = () => {
         ...current,
         [selectedSession.sessionId]: [
           ...(current[selectedSession.sessionId] ?? []),
-          createMessage("assistant", response.text, response.rawEvents),
+          createMessage('assistant', response.text, response.rawEvents),
         ],
       }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Prompt failed unexpectedly.";
+      const message = error instanceof Error ? error.message : 'Prompt failed unexpectedly.';
 
       setTranscripts((current) => ({
         ...current,
         [selectedSession.sessionId]: [
           ...(current[selectedSession.sessionId] ?? []),
-          createMessage("assistant", `Error: ${message}`, []),
+          createMessage('assistant', `Error: ${message}`, []),
         ],
       }));
     }
@@ -317,15 +318,15 @@ const ACPPlaygroundPage: FC = () => {
   const info = appInfoQuery.data;
 
   const planItems = latestEvents
-    .filter((event) => event.type === "plan")
+    .filter((event) => event.type === 'plan')
     .flatMap((event) => event.entries);
   const diffItems = latestEvents
-    .filter((event) => event.type === "diff")
+    .filter((event) => event.type === 'diff')
     .map(
-      (event) => `${event.path}\n--- old\n${event.oldText ?? ""}\n--- new\n${event.newText ?? ""}`,
+      (event) => `${event.path}\n--- old\n${event.oldText ?? ''}\n--- new\n${event.newText ?? ''}`,
     );
   const terminalItems = latestEvents
-    .filter((event) => event.type === "terminal")
+    .filter((event) => event.type === 'terminal')
     .map((event) => event.text);
 
   return (
@@ -469,7 +470,7 @@ const ACPPlaygroundPage: FC = () => {
                   onChange={(event) => {
                     setCwd(event.target.value);
                   }}
-                  placeholder={info?.workingDirectory ?? "/path/to/project"}
+                  placeholder={info?.workingDirectory ?? '/path/to/project'}
                   value={cwd}
                 />
               </div>
@@ -483,7 +484,7 @@ const ACPPlaygroundPage: FC = () => {
                 type="button"
               >
                 <Sparkles className="size-4" />
-                {createSessionMutation.isPending ? "Creating session..." : "Create ACP session"}
+                {createSessionMutation.isPending ? 'Creating session...' : 'Create ACP session'}
               </Button>
 
               {createSessionMutation.error instanceof Error ? (
@@ -534,7 +535,7 @@ const ACPPlaygroundPage: FC = () => {
                 {selectedSession === null ? (
                   <Badge variant="outline">No session</Badge>
                 ) : (
-                  <Badge>{selectedSession.currentModelId ?? "session ready"}</Badge>
+                  <Badge>{selectedSession.currentModelId ?? 'session ready'}</Badge>
                 )}
               </div>
 
@@ -624,22 +625,22 @@ const ACPPlaygroundPage: FC = () => {
                     deferredTranscript.map((message) => (
                       <div
                         className={cn(
-                          "max-w-[85%] rounded-[28px] px-4 py-3 shadow-[0_10px_30px_rgb(15_23_42_/_0.06)]",
-                          message.role === "user"
-                            ? "ml-auto bg-primary text-primary-foreground"
-                            : "border border-border/60 bg-white text-foreground",
+                          'max-w-[85%] rounded-[28px] px-4 py-3 shadow-[0_10px_30px_rgb(15_23_42_/_0.06)]',
+                          message.role === 'user'
+                            ? 'ml-auto bg-primary text-primary-foreground'
+                            : 'border border-border/60 bg-white text-foreground',
                         )}
                         key={message.id}
                       >
                         <div className="mb-2 flex items-center gap-2 text-[11px] uppercase tracking-[0.18em] opacity-70">
-                          {message.role === "user" ? (
+                          {message.role === 'user' ? (
                             <Bot className="size-3.5" />
                           ) : (
                             <MessageSquareText className="size-3.5" />
                           )}
                           {message.role}
                         </div>
-                        <ChatMarkdown tone={message.role === "user" ? "onPrimary" : "default"}>
+                        <ChatMarkdown tone={message.role === 'user' ? 'onPrimary' : 'default'}>
                           {message.text}
                         </ChatMarkdown>
                       </div>
@@ -680,7 +681,7 @@ const ACPPlaygroundPage: FC = () => {
                     type="button"
                     variant="secondary"
                   >
-                    {sendPromptMutation.isPending ? "Running..." : "Send prompt"}
+                    {sendPromptMutation.isPending ? 'Running...' : 'Send prompt'}
                   </Button>
                 </div>
               </div>
@@ -713,6 +714,6 @@ const ACPPlaygroundPage: FC = () => {
   );
 };
 
-export const Route = createFileRoute("/debug")({
+export const Route = createFileRoute('/debug')({
   component: ACPPlaygroundPage,
 });

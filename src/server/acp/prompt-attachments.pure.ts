@@ -1,4 +1,4 @@
-import type { ResolvedAttachment } from "../attachments/store.ts";
+import type { ResolvedAttachment } from '../attachments/store.ts';
 
 const formatSize = (sizeInBytes: number): string => {
   if (sizeInBytes < 1024) {
@@ -27,5 +27,5 @@ export const buildPromptWithAttachments = ({
     return `- ${attachment.name} (${attachment.mediaType}, ${formatSize(attachment.sizeInBytes)}): ${attachment.storedPath}`;
   });
 
-  return `${prompt}\n\nAttached files:\n${attachmentLines.join("\n")}\n\nThe attached files were uploaded from the browser and are available at the local paths above. Read them from disk if you need their contents.`;
+  return `${prompt}\n\nAttached files:\n${attachmentLines.join('\n')}\n\nThe attached files were uploaded from the browser and are available at the local paths above. Read them from disk if you need their contents.`;
 };

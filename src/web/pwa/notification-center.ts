@@ -1,6 +1,6 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore } from 'react';
 
-export type AppNotificationKind = "session_paused";
+export type AppNotificationKind = 'session_paused';
 
 export type AppNotification = {
   readonly id: string;
@@ -64,12 +64,12 @@ export const addSessionPausedAppNotification = (
 ): AppNotification => {
   const notification = {
     id: `session-paused:${input.sessionId}:${String(input.timestamp)}`,
-    kind: "session_paused",
+    kind: 'session_paused',
     projectId: input.projectId,
     projectName: input.projectName,
     sessionId: input.sessionId,
     sessionTitle: input.sessionTitle,
-    title: "Agent paused",
+    title: 'Agent paused',
     body: input.sessionTitle.length > 0 ? input.sessionTitle : input.sessionId,
     url: input.url,
     createdAt: input.timestamp,

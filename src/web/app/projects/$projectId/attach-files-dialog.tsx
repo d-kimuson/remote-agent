@@ -1,9 +1,11 @@
-import { Paperclip } from "lucide-react";
-import type { ChangeEvent, FC } from "react";
+import type { ChangeEvent, FC } from 'react';
 
-import type { UploadedAttachment } from "../../../../shared/acp.ts";
-import { Badge } from "../../../components/ui/badge.tsx";
-import { Button } from "../../../components/ui/button.tsx";
+import { Paperclip } from 'lucide-react';
+
+import type { UploadedAttachment } from '../../../../shared/acp.ts';
+
+import { Badge } from '../../../components/ui/badge.tsx';
+import { Button } from '../../../components/ui/button.tsx';
 import {
   Dialog,
   DialogContent,
@@ -11,9 +13,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "../../../components/ui/dialog.tsx";
-import { Input } from "../../../components/ui/input.tsx";
-import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
+} from '../../../components/ui/dialog.tsx';
+import { Input } from '../../../components/ui/input.tsx';
+import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 
 const formatSize = (sizeInBytes: number): string => {
   if (sizeInBytes < 1024) {
@@ -42,7 +44,7 @@ export const AttachFilesDialog: FC<{
     }
 
     void onAttachFiles([...fileList]);
-    event.target.value = "";
+    event.target.value = '';
   };
 
   return (
@@ -116,7 +118,7 @@ export const AttachFilesDialog: FC<{
         </div>
         <DialogFooter>
           <Button disabled={isUploading} onClick={onClose} type="button">
-            {isUploading ? "Uploading..." : "Done"}
+            {isUploading ? 'Uploading...' : 'Done'}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,21 +1,20 @@
-import { mkdirSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { DatabaseSync } from "node:sqlite";
+import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { drizzle } from 'drizzle-orm/node-sqlite';
+import { migrate } from 'drizzle-orm/node-sqlite/migrator';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
 
-import { readMigrationFiles } from "drizzle-orm/migrator";
-import { drizzle } from "drizzle-orm/node-sqlite";
-import { migrate } from "drizzle-orm/node-sqlite/migrator";
-
-import { envService } from "../env.ts";
-import * as schema from "./schema.ts";
+import { envService } from '../env.ts';
+import * as schema from './schema.ts';
 
 export const migrationsFolder = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
-  "../../../drizzle",
+  '../../../drizzle',
 );
 
-const migrationsTable = "__drizzle_migrations";
+const migrationsTable = '__drizzle_migrations';
 
 const tableExists = (client: DatabaseSync, table: string): boolean => {
   return (
@@ -79,7 +78,7 @@ const insertAppliedMigration = (
 };
 
 const baselineLegacyMigrations = (client: DatabaseSync): void => {
-  if (!tableExists(client, "projects")) {
+  if (!tableExists(client, 'projects')) {
     return;
   }
 
@@ -87,16 +86,16 @@ const baselineLegacyMigrations = (client: DatabaseSync): void => {
 
   const migrations = readMigrationFiles({ migrationsFolder });
   const appliedMigrationNames = new Set([
-    "20260427002242_confused_cerebro",
-    ...(tableExists(client, "session_messages") ? ["20260427012306_flimsy_tiger_shark"] : []),
-    ...(tableExists(client, "enabled_agent_providers") &&
-    tableExists(client, "agent_provider_catalogs") &&
-    columnExists(client, "session_messages", "updated_at") &&
-    indexExists(client, "idx_session_messages_stream_part")
-      ? ["20260428093817_noisy_toro"]
+    '20260427002242_confused_cerebro',
+    ...(tableExists(client, 'session_messages') ? ['20260427012306_flimsy_tiger_shark'] : []),
+    ...(tableExists(client, 'enabled_agent_providers') &&
+    tableExists(client, 'agent_provider_catalogs') &&
+    columnExists(client, 'session_messages', 'updated_at') &&
+    indexExists(client, 'idx_session_messages_stream_part')
+      ? ['20260428093817_noisy_toro']
       : []),
-    ...(tableExists(client, "project_model_preferences")
-      ? ["20260428093917_common_squirrel_girl"]
+    ...(tableExists(client, 'project_model_preferences')
+      ? ['20260428093917_common_squirrel_girl']
       : []),
   ]);
 
@@ -108,7 +107,7 @@ const baselineLegacyMigrations = (client: DatabaseSync): void => {
 };
 
 const resolveStoragePath = (storagePath: string): string => {
-  if (storagePath === ":memory:") {
+  if (storagePath === ':memory:') {
     return storagePath;
   }
 
@@ -117,12 +116,12 @@ const resolveStoragePath = (storagePath: string): string => {
 
 export const createDatabase = (storagePath: string) => {
   const resolvedStoragePath = resolveStoragePath(storagePath);
-  if (resolvedStoragePath !== ":memory:") {
+  if (resolvedStoragePath !== ':memory:') {
     mkdirSync(path.dirname(resolvedStoragePath), { recursive: true });
   }
 
   const client = new DatabaseSync(resolvedStoragePath);
-  client.exec("PRAGMA foreign_keys = ON;");
+  client.exec('PRAGMA foreign_keys = ON;');
   baselineLegacyMigrations(client);
   const db = drizzle({ client, schema });
   migrate(db, { migrationsFolder });
@@ -137,13 +136,13 @@ export const createDatabase = (storagePath: string) => {
 export type AppDatabase = ReturnType<typeof createDatabase>;
 
 export const createMemoryDatabase = (): AppDatabase => {
-  return createDatabase(":memory:");
+  return createDatabase(':memory:');
 };
 
 let defaultDatabase: AppDatabase | undefined = undefined;
 
 export const getDefaultDatabase = (): AppDatabase => {
-  defaultDatabase ??= createDatabase(envService.getEnv("ACP_PLAYGROUND_DB_PATH"));
+  defaultDatabase ??= createDatabase(envService.getEnv('ACP_PLAYGROUND_DB_PATH'));
   return defaultDatabase;
 };
 

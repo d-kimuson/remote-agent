@@ -4,17 +4,17 @@ import {
   type AssistantNotificationInput,
   type AssistantNotificationPayload,
   type SessionPausedNotificationInput,
-} from "./notifications.pure.ts";
+} from './notifications.pure.ts';
 
-export type NotificationPermissionState = NotificationPermission | "unsupported";
+export type NotificationPermissionState = NotificationPermission | 'unsupported';
 
 export const getNotificationPermissionState = (): NotificationPermissionState => {
   if (
-    typeof window === "undefined" ||
-    !("Notification" in window) ||
-    !("serviceWorker" in navigator)
+    typeof window === 'undefined' ||
+    !('Notification' in window) ||
+    !('serviceWorker' in navigator)
   ) {
-    return "unsupported";
+    return 'unsupported';
   }
 
   return Notification.permission;
@@ -23,7 +23,7 @@ export const getNotificationPermissionState = (): NotificationPermissionState =>
 export const requestNotificationPermission = async (): Promise<NotificationPermissionState> => {
   const permission = getNotificationPermissionState();
 
-  if (permission === "unsupported") {
+  if (permission === 'unsupported') {
     return permission;
   }
 
@@ -31,7 +31,7 @@ export const requestNotificationPermission = async (): Promise<NotificationPermi
 };
 
 const showNotification = async (payload: AssistantNotificationPayload): Promise<boolean> => {
-  if (getNotificationPermissionState() !== "granted") {
+  if (getNotificationPermissionState() !== 'granted') {
     return false;
   }
 

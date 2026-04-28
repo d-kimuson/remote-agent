@@ -1,10 +1,11 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
-import { Loader2, Plus } from "lucide-react";
-import { Suspense, useState, type FC } from "react";
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
+import { Loader2, Plus } from 'lucide-react';
+import { Suspense, useState, type FC } from 'react';
 
-import type { ProjectsResponse } from "../../../../shared/acp.ts";
-import { Button } from "../../../components/ui/button.tsx";
+import type { ProjectsResponse } from '../../../../shared/acp.ts';
+
+import { Button } from '../../../components/ui/button.tsx';
 import {
   Dialog,
   DialogContent,
@@ -13,20 +14,20 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "../../../components/ui/dialog.tsx";
-import { createProjectRequest } from "../../../lib/api/acp.ts";
-import { DirectoryPicker } from "./directory-picker.tsx";
+} from '../../../components/ui/dialog.tsx';
+import { createProjectRequest } from '../../../lib/api/acp.ts';
+import { DirectoryPicker } from './directory-picker.tsx';
 
-const projectsQueryKey = ["projects"] as const;
+const projectsQueryKey = ['projects'] as const;
 
 const deriveProjectName = (workingDirectory: string): string => {
-  const parts = workingDirectory.split("/").filter(Boolean);
+  const parts = workingDirectory.split('/').filter(Boolean);
   return parts.at(-1) ?? workingDirectory;
 };
 
 export const SetupProjectDialog: FC = () => {
   const [open, setOpen] = useState(false);
-  const [selectedPath, setSelectedPath] = useState("");
+  const [selectedPath, setSelectedPath] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -51,7 +52,7 @@ export const SetupProjectDialog: FC = () => {
 
       setOpen(false);
       void navigate({
-        to: "/projects/$projectId",
+        to: '/projects/$projectId',
         params: { projectId: response.project.id },
       });
     },
@@ -96,7 +97,7 @@ export const SetupProjectDialog: FC = () => {
             Cancel
           </Button>
           <Button
-            disabled={selectedPath === "" || setupProjectMutation.isPending}
+            disabled={selectedPath === '' || setupProjectMutation.isPending}
             onClick={() => {
               setupProjectMutation.mutate();
             }}

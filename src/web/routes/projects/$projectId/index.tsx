@@ -1,10 +1,10 @@
-import { createFileRoute } from "@tanstack/react-router";
-import { Suspense } from "react";
+import { createFileRoute } from '@tanstack/react-router';
+import { Suspense } from 'react';
 
-import { ProjectChatPage } from "../../../app/projects/$projectId/project-chat-page.tsx";
+import { ProjectChatPage } from '../../../app/projects/$projectId/project-chat-page.tsx';
 
 type ProjectChatSearch = {
-  readonly "session-id"?: string;
+  readonly 'session-id'?: string;
 };
 
 const ProjectChatRoute = () => {
@@ -12,17 +12,17 @@ const ProjectChatRoute = () => {
   const search = Route.useSearch();
   return (
     <Suspense>
-      <ProjectChatPage projectId={projectId} sessionId={search["session-id"] ?? null} />
+      <ProjectChatPage projectId={projectId} sessionId={search['session-id'] ?? null} />
     </Suspense>
   );
 };
 
-export const Route = createFileRoute("/projects/$projectId/")({
+export const Route = createFileRoute('/projects/$projectId/')({
   component: ProjectChatRoute,
   validateSearch: (search: Record<string, unknown>): ProjectChatSearch => {
-    const sessionId = search["session-id"];
+    const sessionId = search['session-id'];
     return {
-      "session-id": typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined,
+      'session-id': typeof sessionId === 'string' && sessionId.length > 0 ? sessionId : undefined,
     };
   },
 });

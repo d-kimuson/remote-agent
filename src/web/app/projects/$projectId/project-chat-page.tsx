@@ -1,5 +1,5 @@
-import { useNavigate } from "@tanstack/react-router";
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
   Info,
@@ -11,7 +11,7 @@ import {
   Star,
   Trash2,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   Suspense,
   useCallback,
@@ -24,8 +24,8 @@ import {
   type FC,
   type ReactNode,
   type UIEventHandler,
-} from "react";
-import { toast } from "sonner";
+} from 'react';
+import { toast } from 'sonner';
 
 import {
   parseAcpSseEventJson,
@@ -39,11 +39,11 @@ import {
   type SessionSummary,
   type SessionsResponse,
   type UploadedAttachment,
-} from "../../../../shared/acp.ts";
-import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
-import { Button } from "../../../components/ui/button.tsx";
-import { Label } from "../../../components/ui/label.tsx";
-import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
+} from '../../../../shared/acp.ts';
+import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
+import { Button } from '../../../components/ui/button.tsx';
+import { Label } from '../../../components/ui/label.tsx';
+import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 import {
   Select,
   SelectContent,
@@ -53,7 +53,8 @@ import {
   SelectSeparator,
   SelectTrigger,
   SelectValue,
-} from "../../../components/ui/select.tsx";
+} from '../../../components/ui/select.tsx';
+import { ACP_SSE_BROWSER_EVENT } from '../../../lib/api/acp-sse-browser-event.ts';
 import {
   createSessionRequest,
   deleteSessionRequest,
@@ -71,17 +72,17 @@ import {
   updateProjectModelPreferenceRequest,
   updateSessionRequest,
   uploadAttachmentsRequest,
-} from "../../../lib/api/acp.ts";
-import { ACP_SSE_BROWSER_EVENT } from "../../../lib/api/acp-sse-browser-event.ts";
-import { cn } from "../../../lib/utils.ts";
-import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
+} from '../../../lib/api/acp.ts';
+import { cn } from '../../../lib/utils.ts';
+import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
 import {
   formatAcpSelectOptionLabel,
   formatAcpSelectValueLabel,
   formatAcpSelectValueInfo,
-} from "./acp-select-display.pure.ts";
-import { chatMessageClipboardText } from "./chat-block-copy.pure.ts";
-import { isNearScrollBottom, nextUnreadMessageCount } from "./chat-scroll.pure.ts";
+} from './acp-select-display.pure.ts';
+import { chatMessageClipboardText } from './chat-block-copy.pure.ts';
+import { ChatRawEvents } from './chat-raw-events.tsx';
+import { isNearScrollBottom, nextUnreadMessageCount } from './chat-scroll.pure.ts';
 import {
   appendTranscriptMessage,
   buildDraftSession,
@@ -91,14 +92,11 @@ import {
   moveTranscript,
   resolveSessionListTitle,
   shouldShowConversationLoading,
-} from "./chat-state.pure.ts";
-import { ChatRawEvents } from "./chat-raw-events.tsx";
-import { CopyBlockButton } from "./copy-block-button.tsx";
-import {
-  filterDisplayableRawEvents,
-  shouldDisplayTranscriptMessage,
-} from "./transcript-display.pure.ts";
-import { mergeToolCallResultMessages } from "./transcript-tool-merge.pure.ts";
+} from './chat-state.pure.ts';
+import { CopyBlockButton } from './copy-block-button.tsx';
+import { shouldShowMessageCopyButton } from './message-copy-display.pure.ts';
+import { ProjectMenuContent } from './project-menu-content.tsx';
+import { sortSessionsNewestFirst } from './project-session-list.pure.ts';
 import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
@@ -108,16 +106,18 @@ import {
   projectSettingsQueryKey,
   sessionMessagesQueryKey,
   sessionsQueryKey,
-} from "./queries.ts";
-import { ProjectMenuContent } from "./project-menu-content.tsx";
-import { RichPromptEditor } from "./rich-prompt-editor.tsx";
-import { appendRichPromptText } from "./rich-prompt-editor.pure.ts";
-import { createChatMessage, type TranscriptMap } from "./types.ts";
-import { shouldShowMessageCopyButton } from "./message-copy-display.pure.ts";
-import { sortSessionsNewestFirst } from "./project-session-list.pure.ts";
+} from './queries.ts';
+import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
+import { RichPromptEditor } from './rich-prompt-editor.tsx';
+import {
+  filterDisplayableRawEvents,
+  shouldDisplayTranscriptMessage,
+} from './transcript-display.pure.ts';
+import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
+import { createChatMessage, type TranscriptMap } from './types.ts';
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
-const CONVERSATION_COLUMN_CLASS = "w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl";
+const CONVERSATION_COLUMN_CLASS = 'w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl';
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -139,11 +139,11 @@ type SpeechRecognitionWindow = Window & {
 };
 
 const formatDateTime = (iso: string): string =>
-  new Intl.DateTimeFormat("ja-JP", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
+  new Intl.DateTimeFormat('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(new Date(iso));
 
 const resolveSpeechRecognitionConstructor = (
@@ -155,17 +155,17 @@ const finalSpeechTextFromEvent = (event: SpeechRecognitionEvent): string =>
   Array.from(event.results)
     .slice(event.resultIndex)
     .filter((result) => result.isFinal && result.length > 0)
-    .map((result) => result[0]?.transcript.trim() ?? "")
+    .map((result) => result[0]?.transcript.trim() ?? '')
     .filter((text) => text.length > 0)
-    .join(" ");
+    .join(' ');
 
 const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
-  if (message.role === "user") {
+  if (message.role === 'user') {
     return <ChatMarkdown>{message.text}</ChatMarkdown>;
   }
-  const k: ChatMessageKind = message.kind ?? "legacy_assistant_turn";
-  if (k === "legacy_assistant_turn") {
+  const k: ChatMessageKind = message.kind ?? 'legacy_assistant_turn';
+  if (k === 'legacy_assistant_turn') {
     return (
       <div className="flex w-full flex-col gap-3">
         {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
@@ -177,19 +177,19 @@ const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message 
       </div>
     );
   }
-  if (k === "reasoning" && message.text.length > 0) {
+  if (k === 'reasoning' && message.text.length > 0) {
     return (
-      <ChatRawEvents events={[{ type: "reasoning", text: message.text, rawText: message.text }]} />
+      <ChatRawEvents events={[{ type: 'reasoning', text: message.text, rawText: message.text }]} />
     );
   }
-  if (k === "assistant_text" || k === "tool_input") {
+  if (k === 'assistant_text' || k === 'tool_input') {
     return message.text.length > 0 ? (
       <div className="text-foreground">
         <ChatMarkdown>{message.text}</ChatMarkdown>
       </div>
     ) : null;
   }
-  if (k === "tool_call" || k === "tool_result" || k === "tool_error") {
+  if (k === 'tool_call' || k === 'tool_result' || k === 'tool_error') {
     return displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null;
   }
   return (
@@ -219,10 +219,10 @@ const presetFrom = ({
 };
 
 const modelSelectLabelFromPreset = (preset: AgentPreset | null): string =>
-  preset?.modelSelectLabel ?? "Model";
+  preset?.modelSelectLabel ?? 'Model';
 
 const modeSelectLabelFromPreset = (preset: AgentPreset | null): string =>
-  preset?.modeSelectLabel ?? "Mode";
+  preset?.modeSelectLabel ?? 'Mode';
 
 const orderModelOptions = ({
   favoriteModelIds,
@@ -294,17 +294,17 @@ const AcpModelSelectItem: FC<{
     <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
       <AcpSelectItemLabel>
         {formatAcpSelectOptionLabel({
-          kind: "model",
+          kind: 'model',
           option: model,
           options,
           presetId,
         })}
       </AcpSelectItemLabel>
       <button
-        aria-label={favorite ? "Unpin model" : "Pin model"}
+        aria-label={favorite ? 'Unpin model' : 'Pin model'}
         className={cn(
-          "inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-          favorite ? "text-amber-500 hover:text-amber-500" : "",
+          'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+          favorite ? 'text-amber-500 hover:text-amber-500' : '',
         )}
         disabled={disabled}
         onClick={(event) => {
@@ -316,10 +316,10 @@ const AcpModelSelectItem: FC<{
           event.preventDefault();
           event.stopPropagation();
         }}
-        title={favorite ? "Pinned から外す" : "Pinned に追加"}
+        title={favorite ? 'Pinned から外す' : 'Pinned に追加'}
         type="button"
       >
-        <Star aria-hidden="true" className={cn("size-3.5", favorite ? "fill-current" : "")} />
+        <Star aria-hidden="true" className={cn('size-3.5', favorite ? 'fill-current' : '')} />
       </button>
     </span>
   </SelectItem>
@@ -383,7 +383,7 @@ const FieldControl: FC<{
   readonly label: string;
   readonly children: ReactNode;
 }> = ({ className, htmlFor, label, children }) => (
-  <div className={cn("min-w-32 flex-1 sm:min-w-40 sm:flex-none", className)}>
+  <div className={cn('min-w-32 flex-1 sm:min-w-40 sm:flex-none', className)}>
     <Label className="sr-only" htmlFor={htmlFor}>
       {label}
     </Label>
@@ -391,7 +391,7 @@ const FieldControl: FC<{
   </div>
 );
 
-const MODEL_SELECT_CONTENT_CLASS = "w-[min(90vw,32rem)] min-w-[min(90vw,32rem)]";
+const MODEL_SELECT_CONTENT_CLASS = 'w-[min(90vw,32rem)] min-w-[min(90vw,32rem)]';
 
 /** useSuspenseQuery 必須のため、下書き時のみマウントしてカタログを state に反映する。 */
 const DraftAgentModelCatalogLoader: FC<{
@@ -434,7 +434,7 @@ export const ProjectChatPage: FC<{
   readonly sessionId: string | null;
 }> = ({ projectId, sessionId }) => {
   const queryClient = useQueryClient();
-  const navigate = useNavigate({ from: "/projects/$projectId" });
+  const navigate = useNavigate({ from: '/projects/$projectId' });
 
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
@@ -465,15 +465,15 @@ export const ProjectChatPage: FC<{
   );
   const preferredPresetId = defaultPresetId(selectablePresets);
 
-  const [draftPresetId, setDraftPresetId] = useState("");
+  const [draftPresetId, setDraftPresetId] = useState('');
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftModeId, setDraftModeId] = useState<string | null>(null);
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
-  const promptReaderRef = useRef<() => string>(() => "");
+  const promptReaderRef = useRef<() => string>(() => '');
   const [promptExternalValue, setPromptExternalValue] = useState({
     revision: 0,
-    value: "",
+    value: '',
   });
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
@@ -611,7 +611,7 @@ export const ProjectChatPage: FC<{
     () =>
       activePresetModelPreferences
         .filter((entry) => entry.lastUsedAt !== null && entry.lastUsedAt !== undefined)
-        .sort((left, right) => (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? ""))[0]
+        .sort((left, right) => (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? ''))[0]
         ?.modelId ?? null,
     [activePresetModelPreferences],
   );
@@ -683,7 +683,7 @@ export const ProjectChatPage: FC<{
         });
         setPrepareErrorsByScope((current) => ({
           ...current,
-          [preparedSessionScopeKey]: "Provider preconnect failed. Check Settings or agent auth.",
+          [preparedSessionScopeKey]: 'Provider preconnect failed. Check Settings or agent auth.',
         }));
       });
 
@@ -778,25 +778,25 @@ export const ProjectChatPage: FC<{
     [selectedSession?.currentModelId, selectedSessionFavoriteModelIds, selectedSessionModelOptions],
   );
   const draftModelSelectInfo = formatAcpSelectValueInfo({
-    kind: "model",
+    kind: 'model',
     options: draftModelModeListSource.availableModels,
     presetId: activePresetId,
     value: draftModelSelectValue,
   });
   const draftModeSelectInfo = formatAcpSelectValueInfo({
-    kind: "mode",
+    kind: 'mode',
     options: draftModelModeListSource.availableModes,
     presetId: activePresetId,
     value: draftModeSelectValue,
   });
   const sessionModelSelectInfo = formatAcpSelectValueInfo({
-    kind: "model",
+    kind: 'model',
     options: selectedSessionAvailableModels,
     presetId: selectedSession?.presetId,
     value: sessionModelSelectValue,
   });
   const sessionModeSelectInfo = formatAcpSelectValueInfo({
-    kind: "mode",
+    kind: 'mode',
     options: selectedSessionModeOptions,
     presetId: selectedSession?.presetId,
     value: sessionModeSelectValue,
@@ -818,19 +818,19 @@ export const ProjectChatPage: FC<{
     .map((message) =>
       [
         message.id,
-        message.updatedAt ?? "",
+        message.updatedAt ?? '',
         message.text.length,
         message.rawEvents.length,
-        message.rawEvents.map((event) => event.rawText.length).join("."),
-      ].join(":"),
+        message.rawEvents.map((event) => event.rawText.length).join('.'),
+      ].join(':'),
     )
-    .join("|");
+    .join('|');
   const projectUrl = `/projects/${projectId}`;
 
   const navigateToSession = useCallback(
     (nextSessionId: string | null, options: { readonly replace?: boolean } = {}) => {
       void navigate({
-        search: { "session-id": nextSessionId ?? undefined },
+        search: { 'session-id': nextSessionId ?? undefined },
         replace: options.replace === true,
       });
     },
@@ -947,7 +947,7 @@ export const ProjectChatPage: FC<{
   const isAwaitingActiveAssistantResponse =
     isAssistantRequestPending && awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
   const isSelectedSessionRunning =
-    !shouldUseDraftSession && selectedSession !== null && selectedSession.status === "running";
+    !shouldUseDraftSession && selectedSession !== null && selectedSession.status === 'running';
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
   const shouldShowScrollBanner =
     !isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking);
@@ -975,7 +975,7 @@ export const ProjectChatPage: FC<{
         return;
       }
       const sseEvent: AcpSseEvent = parsed;
-      if (sseEvent.type === "agent_catalog_updated" || sseEvent.type === "session_removed") {
+      if (sseEvent.type === 'agent_catalog_updated' || sseEvent.type === 'session_removed') {
         return;
       }
       const nextSessionId = sseEvent.sessionId;
@@ -1045,7 +1045,7 @@ export const ProjectChatPage: FC<{
   const thinkingModelLabel = useMemo((): string => {
     if (shouldUseDraftSession) {
       if (!draftModelSourceHasList) {
-        return "Model";
+        return 'Model';
       }
       const id =
         draftModelId ??
@@ -1055,15 +1055,15 @@ export const ProjectChatPage: FC<{
         id !== undefined
           ? draftModelModeListSource.availableModels.find((m) => m.id === id)
           : undefined;
-      return found?.name ?? id ?? "Model";
+      return found?.name ?? id ?? 'Model';
     }
     if (selectedSession !== null) {
       const id = selectedSession.currentModelId;
       const found =
         id !== undefined ? selectedSession.availableModels.find((m) => m.id === id) : undefined;
-      return found?.name ?? id ?? "Model";
+      return found?.name ?? id ?? 'Model';
     }
-    return "Model";
+    return 'Model';
   }, [
     draftModelId,
     draftModelModeListSource,
@@ -1127,14 +1127,14 @@ export const ProjectChatPage: FC<{
 
     const SpeechRecognition = resolveSpeechRecognitionConstructor();
     if (SpeechRecognition === null) {
-      toast.error("このブラウザは音声入力に対応していません");
+      toast.error('このブラウザは音声入力に対応していません');
       return;
     }
 
     const recognition = new SpeechRecognition();
     recognition.continuous = false;
     recognition.interimResults = false;
-    recognition.lang = navigator.language.length > 0 ? navigator.language : "ja-JP";
+    recognition.lang = navigator.language.length > 0 ? navigator.language : 'ja-JP';
     recognition.onresult = (event) => {
       const speechText = finalSpeechTextFromEvent(event);
       if (speechText.length === 0) {
@@ -1147,8 +1147,8 @@ export const ProjectChatPage: FC<{
     recognition.onerror = (event) => {
       setIsListeningToSpeech(false);
       speechRecognitionRef.current = null;
-      if (event.error !== "aborted") {
-        toast.error(event.message.length > 0 ? event.message : "音声入力に失敗しました");
+      if (event.error !== 'aborted') {
+        toast.error(event.message.length > 0 ? event.message : '音声入力に失敗しました');
       }
     };
     recognition.onend = () => {
@@ -1163,7 +1163,7 @@ export const ProjectChatPage: FC<{
     } catch {
       speechRecognitionRef.current = null;
       setIsListeningToSpeech(false);
-      toast.error("音声入力を開始できませんでした");
+      toast.error('音声入力を開始できませんでした');
     }
   };
 
@@ -1175,7 +1175,7 @@ export const ProjectChatPage: FC<{
     }
 
     void handleAttachFiles(files).finally(() => {
-      input.value = "";
+      input.value = '';
     });
   };
 
@@ -1280,7 +1280,7 @@ export const ProjectChatPage: FC<{
     }
 
     const previousPrompt = promptValue;
-    const userMessage = createChatMessage("user", nextPrompt, [], { kind: "user" });
+    const userMessage = createChatMessage('user', nextPrompt, [], { kind: 'user' });
     const initialTranscriptKey = activeTranscriptKey;
 
     shouldStickToBottomRef.current = true;
@@ -1288,7 +1288,7 @@ export const ProjectChatPage: FC<{
     setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
     speechRecognitionRef.current?.stop();
     setIsListeningToSpeech(false);
-    replacePrompt("");
+    replacePrompt('');
     setTranscripts((current) =>
       appendTranscriptMessage({
         message: userMessage,
@@ -1341,7 +1341,7 @@ export const ProjectChatPage: FC<{
             }),
           );
           navigateToSession(response.session.sessionId);
-          if (document.visibilityState === "hidden") {
+          if (document.visibilityState === 'hidden') {
             void showAssistantResponseNotification({
               projectId: project.id,
               projectName: project.name,
@@ -1366,7 +1366,7 @@ export const ProjectChatPage: FC<{
           projectId: project.id,
           presetId: draftSession.presetId,
           command: null,
-          argsText: "",
+          argsText: '',
           cwd: project.workingDirectory,
           modelId: modelIdForCreate,
           modeId: modeIdForCreate,
@@ -1389,7 +1389,7 @@ export const ProjectChatPage: FC<{
       }
 
       if (activeSessionId === null) {
-        throw new Error("failed to resolve active session");
+        throw new Error('failed to resolve active session');
       }
 
       const resolvedActiveSessionId = activeSessionId;
@@ -1413,7 +1413,7 @@ export const ProjectChatPage: FC<{
       });
 
       upsertSessionInCache(response.session);
-      if (document.visibilityState === "hidden") {
+      if (document.visibilityState === 'hidden') {
         void showAssistantResponseNotification({
           projectId: project.id,
           projectName: project.name,
@@ -1434,20 +1434,20 @@ export const ProjectChatPage: FC<{
       setAttachedFiles([]);
       setAwaitingAssistantTranscriptKeys([]);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "failed to send prompt";
+      const message = error instanceof Error ? error.message : 'failed to send prompt';
       setAwaitingAssistantTranscriptKeys([]);
       replacePrompt(previousPrompt);
       setTranscripts((current) =>
         appendTranscriptMessage({
-          message: createChatMessage("assistant", `Error: ${message}`, [], {
-            kind: "legacy_assistant_turn",
+          message: createChatMessage('assistant', `Error: ${message}`, [], {
+            kind: 'legacy_assistant_turn',
           }),
           transcriptKey: activeSessionId ?? draftSessionTranscriptKey,
           transcripts: current,
         }),
       );
 
-      if (document.visibilityState === "hidden") {
+      if (document.visibilityState === 'hidden') {
         void showAssistantResponseNotification({
           projectId: project.id,
           projectName: project.name,
@@ -1461,9 +1461,9 @@ export const ProjectChatPage: FC<{
   };
 
   const firstUserTextInTranscript = (targetSessionId: string) =>
-    transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
+    transcripts[targetSessionId]?.find((message) => message.role === 'user')?.text ?? null;
   const pageTitle = shouldUseDraftSession
-    ? "New session"
+    ? 'New session'
     : selectedSession !== null
       ? resolveSessionListTitle(
           selectedSession,
@@ -1471,20 +1471,20 @@ export const ProjectChatPage: FC<{
         )
       : sessionId !== null
         ? (firstUserTextInTranscript(sessionId) ?? sessionId)
-        : "Session";
+        : 'Session';
   const pageAgentLabel = shouldUseDraftSession
     ? draftSession.label
     : (selectedSessionPreset?.label ??
       selectedSession?.presetId ??
       selectedSession?.command ??
-      "custom");
+      'custom');
 
   const handleChatScroll: UIEventHandler<HTMLDivElement> = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
       return;
     }
-    if (target.dataset["slot"] !== "scroll-area-viewport") {
+    if (target.dataset['slot'] !== 'scroll-area-viewport') {
       return;
     }
 
@@ -1504,7 +1504,7 @@ export const ProjectChatPage: FC<{
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     setUnreadMessageCount(0);
-    scrollAnchorRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+    scrollAnchorRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -1531,7 +1531,7 @@ export const ProjectChatPage: FC<{
     if (!shouldStickToBottomRef.current) {
       return;
     }
-    scrollAnchorRef.current?.scrollIntoView({ block: "end" });
+    scrollAnchorRef.current?.scrollIntoView({ block: 'end' });
   }, [
     activeTranscriptKey,
     chatScrollSignature,
@@ -1615,8 +1615,8 @@ export const ProjectChatPage: FC<{
               >
                 <div
                   className={cn(
-                    "space-y-5 px-1 pt-3 md:space-y-6 md:px-2",
-                    shouldShowScrollBanner ? "pb-10" : "pb-2",
+                    'space-y-5 px-1 pt-3 md:space-y-6 md:px-2',
+                    shouldShowScrollBanner ? 'pb-10' : 'pb-2',
                   )}
                   ref={chatContentRef}
                 >
@@ -1640,26 +1640,26 @@ export const ProjectChatPage: FC<{
                   ) : null}
 
                   {visibleTranscript.map((message) => {
-                    const isUser = message.role === "user";
+                    const isUser = message.role === 'user';
                     return (
                       <div
                         className={cn(
-                          "group/message flex w-full",
-                          isUser ? "justify-end" : "justify-start",
+                          'group/message flex w-full',
+                          isUser ? 'justify-end' : 'justify-start',
                         )}
                         key={message.id}
                       >
                         <div
                           className={cn(
-                            "flex min-w-0 flex-col gap-1",
+                            'flex min-w-0 flex-col gap-1',
                             CONVERSATION_COLUMN_CLASS,
-                            isUser ? "items-stretch" : "items-stretch",
+                            isUser ? 'items-stretch' : 'items-stretch',
                           )}
                         >
                           <div
                             className={cn(
-                              "flex w-full items-center gap-1",
-                              isUser ? "justify-end" : "justify-start",
+                              'flex w-full items-center gap-1',
+                              isUser ? 'justify-end' : 'justify-start',
                             )}
                           >
                             <time
@@ -1692,9 +1692,9 @@ export const ProjectChatPage: FC<{
                   {shouldShowThinking ? (
                     <div
                       className={cn(
-                        "flex w-full min-w-0 flex-col",
+                        'flex w-full min-w-0 flex-col',
                         CONVERSATION_COLUMN_CLASS,
-                        "pl-0.5",
+                        'pl-0.5',
                       )}
                       role="status"
                     >
@@ -1781,16 +1781,16 @@ export const ProjectChatPage: FC<{
                         )}
                       </Button>
                       <Button
-                        aria-label={isListeningToSpeech ? "Stop voice input" : "Start voice input"}
+                        aria-label={isListeningToSpeech ? 'Stop voice input' : 'Start voice input'}
                         className={cn(
                           isListeningToSpeech
-                            ? "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive"
-                            : "",
+                            ? 'bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive'
+                            : '',
                         )}
                         disabled={isEditorDisabled}
                         onClick={handleToggleSpeechInput}
                         size="icon-sm"
-                        title={isListeningToSpeech ? "音声入力を停止" : "音声入力"}
+                        title={isListeningToSpeech ? '音声入力を停止' : '音声入力'}
                         type="button"
                         variant="ghost"
                       >
@@ -1805,7 +1805,7 @@ export const ProjectChatPage: FC<{
                     }
                   }}
                   onValueReaderReady={handlePromptValueReaderReady}
-                  placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}
+                  placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
                   slashCommands={slashCommandsData?.commands ?? []}
                 />
 
@@ -1852,7 +1852,7 @@ export const ProjectChatPage: FC<{
                                   id="draft-model-select"
                                   title={
                                     !draftModelSourceHasList
-                                      ? "エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません"
+                                      ? 'エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません'
                                       : undefined
                                   }
                                 >
@@ -1860,13 +1860,13 @@ export const ProjectChatPage: FC<{
                                     placeholder={
                                       draftModelSourceHasList
                                         ? draftModelSelectLabel
-                                        : "Loading models..."
+                                        : 'Loading models...'
                                     }
                                   >
                                     {(value) =>
                                       formatAcpSelectValueLabel({
                                         fallback: draftModelSelectLabel,
-                                        kind: "model",
+                                        kind: 'model',
                                         options: draftModelModeListSource.availableModels,
                                         presetId: activePresetId,
                                         value,
@@ -1912,7 +1912,7 @@ export const ProjectChatPage: FC<{
                                   id="draft-mode-select"
                                   title={
                                     !draftModeSourceHasList
-                                      ? "エージェントに問い合わせて一覧を取得中か、利用可能な mode がありません"
+                                      ? 'エージェントに問い合わせて一覧を取得中か、利用可能な mode がありません'
                                       : undefined
                                   }
                                 >
@@ -1920,13 +1920,13 @@ export const ProjectChatPage: FC<{
                                     placeholder={
                                       draftModeSourceHasList
                                         ? draftModeSelectLabel
-                                        : "Loading modes..."
+                                        : 'Loading modes...'
                                     }
                                   >
                                     {(value) =>
                                       formatAcpSelectValueLabel({
                                         fallback: draftModeSelectLabel,
-                                        kind: "mode",
+                                        kind: 'mode',
                                         options: draftModelModeListSource.availableModes,
                                         presetId: activePresetId,
                                         value,
@@ -1942,7 +1942,7 @@ export const ProjectChatPage: FC<{
                                       <SelectItem key={mode.id} value={mode.id}>
                                         <AcpSelectItemLabel>
                                           {formatAcpSelectOptionLabel({
-                                            kind: "mode",
+                                            kind: 'mode',
                                             option: mode,
                                             options: draftModelModeListSource.availableModes,
                                             presetId: activePresetId,
@@ -1975,7 +1975,7 @@ export const ProjectChatPage: FC<{
                                     {(value) =>
                                       formatAcpSelectValueLabel({
                                         fallback: sessionModelSelectLabel,
-                                        kind: "model",
+                                        kind: 'model',
                                         options: selectedSessionAvailableModels,
                                         presetId: selectedSession.presetId,
                                         value,
@@ -1995,7 +1995,7 @@ export const ProjectChatPage: FC<{
                                   favoriteModelIds={selectedSessionFavoriteModelIds}
                                   onToggleFavorite={(modelId, favorite) => {
                                     void handleToggleFavoriteModel({
-                                      presetId: selectedSession.presetId ?? "",
+                                      presetId: selectedSession.presetId ?? '',
                                       modelId,
                                       currentFavorite: favorite,
                                     });
@@ -2028,7 +2028,7 @@ export const ProjectChatPage: FC<{
                                       {(value) =>
                                         formatAcpSelectValueLabel({
                                           fallback: sessionModeSelectLabel,
-                                          kind: "mode",
+                                          kind: 'mode',
                                           options: selectedSessionModeOptions,
                                           presetId: selectedSession.presetId,
                                           value,
@@ -2043,7 +2043,7 @@ export const ProjectChatPage: FC<{
                                     <SelectItem key={mode.id} value={mode.id}>
                                       <AcpSelectItemLabel>
                                         {formatAcpSelectOptionLabel({
-                                          kind: "mode",
+                                          kind: 'mode',
                                           option: mode,
                                           options: selectedSessionModeOptions,
                                           presetId: selectedSession.presetId,
@@ -2066,8 +2066,8 @@ export const ProjectChatPage: FC<{
                       <p
                         className={
                           draftPrepareError !== null || draftCatalogError !== null
-                            ? "text-xs text-destructive"
-                            : "text-xs text-muted-foreground"
+                            ? 'text-xs text-destructive'
+                            : 'text-xs text-muted-foreground'
                         }
                       >
                         {draftPrepareError ??
@@ -2078,7 +2078,7 @@ export const ProjectChatPage: FC<{
                   </div>
                   <Button
                     aria-label={
-                      isSending ? "Sending" : shouldUseDraftSession ? "Start session" : "Send"
+                      isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
                     }
                     className="shrink-0"
                     disabled={!canSend}
@@ -2086,7 +2086,7 @@ export const ProjectChatPage: FC<{
                       void handleSendPrompt();
                     }}
                     size="icon"
-                    title={isSending ? "Sending..." : shouldUseDraftSession ? "Start" : "Send"}
+                    title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
                     type="button"
                   >
                     {isSending ? (

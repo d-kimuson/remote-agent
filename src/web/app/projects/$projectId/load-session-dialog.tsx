@@ -1,24 +1,25 @@
-import { ChevronDown, History, LoaderCircle } from "lucide-react";
-import { useMemo, useState, type FC } from "react";
+import { ChevronDown, History, LoaderCircle } from 'lucide-react';
+import { useMemo, useState, type FC } from 'react';
 
 import type {
   AgentPreset,
   ResumableSessionCandidate,
   ResumeCapability,
-} from "../../../../shared/acp.ts";
-import { Button } from "../../../components/ui/button.tsx";
-import { Checkbox } from "../../../components/ui/checkbox.tsx";
+} from '../../../../shared/acp.ts';
+
+import { Button } from '../../../components/ui/button.tsx';
+import { Checkbox } from '../../../components/ui/checkbox.tsx';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "../../../components/ui/dialog.tsx";
+} from '../../../components/ui/dialog.tsx';
 
 const formatTimestamp = (value: string | null | undefined): string => {
   if (value === null || value === undefined) {
-    return "updatedAt unavailable";
+    return 'updatedAt unavailable';
   }
 
   const date = new Date(value);
@@ -106,7 +107,7 @@ export const LoadSessionDialog: FC<{
                   onSelectProvider(event.target.value);
                 }
               }}
-              value={selectedProviderId ?? ""}
+              value={selectedProviderId ?? ''}
             >
               <option disabled value="">
                 Provider
@@ -145,7 +146,7 @@ export const LoadSessionDialog: FC<{
                 type="button"
               >
                 {isLoadingSession
-                  ? "Loading..."
+                  ? 'Loading...'
                   : `Load Selected Items (${selectedSessions.length})`}
               </Button>
             </div>

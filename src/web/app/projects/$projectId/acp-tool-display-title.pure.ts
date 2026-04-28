@@ -1,12 +1,12 @@
-import type { RawEvent } from "../../../../shared/acp.ts";
+import type { RawEvent } from '../../../../shared/acp.ts';
 
 /** @see @mcpc-tech/acp-ai-provider ACP_PROVIDER_AGENT_DYNAMIC_TOOL_NAME */
-const ACP_DYNAMIC_TOOL_FULL = "acp.acp_provider_agent_dynamic_tool" as const;
+const ACP_DYNAMIC_TOOL_FULL = 'acp.acp_provider_agent_dynamic_tool' as const;
 
 const isAcpProviderDynamicToolName = (name: string): boolean =>
-  name === ACP_DYNAMIC_TOOL_FULL || name.includes("acp_provider_agent_dynamic_tool");
+  name === ACP_DYNAMIC_TOOL_FULL || name.includes('acp_provider_agent_dynamic_tool');
 
-const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null;
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
 const tryProviderAgentInputToolName = (inputText: string): string | null => {
   const t = inputText.trim();
@@ -18,8 +18,8 @@ const tryProviderAgentInputToolName = (inputText: string): string | null => {
     if (!isRecord(parsed)) {
       return null;
     }
-    const tn = parsed["toolName"];
-    if (typeof tn === "string" && tn.trim().length > 0) {
+    const tn = parsed['toolName'];
+    if (typeof tn === 'string' && tn.trim().length > 0) {
       return tn.trim();
     }
   } catch {
@@ -33,11 +33,11 @@ const tryProviderAgentInputToolName = (inputText: string): string | null => {
  * 取れたときはそちらを、取れなければイベントの `toolName`。
  */
 export const resolveAcpToolCardTitle = (ev: {
-  readonly call: Extract<RawEvent, { type: "toolCall" }> | null;
-  readonly result: Extract<RawEvent, { type: "toolResult" }> | null;
-  readonly error: Extract<RawEvent, { type: "toolError" }> | null;
+  readonly call: Extract<RawEvent, { type: 'toolCall' }> | null;
+  readonly result: Extract<RawEvent, { type: 'toolResult' }> | null;
+  readonly error: Extract<RawEvent, { type: 'toolError' }> | null;
 }): string => {
-  const outer = ev.call?.toolName ?? ev.result?.toolName ?? ev.error?.toolName ?? "tool";
+  const outer = ev.call?.toolName ?? ev.result?.toolName ?? ev.error?.toolName ?? 'tool';
   if (isAcpProviderDynamicToolName(outer) && ev.call !== null) {
     const inner = tryProviderAgentInputToolName(ev.call.inputText);
     if (inner !== null) {

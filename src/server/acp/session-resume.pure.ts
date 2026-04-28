@@ -1,4 +1,4 @@
-import type { AgentCapabilities, SessionInfo } from "@agentclientprotocol/sdk";
+import type { AgentCapabilities, SessionInfo } from '@agentclientprotocol/sdk';
 
 export type ResumeCapabilitySnapshot = {
   readonly loadSession: boolean;
@@ -20,28 +20,28 @@ const fallbackReasonFrom = ({
   loadSession,
   listSessions,
   resumeSession,
-}: Omit<ResumeCapabilitySnapshot, "canLoadIntoProvider" | "fallbackReason">): string | null => {
+}: Omit<ResumeCapabilitySnapshot, 'canLoadIntoProvider' | 'fallbackReason'>): string | null => {
   if (loadSession && listSessions) {
     return null;
   }
 
   if (loadSession) {
-    return "Agent supports loadSession but not session/list. A known sessionId is required.";
+    return 'Agent supports loadSession but not session/list. A known sessionId is required.';
   }
 
   if (listSessions && resumeSession) {
-    return "Agent can list sessions and resume them, but this PoC cannot safely bind session/resume to the current AI SDK provider.";
+    return 'Agent can list sessions and resume them, but this PoC cannot safely bind session/resume to the current AI SDK provider.';
   }
 
   if (listSessions) {
-    return "Agent can list sessions but does not advertise loadSession. This PoC cannot import the listed sessions safely.";
+    return 'Agent can list sessions but does not advertise loadSession. This PoC cannot import the listed sessions safely.';
   }
 
   if (resumeSession) {
-    return "Agent advertises session/resume only. This PoC requires loadSession to bind an existing session to the current AI SDK provider.";
+    return 'Agent advertises session/resume only. This PoC requires loadSession to bind an existing session to the current AI SDK provider.';
   }
 
-  return "Agent does not advertise loadSession, session/list, or session/resume.";
+  return 'Agent does not advertise loadSession, session/list, or session/resume.';
 };
 
 export const inspectResumeCapabilities = (

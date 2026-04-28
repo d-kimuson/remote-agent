@@ -1,19 +1,20 @@
-import { opendir, readFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import path from "node:path";
+import { opendir, readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 
-import type { ChatMessage } from "../../../shared/acp.ts";
+import type { ChatMessage } from '../../../shared/acp.ts';
+
 import {
   parseClaudeCodeSessionLogText,
   parseCodexSessionLogText,
   parsePiCodingAgentSessionLogText,
-} from "../codex-session-log.pure.ts";
+} from '../codex-session-log.pure.ts';
 
-const defaultCodexSessionsDirectory = (): string => path.join(homedir(), ".codex", "sessions");
+const defaultCodexSessionsDirectory = (): string => path.join(homedir(), '.codex', 'sessions');
 const defaultClaudeCodeProjectsDirectory = (): string =>
-  path.join(homedir(), ".claude", "projects");
+  path.join(homedir(), '.claude', 'projects');
 const defaultPiAgentSessionsDirectory = (): string =>
-  path.join(homedir(), ".pi", "agent", "sessions");
+  path.join(homedir(), '.pi', 'agent', 'sessions');
 
 const findCodexSessionLogFile = async (
   sessionId: string,
@@ -36,7 +37,7 @@ const findCodexSessionLogFile = async (
       continue;
     }
 
-    if (entry.isFile() && entry.name.includes(sessionId) && entry.name.endsWith(".jsonl")) {
+    if (entry.isFile() && entry.name.includes(sessionId) && entry.name.endsWith('.jsonl')) {
       return entryPath;
     }
   }
@@ -61,7 +62,7 @@ const readSessionLogMessages = async ({
     return [];
   }
 
-  const text = await readFile(filePath, "utf8");
+  const text = await readFile(filePath, 'utf8');
   return parser(text, sessionId).messages;
 };
 
@@ -69,7 +70,7 @@ export const importProviderSessionMessages = async (
   presetId: string,
   sessionId: string,
 ): Promise<readonly ChatMessage[]> => {
-  if (presetId === "codex") {
+  if (presetId === 'codex') {
     return await readSessionLogMessages({
       directory: defaultCodexSessionsDirectory(),
       parser: parseCodexSessionLogText,
@@ -77,7 +78,7 @@ export const importProviderSessionMessages = async (
     });
   }
 
-  if (presetId === "claude-code") {
+  if (presetId === 'claude-code') {
     return await readSessionLogMessages({
       directory: defaultClaudeCodeProjectsDirectory(),
       parser: parseClaudeCodeSessionLogText,
@@ -85,7 +86,7 @@ export const importProviderSessionMessages = async (
     });
   }
 
-  if (presetId === "pi-coding-agent") {
+  if (presetId === 'pi-coding-agent') {
     return await readSessionLogMessages({
       directory: defaultPiAgentSessionsDirectory(),
       parser: parsePiCodingAgentSessionLogText,

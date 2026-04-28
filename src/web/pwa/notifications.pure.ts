@@ -1,5 +1,5 @@
-export const notificationIconPath = "/pwa-192.png";
-export const notificationBadgePath = "/badge-96.png";
+export const notificationIconPath = '/pwa-192.png';
+export const notificationBadgePath = '/badge-96.png';
 
 const notificationBodyLimit = 160;
 
@@ -37,7 +37,7 @@ export type AssistantNotificationPayload = {
 
 export type SessionPausedNotificationPayload = AssistantNotificationPayload;
 
-const normalizeNotificationBody = (text: string): string => text.trim().replaceAll(/\s+/g, " ");
+const normalizeNotificationBody = (text: string): string => text.trim().replaceAll(/\s+/g, ' ');
 
 const truncateNotificationBody = (text: string): string => {
   if (text.length <= notificationBodyLimit) {
@@ -54,7 +54,7 @@ export const createAssistantNotificationPayload = (
 
   return {
     title: `${input.projectName} • Agent response`,
-    body: normalizedBody.length > 0 ? normalizedBody : "Agent response received",
+    body: normalizedBody.length > 0 ? normalizedBody : 'Agent response received',
     tag: `session:${input.sessionId}`,
     icon: notificationIconPath,
     badge: notificationBadgePath,
@@ -74,7 +74,7 @@ export const createSessionPausedNotificationPayload = (
 
   return {
     title: `${input.projectName} • Agent paused`,
-    body: normalizedTitle.length > 0 ? `${normalizedTitle} is ready` : "Session is ready",
+    body: normalizedTitle.length > 0 ? `${normalizedTitle} is ready` : 'Session is ready',
     tag: `session-paused:${input.sessionId}`,
     icon: notificationIconPath,
     badge: notificationBadgePath,

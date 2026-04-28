@@ -1,8 +1,9 @@
-import type { NewSessionResponse } from "@agentclientprotocol/sdk";
-import { createACPProvider, type ACPProvider } from "@mcpc-tech/acp-ai-provider";
-import type { DatabaseSync } from "node:sqlite";
-import { and, eq } from "drizzle-orm";
-import { array, parse, string } from "valibot";
+import type { NewSessionResponse } from '@agentclientprotocol/sdk';
+import type { DatabaseSync } from 'node:sqlite';
+
+import { createACPProvider, type ACPProvider } from '@mcpc-tech/acp-ai-provider';
+import { and, eq } from 'drizzle-orm';
+import { array, parse, string } from 'valibot';
 
 import {
   chatMessageKindSchema,
@@ -23,38 +24,38 @@ import {
   type SessionSummary,
   type SessionStatus,
   type UpdateSessionRequest,
-} from "../../../shared/acp.ts";
-import {
-  collectPromptStream,
-  type PromptStreamInsertRow,
-  type PromptStreamPersistence,
-} from "./collect-prompt-stream.ts";
-import { resolveAttachments } from "../../attachments/store.ts";
-import { type AppDatabase, getDefaultDatabase } from "../../db/sqlite.ts";
+} from '../../../shared/acp.ts';
+import { resolveAttachments } from '../../attachments/store.ts';
 import {
   agentProviderCatalogsTable,
   sessionMessagesTable,
   sessionsTable,
-} from "../../db/schema.ts";
-import { buildPromptWithAttachments } from "../prompt-attachments.pure.ts";
-import { agentPresets } from "../presets.ts";
-import { resolveCommandPath } from "./command-path.ts";
-import { importProviderSessionMessages } from "./codex-session-log.ts";
-import { emitAcpSse } from "./sse-broadcast.ts";
+} from '../../db/schema.ts';
+import { type AppDatabase, getDefaultDatabase } from '../../db/sqlite.ts';
+import { agentPresets } from '../presets.ts';
+import { buildPromptWithAttachments } from '../prompt-attachments.pure.ts';
 import {
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
-} from "../session-acp-response.pure.ts";
+} from '../session-acp-response.pure.ts';
 import {
   enrichModeOptionsIfEmpty,
   enrichModelOptionsIfEmpty,
   preferNonEmptyModeCatalog,
   preferNonEmptyModelCatalog,
-} from "../session-catalog.pure.ts";
+} from '../session-catalog.pure.ts';
+import { importProviderSessionMessages } from './codex-session-log.ts';
+import {
+  collectPromptStream,
+  type PromptStreamInsertRow,
+  type PromptStreamPersistence,
+} from './collect-prompt-stream.ts';
+import { resolveCommandPath } from './command-path.ts';
+import { emitAcpSse } from './sse-broadcast.ts';
 
 type SessionProvider = Pick<
   ACPProvider,
-  "cleanup" | "initSession" | "languageModel" | "setMode" | "setModel" | "tools"
+  'cleanup' | 'initSession' | 'languageModel' | 'setMode' | 'setModel' | 'tools'
 >;
 
 /**
@@ -67,7 +68,7 @@ type SessionProvider = Pick<
 const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSessionResponse> => {
   /** `ACPProvider.get tools` は `this.model` 未生成だと常に undefined（@mcpc-tech/acp-ai-provider） */
   provider.languageModel();
-  const tools = (provider.tools ?? {}) as NonNullable<Parameters<ACPProvider["initSession"]>[0]>;
+  const tools = (provider.tools ?? {}) as NonNullable<Parameters<ACPProvider['initSession']>[0]>;
   return await provider.initSession(tools);
 };
 
@@ -116,7 +117,7 @@ const createSessionSummary = ({
   updatedAt,
   response,
 }: {
-  readonly origin: SessionSummary["origin"];
+  readonly origin: SessionSummary['origin'];
   readonly status: SessionStatus;
   readonly createdAt: string;
   readonly projectId: string | null;
@@ -157,7 +158,7 @@ const createSessionSummary = ({
 
 const mapMessageKindFromDb = (value: string | null | undefined): ChatMessageKind => {
   if (value === null || value === undefined || value.length === 0) {
-    return "legacy_assistant_turn";
+    return 'legacy_assistant_turn';
   }
   return parse(chatMessageKindSchema, value);
 };
@@ -179,15 +180,15 @@ const firstUserMessagePreviewBySessionId = (client: DatabaseSync): ReadonlyMap<s
     ) u ON t.session_id = u.session_id AND t.created_at = u.first_at AND t.role = 'user'
   `);
   const isFirstUserPreviewRow = (row: unknown): row is { sessionId: string; text: string } => {
-    if (row === null || typeof row !== "object") {
+    if (row === null || typeof row !== 'object') {
       return false;
     }
-    if (!("sessionId" in row) || !("text" in row)) {
+    if (!('sessionId' in row) || !('text' in row)) {
       return false;
     }
     return (
-      typeof Reflect.get(row, "sessionId") === "string" &&
-      typeof Reflect.get(row, "text") === "string"
+      typeof Reflect.get(row, 'sessionId') === 'string' &&
+      typeof Reflect.get(row, 'text') === 'string'
     );
   };
 
@@ -260,7 +261,7 @@ export const createSessionStore = ({
 
   const emitSessionUpdated = (session: SessionSummary): void => {
     emitAcpSse({
-      type: "session_updated",
+      type: 'session_updated',
       sessionId: session.sessionId,
       status: session.status,
     });
@@ -318,9 +319,9 @@ export const createSessionStore = ({
 
   const sessionStatusFromEntry = (entry: SessionEntry | undefined): SessionStatus => {
     if (entry === undefined) {
-      return "inactive";
+      return 'inactive';
     }
-    return entry.runningPromptCount > 0 ? "running" : "paused";
+    return entry.runningPromptCount > 0 ? 'running' : 'paused';
   };
 
   const setSessionStatus = (entry: SessionEntry, status: SessionStatus): void => {
@@ -412,8 +413,8 @@ export const createSessionStore = ({
         id: record.id,
         role: parse(chatMessageRoleSchema, record.role),
         kind:
-          record.role === "user"
-            ? "user"
+          record.role === 'user'
+            ? 'user'
             : mapMessageKindFromDb(record.messageKind as string | null | undefined),
         text: record.text,
         rawEvents: parse(array(rawEventSchema), JSON.parse(record.rawEventsJson)),
@@ -434,7 +435,7 @@ export const createSessionStore = ({
     const created = message.createdAt;
     const updated = message.updatedAt ?? created;
     const kind: ChatMessageKind =
-      message.kind ?? (message.role === "user" ? "user" : "legacy_assistant_turn");
+      message.kind ?? (message.role === 'user' ? 'user' : 'legacy_assistant_turn');
     await database.db.insert(sessionMessagesTable).values({
       id: message.id,
       sessionId,
@@ -444,10 +445,10 @@ export const createSessionStore = ({
       createdAt: created,
       messageKind: kind,
       streamPartId: message.streamPartId ?? null,
-      metadataJson: message.metadataJson ?? "{}",
+      metadataJson: message.metadataJson ?? '{}',
       updatedAt: updated,
     });
-    emitAcpSse({ type: "session_messages_updated", sessionId });
+    emitAcpSse({ type: 'session_messages_updated', sessionId });
   };
 
   const hasStoredMessages = async (sessionId: string): Promise<boolean> => {
@@ -483,9 +484,9 @@ export const createSessionStore = ({
     rawEvents,
     kind,
     streamPartId = null,
-    metadataJson = "{}",
+    metadataJson = '{}',
   }: {
-    readonly role: ChatMessage["role"];
+    readonly role: ChatMessage['role'];
     readonly text: string;
     readonly rawEvents: readonly RawEvent[];
     readonly kind?: ChatMessageKind;
@@ -496,13 +497,13 @@ export const createSessionStore = ({
     return {
       id: crypto.randomUUID(),
       role,
-      kind: kind ?? (role === "user" ? "user" : "legacy_assistant_turn"),
+      kind: kind ?? (role === 'user' ? 'user' : 'legacy_assistant_turn'),
       text,
       rawEvents: [...rawEvents],
       createdAt: t,
       updatedAt: t,
       streamPartId,
-      metadataJson: metadataJson === "{}" ? undefined : metadataJson,
+      metadataJson: metadataJson === '{}' ? undefined : metadataJson,
     };
   };
 
@@ -537,8 +538,8 @@ export const createSessionStore = ({
             eq(sessionMessagesTable.streamPartId, input.streamPartId),
           ),
         );
-      if (input.notify !== "none") {
-        emitAcpSse({ type: "session_messages_updated", sessionId: input.sessionId });
+      if (input.notify !== 'none') {
+        emitAcpSse({ type: 'session_messages_updated', sessionId: input.sessionId });
       }
     },
   };
@@ -578,8 +579,8 @@ export const createSessionStore = ({
     const response = await initAcpProviderSession(provider);
     const createdAt = new Date().toISOString();
     let session = createSessionSummary({
-      origin: "new",
-      status: "paused",
+      origin: 'new',
+      status: 'paused',
       createdAt,
       projectId,
       presetId: preset?.id ?? null,
@@ -676,11 +677,11 @@ export const createSessionStore = ({
     const response = await initAcpProviderSession(provider);
     const createdAt = existingRow?.createdAt ?? new Date().toISOString();
     const origin =
-      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : "loaded";
+      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : 'loaded';
     const effectiveUpdatedAt = updatedAt ?? existingRow?.updatedAt ?? null;
     const session = createSessionSummary({
       origin,
-      status: "paused",
+      status: 'paused',
       createdAt,
       projectId,
       presetId: preset.id,
@@ -696,7 +697,7 @@ export const createSessionStore = ({
       },
     });
     const storedSession =
-      existingRow === undefined ? null : mapStoredSession(existingRow, true, "paused", null);
+      existingRow === undefined ? null : mapStoredSession(existingRow, true, 'paused', null);
 
     if (session.sessionId !== sessionId) {
       throw new Error(
@@ -778,16 +779,16 @@ export const createSessionStore = ({
       .where(eq(sessionsTable.sessionId, sessionId))
       .limit(1);
     const storedSession =
-      existingRow === undefined ? null : mapStoredSession(existingRow, false, "inactive", null);
+      existingRow === undefined ? null : mapStoredSession(existingRow, false, 'inactive', null);
     const createdAt = existingRow?.createdAt ?? new Date().toISOString();
     const origin =
-      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : "loaded";
+      existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : 'loaded';
     const effectiveCurrentModeId = storedSession?.currentModeId ?? currentModeId;
     const effectiveCurrentModelId = storedSession?.currentModelId ?? currentModelId;
     const importedSession = parse(sessionSummarySchema, {
       sessionId,
       origin,
-      status: "inactive",
+      status: 'inactive',
       projectId,
       presetId: preset.id,
       command,
@@ -819,10 +820,10 @@ export const createSessionStore = ({
   };
 
   const resolveAgentPreset = (presetId: string | null | undefined): AgentPreset => {
-    const id = presetId ?? "codex";
+    const id = presetId ?? 'codex';
     const fallback = agentPresets[0];
     if (fallback === undefined) {
-      throw new Error("agentPresets must not be empty");
+      throw new Error('agentPresets must not be empty');
     }
     return agentPresets.find((preset) => preset.id === id) ?? fallback;
   };
@@ -855,7 +856,7 @@ export const createSessionStore = ({
     });
 
     const entry = getSessionEntry(sessionId);
-    const fromDb = mapStoredSession(record, true, "paused", null);
+    const fromDb = mapStoredSession(record, true, 'paused', null);
 
     if (
       fromDb.currentModelId !== null &&
@@ -954,11 +955,11 @@ export const createSessionStore = ({
     await persistSession(entry.session);
     await persistMessage({
       sessionId,
-      message: buildMessage({ role: "user", text: effectivePrompt, rawEvents: [], kind: "user" }),
+      message: buildMessage({ role: 'user', text: effectivePrompt, rawEvents: [], kind: 'user' }),
     });
 
     const collectPromptResponse = async (): Promise<
-      Pick<MessageResponse, "assistantSegmentMessages" | "rawEvents" | "text">
+      Pick<MessageResponse, 'assistantSegmentMessages' | 'rawEvents' | 'text'>
     > => {
       if (promptCollector === undefined) {
         const streamed = await collectPromptStream({
@@ -975,7 +976,7 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: "session_text_delta",
+              type: 'session_text_delta',
               sessionId: deltaSessionId,
               messageId: message.id,
               streamPartId: message.streamPartId,
@@ -991,7 +992,7 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: "session_reasoning_delta",
+              type: 'session_reasoning_delta',
               sessionId: deltaSessionId,
               messageId: message.id,
               streamPartId: message.streamPartId,
@@ -1025,10 +1026,10 @@ export const createSessionStore = ({
           ? [...result.assistantSegmentMessages]
           : [
               buildMessage({
-                role: "assistant",
+                role: 'assistant',
                 text: result.text,
                 rawEvents: result.rawEvents,
-                kind: "legacy_assistant_turn",
+                kind: 'legacy_assistant_turn',
               }),
             ];
       for (const msg of segments) {
@@ -1046,19 +1047,19 @@ export const createSessionStore = ({
     setSessionStatus(entry, sessionStatusFromEntry(entry));
     emitSessionUpdated(entry.session);
 
-    let result: Pick<MessageResponse, "assistantSegmentMessages" | "rawEvents" | "text"> | null =
+    let result: Pick<MessageResponse, 'assistantSegmentMessages' | 'rawEvents' | 'text'> | null =
       null;
     try {
       result = await collectPromptResponse();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "failed to collect prompt result";
+      const message = error instanceof Error ? error.message : 'failed to collect prompt result';
       await persistMessage({
         sessionId,
         message: buildMessage({
-          role: "assistant",
+          role: 'assistant',
           text: `Error: ${message}`,
           rawEvents: [],
-          kind: "legacy_assistant_turn",
+          kind: 'legacy_assistant_turn',
         }),
       });
       throw error;
@@ -1069,7 +1070,7 @@ export const createSessionStore = ({
     }
 
     if (result === null) {
-      throw new Error("failed to collect prompt result");
+      throw new Error('failed to collect prompt result');
     }
 
     return {
@@ -1098,7 +1099,7 @@ export const createSessionStore = ({
     }
 
     await database.db.delete(sessionsTable).where(eq(sessionsTable.sessionId, sessionId));
-    emitAcpSse({ type: "session_removed", sessionId });
+    emitAcpSse({ type: 'session_removed', sessionId });
     return true;
   };
 

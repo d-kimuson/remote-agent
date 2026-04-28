@@ -1,4 +1,4 @@
-import { parse } from "valibot";
+import { parse } from 'valibot';
 
 import {
   agentModelCatalogResponseSchema,
@@ -45,8 +45,8 @@ import {
   type UpdateSessionRequest,
   type UpdateAgentProviderRequest,
   type UpdateProjectModelPreferenceRequest,
-} from "../../../shared/acp.ts";
-import { apiFetch, honoClient } from "./client.ts";
+} from '../../../shared/acp.ts';
+import { apiFetch, honoClient } from './client.ts';
 
 export const fetchAppInfo = async (): Promise<AppInfo> => {
   const response = await honoClient.info.$get();
@@ -64,7 +64,7 @@ export const fetchDirectoryListing = async (
   currentPath?: string,
   showHidden?: boolean,
 ): Promise<DirectoryListingResponse> => {
-  const response = await honoClient.filesystem["directory-listing"].$get({
+  const response = await honoClient.filesystem['directory-listing'].$get({
     query: {
       ...(currentPath !== undefined && currentPath.length > 0 ? { currentPath } : {}),
       ...(showHidden !== undefined ? { showHidden: showHidden.toString() } : {}),
@@ -79,13 +79,13 @@ export const fetchProjects = async (): Promise<ProjectsResponse> => {
 };
 
 export const fetchProject = async (projectId: string): Promise<ProjectResponse> => {
-  const response = await honoClient.projects[":projectId"].$get({ param: { projectId } });
+  const response = await honoClient.projects[':projectId'].$get({ param: { projectId } });
   return parse(projectResponseSchema, await response.json());
 };
 
 export const fetchProjectSettings = async (projectId: string): Promise<ProjectSettingsResponse> => {
   const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
-    method: "GET",
+    method: 'GET',
   });
   return parse(projectSettingsResponseSchema, await response.json());
 };
@@ -97,8 +97,8 @@ export const updateProjectModelPreferenceRequest = async (
   const response = await apiFetch(
     `/api/projects/${encodeURIComponent(projectId)}/model-preferences`,
     {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(request),
     },
   );
@@ -118,12 +118,12 @@ export const uploadAttachmentsRequest = async (
   const formData = new FormData();
 
   for (const file of files) {
-    formData.append("files", file);
+    formData.append('files', file);
   }
 
-  const response = await apiFetch("/api/attachments/ingest", {
+  const response = await apiFetch('/api/attachments/ingest', {
     body: formData,
-    method: "POST",
+    method: 'POST',
   });
 
   return parse(uploadAttachmentsResponseSchema, await response.json());
@@ -143,7 +143,7 @@ export const updateAgentProviderRequest = async (
   presetId: string,
   request: UpdateAgentProviderRequest,
 ): Promise<AgentProvidersResponse> => {
-  const response = await honoClient.acp.providers[":presetId"].$patch({
+  const response = await honoClient.acp.providers[':presetId'].$patch({
     param: { presetId },
     json: request,
   });
@@ -154,7 +154,7 @@ export const checkAgentProviderRequest = async (
   presetId: string,
   request: CheckAgentProviderRequest,
 ): Promise<AgentModelCatalogResponse> => {
-  const response = await honoClient.acp.providers[":presetId"].check.$post({
+  const response = await honoClient.acp.providers[':presetId'].check.$post({
     param: { presetId },
     json: parse(checkAgentProviderRequestSchema, request),
   });
@@ -165,7 +165,7 @@ export const fetchAgentModelCatalog = async (input: {
   readonly projectId: string;
   readonly presetId: string;
 }): Promise<AgentModelCatalogResponse> => {
-  const response = await honoClient.acp.agent["model-catalog"].$get({
+  const response = await honoClient.acp.agent['model-catalog'].$get({
     query: { projectId: input.projectId, presetId: input.presetId },
   });
   return parse(agentModelCatalogResponseSchema, await response.json());
@@ -175,7 +175,7 @@ export const fetchAgentSlashCommands = async (input: {
   readonly projectId: string;
   readonly presetId: string;
 }): Promise<AgentSlashCommandsResponse> => {
-  const response = await honoClient.acp.agent["slash-commands"].$get({
+  const response = await honoClient.acp.agent['slash-commands'].$get({
     query: { projectId: input.projectId, presetId: input.presetId },
   });
   return parse(agentSlashCommandsResponseSchema, await response.json());
@@ -188,21 +188,21 @@ export const fetchResumableSessions = async (
   const searchParams = new URLSearchParams();
 
   if (query.projectId !== null && query.projectId !== undefined) {
-    searchParams.set("projectId", query.projectId);
+    searchParams.set('projectId', query.projectId);
   }
 
   if (query.presetId !== null && query.presetId !== undefined) {
-    searchParams.set("presetId", query.presetId);
+    searchParams.set('presetId', query.presetId);
   }
 
   if (query.cwd !== null && query.cwd !== undefined) {
-    searchParams.set("cwd", query.cwd);
+    searchParams.set('cwd', query.cwd);
   }
 
   const url = `/api/acp/sessions/discover${
-    searchParams.size === 0 ? "" : `?${searchParams.toString()}`
+    searchParams.size === 0 ? '' : `?${searchParams.toString()}`
   }`;
-  const response = await apiFetch(url, { method: "GET" });
+  const response = await apiFetch(url, { method: 'GET' });
 
   return parse(resumableSessionsResponseSchema, await response.json());
 };
@@ -232,7 +232,7 @@ export const updateSessionRequest = async (
   sessionId: string,
   request: UpdateSessionRequest,
 ): Promise<SessionResponse> => {
-  const response = await honoClient.acp.sessions[":sessionId"].$patch({
+  const response = await honoClient.acp.sessions[':sessionId'].$patch({
     param: { sessionId },
     json: request,
   });
@@ -240,7 +240,7 @@ export const updateSessionRequest = async (
 };
 
 export const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesResponse> => {
-  const response = await honoClient.acp.sessions[":sessionId"].messages.$get({
+  const response = await honoClient.acp.sessions[':sessionId'].messages.$get({
     param: { sessionId },
   });
   return parse(sessionMessagesResponseSchema, await response.json());
@@ -255,7 +255,7 @@ export const sendPromptRequest = async (
     readonly modeId?: string | null;
   },
 ): Promise<MessageResponse> => {
-  const response = await honoClient.acp.sessions[":sessionId"].messages.$post({
+  const response = await honoClient.acp.sessions[':sessionId'].messages.$post({
     param: { sessionId },
     json: {
       prompt: request.prompt,
@@ -276,7 +276,7 @@ export const sendPreparedPromptRequest = async (
     readonly modeId?: string | null;
   },
 ): Promise<MessageResponse> => {
-  const response = await honoClient.acp.sessions.prepared[":prepareId"].messages.$post({
+  const response = await honoClient.acp.sessions.prepared[':prepareId'].messages.$post({
     param: { prepareId },
     json: {
       prompt: request.prompt,
@@ -289,5 +289,5 @@ export const sendPreparedPromptRequest = async (
 };
 
 export const deleteSessionRequest = async (sessionId: string): Promise<void> => {
-  await honoClient.acp.sessions[":sessionId"].$delete({ param: { sessionId } });
+  await honoClient.acp.sessions[':sessionId'].$delete({ param: { sessionId } });
 };

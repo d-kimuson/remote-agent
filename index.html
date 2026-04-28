@@ -9,25 +9,25 @@
     <title>ACP Playground</title>
     <script>
       (() => {
-        const storageKey = "acp-playground:theme";
+        const storageKey = 'acp-playground:theme';
         const preference = (() => {
           try {
             const stored = window.localStorage.getItem(storageKey);
-            return stored === "light" || stored === "dark" || stored === "system"
+            return stored === 'light' || stored === 'dark' || stored === 'system'
               ? stored
-              : "system";
+              : 'system';
           } catch {
-            return "system";
+            return 'system';
           }
         })();
         const resolvedTheme =
-          preference === "system"
-            ? window.matchMedia("(prefers-color-scheme: dark)").matches
-              ? "dark"
-              : "light"
+          preference === 'system'
+            ? window.matchMedia('(prefers-color-scheme: dark)').matches
+              ? 'dark'
+              : 'light'
             : preference;
 
-        document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
+        document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
       })();
     </script>
   </head>

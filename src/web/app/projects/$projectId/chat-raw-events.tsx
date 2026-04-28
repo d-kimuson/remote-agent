@@ -1,13 +1,14 @@
-import { Brain, Sparkles, SplitSquareVertical, TerminalSquare, Wrench } from "lucide-react";
-import { type FC, type ReactNode } from "react";
+import { Brain, Sparkles, SplitSquareVertical, TerminalSquare, Wrench } from 'lucide-react';
+import { type FC, type ReactNode } from 'react';
 
-import type { RawEvent } from "../../../../shared/acp.ts";
-import { cn } from "../../../lib/utils.ts";
-import { AcpToolUseCard } from "./acp-tool-use-card.tsx";
-import { planRawEventsForRender } from "./acp-event-plan.pure.ts";
-import { rawEventClipboardText } from "./chat-block-copy.pure.ts";
-import { CopyBlockButton } from "./copy-block-button.tsx";
-import { filterDisplayableRawEvents } from "./transcript-display.pure.ts";
+import type { RawEvent } from '../../../../shared/acp.ts';
+
+import { cn } from '../../../lib/utils.ts';
+import { planRawEventsForRender } from './acp-event-plan.pure.ts';
+import { AcpToolUseCard } from './acp-tool-use-card.tsx';
+import { rawEventClipboardText } from './chat-block-copy.pure.ts';
+import { CopyBlockButton } from './copy-block-button.tsx';
+import { filterDisplayableRawEvents } from './transcript-display.pure.ts';
 
 const MAX_TEXT_LEN = 16_000;
 
@@ -24,7 +25,7 @@ const MetaBlock: FC<{
   return (
     <div
       className={cn(
-        "rounded-lg border border-border/40 bg-muted/20 text-xs leading-relaxed",
+        'rounded-lg border border-border/40 bg-muted/20 text-xs leading-relaxed',
         className,
       )}
     >
@@ -41,7 +42,7 @@ const MetaBlock: FC<{
 };
 
 const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
-  if (event.type === "reasoning") {
+  if (event.type === 'reasoning') {
     return (
       <MetaBlock
         className="border-violet-500/20 bg-violet-500/5"
@@ -56,7 +57,7 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
     );
   }
 
-  if (event.type === "toolInput") {
+  if (event.type === 'toolInput') {
     return (
       <MetaBlock
         copyText={rawEventClipboardText(event)}
@@ -64,13 +65,13 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
         title="ツール入力 (tool-input)"
       >
         <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px]">
-          {truncate(event.text.length > 0 ? event.text : "（空）")}
+          {truncate(event.text.length > 0 ? event.text : '（空）')}
         </pre>
       </MetaBlock>
     );
   }
 
-  if (event.type === "streamPart") {
+  if (event.type === 'streamPart') {
     return (
       <MetaBlock
         className="border-sky-500/20 bg-sky-500/5"
@@ -85,11 +86,11 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
     );
   }
 
-  if (event.type === "toolCall" || event.type === "toolResult" || event.type === "toolError") {
+  if (event.type === 'toolCall' || event.type === 'toolResult' || event.type === 'toolError') {
     return null;
   }
 
-  if (event.type === "plan") {
+  if (event.type === 'plan') {
     return (
       <MetaBlock copyText={rawEventClipboardText(event)} icon={Sparkles} title="プラン (plan)">
         <ul className="list-inside list-disc space-y-1 text-[11px]">
@@ -103,7 +104,7 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
     );
   }
 
-  if (event.type === "diff") {
+  if (event.type === 'diff') {
     return (
       <MetaBlock
         copyText={rawEventClipboardText(event)}
@@ -111,13 +112,13 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
         title={`差分 · ${event.path}`}
       >
         <pre className="max-h-48 overflow-y-auto font-mono text-[11px] text-muted-foreground">
-          {truncate(`--- old\n${event.oldText ?? ""}\n--- new\n${event.newText ?? ""}`.trimEnd())}
+          {truncate(`--- old\n${event.oldText ?? ''}\n--- new\n${event.newText ?? ''}`.trimEnd())}
         </pre>
       </MetaBlock>
     );
   }
 
-  if (event.type === "terminal") {
+  if (event.type === 'terminal') {
     return (
       <MetaBlock
         copyText={rawEventClipboardText(event)}
@@ -148,9 +149,9 @@ export const ChatRawEvents: FC<{
   }
 
   return (
-    <div className={cn("w-full space-y-1.5", className)}>
+    <div className={cn('w-full space-y-1.5', className)}>
       {plan.map((item) => {
-        if (item.type === "tool") {
+        if (item.type === 'tool') {
           return <AcpToolUseCard item={item} key={item.key} />;
         }
         return <AcpOneLooseEvent event={item.event} key={item.key} />;

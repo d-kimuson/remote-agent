@@ -1,7 +1,3 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { once } from "node:events";
-import { Readable, Writable } from "node:stream";
-
 import {
   ClientSideConnection,
   PROTOCOL_VERSION,
@@ -9,13 +5,17 @@ import {
   type Client,
   type InitializeResponse,
   type SessionInfo,
-} from "@agentclientprotocol/sdk";
+} from '@agentclientprotocol/sdk';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import { once } from 'node:events';
+import { Readable, Writable } from 'node:stream';
 
-import type { ResumableSessionsResponse } from "../../../shared/acp.ts";
+import type { ResumableSessionsResponse } from '../../../shared/acp.ts';
+
 import {
   inspectResumeCapabilities,
   mapResumableSessionCandidates,
-} from "../session-resume.pure.ts";
+} from '../session-resume.pure.ts';
 
 type AgentCommand = {
   readonly command: string;
@@ -32,10 +32,10 @@ type AgentConnection = {
 const createClient = (): Client => {
   return {
     requestPermission: () => {
-      const response: Awaited<ReturnType<Client["requestPermission"]>> = {
+      const response: Awaited<ReturnType<Client['requestPermission']>> = {
         outcome: {
-          outcome: "selected",
-          optionId: "allow",
+          outcome: 'selected',
+          optionId: 'allow',
         },
       };
 
@@ -46,7 +46,7 @@ const createClient = (): Client => {
 };
 
 const toErrorWithStderr = (error: unknown, stderrChunks: readonly string[]): Error => {
-  const stderrText = stderrChunks.join("").trim();
+  const stderrText = stderrChunks.join('').trim();
   const message = error instanceof Error ? error.message : String(error);
 
   if (stderrText.length === 0) {
@@ -62,7 +62,7 @@ const waitForExit = async (agentProcess: ChildProcessWithoutNullStreams): Promis
   }
 
   await Promise.race([
-    once(agentProcess, "exit").then(() => undefined),
+    once(agentProcess, 'exit').then(() => undefined),
     new Promise((resolve) => {
       setTimeout(resolve, 500);
     }),
@@ -72,8 +72,8 @@ const waitForExit = async (agentProcess: ChildProcessWithoutNullStreams): Promis
     return;
   }
 
-  agentProcess.kill("SIGKILL");
-  await once(agentProcess, "exit");
+  agentProcess.kill('SIGKILL');
+  await once(agentProcess, 'exit');
 };
 
 const stopAgentProcess = async (agentProcess: ChildProcessWithoutNullStreams): Promise<void> => {
@@ -96,17 +96,17 @@ const createAgentConnection = async ({
   const agentProcess = spawn(command, [...args], {
     cwd,
     env: process.env,
-    stdio: ["pipe", "pipe", "pipe"],
-    ...(process.platform === "win32" ? { windowsHide: true } : {}),
+    stdio: ['pipe', 'pipe', 'pipe'],
+    ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
   const stderrChunks: string[] = [];
 
-  agentProcess.stderr.on("data", (chunk: Buffer) => {
-    stderrChunks.push(chunk.toString("utf8"));
+  agentProcess.stderr.on('data', (chunk: Buffer) => {
+    stderrChunks.push(chunk.toString('utf8'));
   });
 
   if (agentProcess.stdin === null || agentProcess.stdout === null) {
-    throw new Error("Failed to spawn agent process with stdio");
+    throw new Error('Failed to spawn agent process with stdio');
   }
 
   const connection = new ClientSideConnection(

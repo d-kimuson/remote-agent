@@ -1,7 +1,7 @@
-import type { ModeOption, ModelOption } from "../../../../shared/acp.ts";
+import type { ModeOption, ModelOption } from '../../../../shared/acp.ts';
 
 type AcpSelectOption = ModeOption | ModelOption;
-type AcpSelectKind = "mode" | "model";
+type AcpSelectKind = 'mode' | 'model';
 
 const trimOrFallback = (value: string, fallback: string): string => {
   const trimmed = value.trim();
@@ -9,19 +9,19 @@ const trimOrFallback = (value: string, fallback: string): string => {
 };
 
 export const parseBracketAttributes = (value: string): ReadonlyMap<string, string> => {
-  const start = value.indexOf("[");
-  const end = value.lastIndexOf("]");
+  const start = value.indexOf('[');
+  const end = value.lastIndexOf(']');
   if (start < 0 || end <= start) {
     return new Map();
   }
 
   const entries: readonly (readonly [string, string])[] = value
     .slice(start + 1, end)
-    .split(",")
+    .split(',')
     .flatMap((entry) => {
-      const [key, ...rest] = entry.split("=");
-      const k = key?.trim() ?? "";
-      const v = rest.join("=").trim();
+      const [key, ...rest] = entry.split('=');
+      const k = key?.trim() ?? '';
+      const v = rest.join('=').trim();
       if (k.length === 0 || v.length === 0) {
         return [];
       }
@@ -46,12 +46,12 @@ export const formatAcpSelectOptionInfo = ({
   readonly option: AcpSelectOption;
   readonly presetId: string | null | undefined;
 }): string | null => {
-  if (presetId !== "cursor-cli" || kind !== "model") {
+  if (presetId !== 'cursor-cli' || kind !== 'model') {
     return null;
   }
 
   const labels = bracketAttributeLabels(option.id);
-  return labels.length > 0 ? labels.join("\n") : null;
+  return labels.length > 0 ? labels.join('\n') : null;
 };
 
 const hasDuplicateName = (option: AcpSelectOption, options: readonly AcpSelectOption[]): boolean =>
@@ -69,7 +69,7 @@ export const formatAcpSelectOptionLabel = ({
   readonly presetId: string | null | undefined;
 }): string => {
   const base = trimOrFallback(option.name, option.id);
-  if (presetId === "cursor-cli" && kind === "model") {
+  if (presetId === 'cursor-cli' && kind === 'model') {
     return base;
   }
   if (hasDuplicateName(option, options) && option.id !== base) {
@@ -91,7 +91,7 @@ export const formatAcpSelectValueLabel = ({
   readonly presetId: string | null | undefined;
   readonly value: unknown;
 }): string => {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return fallback;
   }
 
@@ -114,7 +114,7 @@ export const formatAcpSelectValueInfo = ({
   readonly presetId: string | null | undefined;
   readonly value: unknown;
 }): string | null => {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return null;
   }
 

@@ -1,8 +1,7 @@
-import { stat } from "node:fs/promises";
-import path from "node:path";
-
-import { and, eq } from "drizzle-orm";
-import { parse } from "valibot";
+import { and, eq } from 'drizzle-orm';
+import { stat } from 'node:fs/promises';
+import path from 'node:path';
+import { parse } from 'valibot';
 
 import {
   projectSettingsSchema,
@@ -13,17 +12,17 @@ import {
   type ProjectModelPreference,
   type ProjectSettings,
   type UpdateProjectModelPreferenceRequest,
-} from "../../shared/acp.ts";
-import { envService } from "../env.ts";
-import { type AppDatabase, getDefaultDatabase } from "../db/sqlite.ts";
-import { projectModelPreferencesTable, projectsTable } from "../db/schema.ts";
+} from '../../shared/acp.ts';
+import { projectModelPreferencesTable, projectsTable } from '../db/schema.ts';
+import { type AppDatabase, getDefaultDatabase } from '../db/sqlite.ts';
+import { envService } from '../env.ts';
 
 const slugify = (value: string): string => {
   return (
     value
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "") || "project"
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'project'
   );
 };
 
@@ -40,7 +39,7 @@ const assertDirectory = async (workingDirectory: string): Promise<string> => {
   const resolvedPath = path.resolve(workingDirectory);
   const directoryStat = await stat(resolvedPath);
   if (!directoryStat.isDirectory()) {
-    throw new Error("workingDirectory must be a directory");
+    throw new Error('workingDirectory must be a directory');
   }
 
   return resolvedPath;
@@ -74,7 +73,7 @@ const mapProjectModelPreferenceRecord = (
 ): ProjectModelPreference => ({
   presetId: record.presetId,
   modelId: record.modelId,
-  isFavorite: record.isFavorite === "true",
+  isFavorite: record.isFavorite === 'true',
   lastUsedAt: record.lastUsedAt,
   updatedAt: record.updatedAt,
 });
@@ -160,7 +159,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
       if (left.isFavorite !== right.isFavorite) {
         return left.isFavorite ? -1 : 1;
       }
-      return (right.lastUsedAt ?? "").localeCompare(left.lastUsedAt ?? "");
+      return (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? '');
     });
 
     return parse(projectSettingsSchema, {
@@ -207,10 +206,10 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
         modelId: request.modelId,
         isFavorite:
           request.isFavorite === undefined
-            ? (existing?.isFavorite ?? "false")
+            ? (existing?.isFavorite ?? 'false')
             : request.isFavorite
-              ? "true"
-              : "false",
+              ? 'true'
+              : 'false',
         lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
         updatedAt: now,
       })
@@ -223,10 +222,10 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
         set: {
           isFavorite:
             request.isFavorite === undefined
-              ? (existing?.isFavorite ?? "false")
+              ? (existing?.isFavorite ?? 'false')
               : request.isFavorite
-                ? "true"
-                : "false",
+                ? 'true'
+                : 'false',
           lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
           updatedAt: now,
         },
@@ -253,7 +252,7 @@ const getProjectStore = () => {
 };
 
 export const getProjectsFilePath = (): string => {
-  return envService.getEnv("ACP_PLAYGROUND_DB_PATH");
+  return envService.getEnv('ACP_PLAYGROUND_DB_PATH');
 };
 
 export const listProjects = async (): Promise<readonly Project[]> => {

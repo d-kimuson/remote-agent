@@ -1,54 +1,55 @@
-import { useEffect, useState, type FC } from "react";
-import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import { useEffect, useState, type FC } from 'react';
 
-import type { AgentProvidersResponse } from "../../../shared/acp.ts";
-import { Badge } from "../../components/ui/badge.tsx";
-import { Button } from "../../components/ui/button.tsx";
-import { Checkbox } from "../../components/ui/checkbox.tsx";
+import type { AgentProvidersResponse } from '../../../shared/acp.ts';
+
+import { Badge } from '../../components/ui/badge.tsx';
+import { Button } from '../../components/ui/button.tsx';
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "../../components/ui/card.tsx";
-import { Label } from "../../components/ui/label.tsx";
+} from '../../components/ui/card.tsx';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
+import { Label } from '../../components/ui/label.tsx';
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "../../components/ui/select.tsx";
-import { parseThemePreference, type ThemePreference } from "../../lib/theme.pure.ts";
-import { useTheme } from "../../lib/theme.tsx";
+} from '../../components/ui/select.tsx';
 import {
   checkAgentProviderRequest,
   fetchAgentProviders,
   updateAgentProviderRequest,
-} from "../../lib/api/acp.ts";
-import { agentProvidersQueryKey } from "../projects/$projectId/queries.ts";
+} from '../../lib/api/acp.ts';
+import { parseThemePreference, type ThemePreference } from '../../lib/theme.pure.ts';
+import { useTheme } from '../../lib/theme.tsx';
 import {
   getNotificationPermissionState,
   requestNotificationPermission,
   showNotificationPreview,
-} from "../../pwa/notifications.ts";
+} from '../../pwa/notifications.ts';
+import { agentProvidersQueryKey } from '../projects/$projectId/queries.ts';
 
 const themePreferenceChoices = [
   {
-    value: "system",
-    label: "System",
-    description: "OS の外観設定に合わせます。",
+    value: 'system',
+    label: 'System',
+    description: 'OS の外観設定に合わせます。',
   },
   {
-    value: "light",
-    label: "Light",
-    description: "常にライトテーマを使います。",
+    value: 'light',
+    label: 'Light',
+    description: '常にライトテーマを使います。',
   },
   {
-    value: "dark",
-    label: "Dark",
-    description: "常にダークテーマを使います。",
+    value: 'dark',
+    label: 'Dark',
+    description: '常にダークテーマを使います。',
   },
 ] as const satisfies readonly {
   readonly value: ThemePreference;
@@ -69,7 +70,7 @@ export const SettingsPage: FC = () => {
   const [notificationError, setNotificationError] = useState<string | null>(null);
   const [providerCheckState, setProviderCheckState] = useState<
     Readonly<
-      Record<string, { readonly status: "checking" | "ok" | "error"; readonly message: string }>
+      Record<string, { readonly status: 'checking' | 'ok' | 'error'; readonly message: string }>
     >
   >({});
   const updateProviderMutation = useMutation({
@@ -95,21 +96,21 @@ export const SettingsPage: FC = () => {
     if (!enabled) {
       setProviderCheckState((current) => ({
         ...current,
-        [presetId]: { status: "ok", message: "Disabled" },
+        [presetId]: { status: 'ok', message: 'Disabled' },
       }));
       return;
     }
 
     setProviderCheckState((current) => ({
       ...current,
-      [presetId]: { status: "checking", message: "Checking..." },
+      [presetId]: { status: 'checking', message: 'Checking...' },
     }));
     try {
       const catalog = await checkProviderMutation.mutateAsync({ presetId });
       setProviderCheckState((current) => ({
         ...current,
         [presetId]: {
-          status: "ok",
+          status: 'ok',
           message: `OK · ${String(catalog.availableModels.length)} models · ${String(catalog.availableModes.length)} modes`,
         },
       }));
@@ -117,8 +118,8 @@ export const SettingsPage: FC = () => {
       setProviderCheckState((current) => ({
         ...current,
         [presetId]: {
-          status: "error",
-          message: error instanceof Error ? error.message : "Check failed",
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Check failed',
         },
       }));
     }
@@ -131,10 +132,10 @@ export const SettingsPage: FC = () => {
     };
 
     syncNotificationPermission();
-    window.addEventListener("focus", syncNotificationPermission);
+    window.addEventListener('focus', syncNotificationPermission);
 
     return () => {
-      window.removeEventListener("focus", syncNotificationPermission);
+      window.removeEventListener('focus', syncNotificationPermission);
     };
   }, []);
 
@@ -142,13 +143,13 @@ export const SettingsPage: FC = () => {
     const nextPermission = await requestNotificationPermission();
     setNotificationPermission(nextPermission);
 
-    if (nextPermission === "denied") {
-      setNotificationError("通知が拒否されています。ブラウザ設定から許可してください。");
+    if (nextPermission === 'denied') {
+      setNotificationError('通知が拒否されています。ブラウザ設定から許可してください。');
       return;
     }
 
-    if (nextPermission === "unsupported") {
-      setNotificationError("この環境では Service Worker 通知を利用できません。");
+    if (nextPermission === 'unsupported') {
+      setNotificationError('この環境では Service Worker 通知を利用できません。');
       return;
     }
 
@@ -157,16 +158,16 @@ export const SettingsPage: FC = () => {
 
   const handlePreviewNotification = async () => {
     const didShowNotification = await showNotificationPreview({
-      projectId: "settings",
-      projectName: "ACP Playground",
-      sessionId: "settings",
-      text: "バックグラウンド時の assistant 応答をこの形式で通知します。",
+      projectId: 'settings',
+      projectName: 'ACP Playground',
+      sessionId: 'settings',
+      text: 'バックグラウンド時の assistant 応答をこの形式で通知します。',
       timestamp: Date.now(),
-      url: "/settings",
+      url: '/settings',
     });
 
     if (!didShowNotification) {
-      setNotificationError("通知を表示できませんでした。先に通知を許可してください。");
+      setNotificationError('通知を表示できませんでした。先に通知を許可してください。');
       return;
     }
 
@@ -201,22 +202,22 @@ export const SettingsPage: FC = () => {
               <span className="min-w-0 flex-1 space-y-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-medium">{entry.preset.label}</span>
-                  <Badge variant={entry.enabled ? "default" : "outline"}>
-                    {entry.enabled ? "Enabled" : "Disabled"}
+                  <Badge variant={entry.enabled ? 'default' : 'outline'}>
+                    {entry.enabled ? 'Enabled' : 'Disabled'}
                   </Badge>
                 </span>
                 <span className="block text-sm text-muted-foreground">
                   {entry.preset.description}
                 </span>
                 <span className="block break-all font-mono text-xs text-muted-foreground">
-                  {entry.preset.command} {entry.preset.args.join(" ")}
+                  {entry.preset.command} {entry.preset.args.join(' ')}
                 </span>
                 {providerCheckState[entry.preset.id] === undefined ? null : (
                   <span
                     className={
-                      providerCheckState[entry.preset.id]?.status === "error"
-                        ? "block text-xs text-destructive"
-                        : "block text-xs text-muted-foreground"
+                      providerCheckState[entry.preset.id]?.status === 'error'
+                        ? 'block text-xs text-destructive'
+                        : 'block text-xs text-muted-foreground'
                     }
                   >
                     {providerCheckState[entry.preset.id]?.message}
@@ -237,7 +238,7 @@ export const SettingsPage: FC = () => {
           <div className="space-y-1">
             <Label htmlFor="theme-preference">Theme</Label>
             <p className="text-sm text-muted-foreground">
-              現在の表示は <span className="font-medium text-foreground">{resolvedTheme}</span>{" "}
+              現在の表示は <span className="font-medium text-foreground">{resolvedTheme}</span>{' '}
               です。
             </p>
           </div>
@@ -276,9 +277,9 @@ export const SettingsPage: FC = () => {
             <Badge variant="outline">{notificationPermission}</Badge>
             <Button
               disabled={
-                notificationPermission === "denied" ||
-                notificationPermission === "granted" ||
-                notificationPermission === "unsupported"
+                notificationPermission === 'denied' ||
+                notificationPermission === 'granted' ||
+                notificationPermission === 'unsupported'
               }
               onClick={() => {
                 void handleEnableNotifications();
@@ -289,7 +290,7 @@ export const SettingsPage: FC = () => {
               Enable
             </Button>
             <Button
-              disabled={notificationPermission !== "granted"}
+              disabled={notificationPermission !== 'granted'}
               onClick={() => {
                 void handlePreviewNotification();
               }}

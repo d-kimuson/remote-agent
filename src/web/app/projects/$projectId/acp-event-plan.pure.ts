@@ -1,22 +1,22 @@
-import type { RawEvent } from "../../../../shared/acp.ts";
+import type { RawEvent } from '../../../../shared/acp.ts';
 
 export type AcpToolMergeItem = {
-  readonly type: "tool";
+  readonly type: 'tool';
   readonly key: string;
   readonly toolCallId: string;
-  readonly call: Extract<RawEvent, { type: "toolCall" }> | null;
-  readonly result: Extract<RawEvent, { type: "toolResult" }> | null;
-  readonly error: Extract<RawEvent, { type: "toolError" }> | null;
+  readonly call: Extract<RawEvent, { type: 'toolCall' }> | null;
+  readonly result: Extract<RawEvent, { type: 'toolResult' }> | null;
+  readonly error: Extract<RawEvent, { type: 'toolError' }> | null;
 };
 
 export type AcpEventPlanItem =
   | AcpToolMergeItem
-  | { readonly type: "raw"; readonly key: string; readonly event: RawEvent };
+  | { readonly type: 'raw'; readonly key: string; readonly event: RawEvent };
 
 type ToolAcc = {
-  call: Extract<RawEvent, { type: "toolCall" }> | null;
-  result: Extract<RawEvent, { type: "toolResult" }> | null;
-  error: Extract<RawEvent, { type: "toolError" }> | null;
+  call: Extract<RawEvent, { type: 'toolCall' }> | null;
+  result: Extract<RawEvent, { type: 'toolResult' }> | null;
+  error: Extract<RawEvent, { type: 'toolError' }> | null;
   min: number;
   max: number;
 };
@@ -40,7 +40,7 @@ export const planRawEventsForRender = (
     if (e === undefined) {
       continue;
     }
-    if (e.type === "toolCall" || e.type === "toolResult" || e.type === "toolError") {
+    if (e.type === 'toolCall' || e.type === 'toolResult' || e.type === 'toolError') {
       const id = e.toolCallId;
       const a: ToolAcc = byId.get(id) ?? {
         min: i,
@@ -52,9 +52,9 @@ export const planRawEventsForRender = (
       const next: ToolAcc = {
         min: Math.min(a.min, i),
         max: Math.max(a.max, i),
-        call: e.type === "toolCall" ? e : a.call,
-        result: e.type === "toolResult" ? e : a.result,
-        error: e.type === "toolError" ? e : a.error,
+        call: e.type === 'toolCall' ? e : a.call,
+        result: e.type === 'toolResult' ? e : a.result,
+        error: e.type === 'toolError' ? e : a.error,
       };
       byId.set(id, next);
     }
@@ -66,14 +66,14 @@ export const planRawEventsForRender = (
     if (e === undefined) {
       continue;
     }
-    if (e.type === "toolCall" || e.type === "toolResult" || e.type === "toolError") {
+    if (e.type === 'toolCall' || e.type === 'toolResult' || e.type === 'toolError') {
       const id = e.toolCallId;
       const a = byId.get(id);
       if (a === undefined || a.max !== i) {
         continue;
       }
       out.push({
-        type: "tool",
+        type: 'tool',
         key: `tool-${id}`,
         toolCallId: id,
         call: a.call,
@@ -81,7 +81,7 @@ export const planRawEventsForRender = (
         error: a.error,
       });
     } else {
-      out.push({ type: "raw", key: `raw-${i}-${e.type}`, event: e });
+      out.push({ type: 'raw', key: `raw-${i}-${e.type}`, event: e });
     }
   }
 

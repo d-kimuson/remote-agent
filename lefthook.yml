@@ -1,11 +1,11 @@
 pre-commit:
   commands:
     oxlint:
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}"
+      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}'
       run: pnpm fix:oxlint {staged_files}
       stage_fixed: true
 
     oxfmt:
-      glob: "*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}"
+      glob: '*.{js,ts,cjs,mjs,d.cts,d.mts,jsx,tsx,json,jsonc}'
       run: pnpm fix:oxfmt {staged_files}
       stage_fixed: true

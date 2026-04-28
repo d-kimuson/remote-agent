@@ -1,11 +1,10 @@
-import { mkdtemp, mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { mkdtemp, mkdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 
-import { afterEach, describe, expect, test } from "vitest";
-
-import { createDatabase } from "../db/sqlite.ts";
-import { createProjectStore } from "./project-store.ts";
+import { createDatabase } from '../db/sqlite.ts';
+import { createProjectStore } from './project-store.ts';
 
 const disposableClients: { close: () => void }[] = [];
 
@@ -15,25 +14,25 @@ afterEach(() => {
   }
 });
 
-describe("createProjectStore", () => {
-  test("persists projects in sqlite and restores them from a new store instance", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-projects-"));
-    const firstProjectDirectory = path.join(sandboxDirectory, "workspace-a");
+describe('createProjectStore', () => {
+  test('persists projects in sqlite and restores them from a new store instance', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const firstProjectDirectory = path.join(sandboxDirectory, 'workspace-a');
     await mkdir(firstProjectDirectory, { recursive: true });
 
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
     const firstDatabase = createDatabase(databasePath);
     disposableClients.push(firstDatabase.client);
 
     const firstStore = createProjectStore(firstDatabase);
     const createdProject = await firstStore.createProject({
-      name: "Workspace A",
+      name: 'Workspace A',
       workingDirectory: firstProjectDirectory,
     });
 
     expect(createdProject).toMatchObject({
-      id: "workspace-a",
-      name: "Workspace A",
+      id: 'workspace-a',
+      name: 'Workspace A',
       workingDirectory: firstProjectDirectory,
     });
 
@@ -53,69 +52,69 @@ describe("createProjectStore", () => {
     );
   });
 
-  test("returns the existing project when the same working directory is registered twice", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-projects-"));
-    const projectDirectory = path.join(sandboxDirectory, "workspace-b");
+  test('returns the existing project when the same working directory is registered twice', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const projectDirectory = path.join(sandboxDirectory, 'workspace-b');
     await mkdir(projectDirectory, { recursive: true });
 
-    const database = createDatabase(path.join(sandboxDirectory, "playground.sqlite"));
+    const database = createDatabase(path.join(sandboxDirectory, 'playground.sqlite'));
     disposableClients.push(database.client);
 
     const store = createProjectStore(database);
     const firstProject = await store.createProject({
-      name: "Workspace B",
+      name: 'Workspace B',
       workingDirectory: projectDirectory,
     });
     const secondProject = await store.createProject({
-      name: "Workspace B Duplicate",
+      name: 'Workspace B Duplicate',
       workingDirectory: projectDirectory,
     });
 
     expect(secondProject).toEqual(firstProject);
   });
 
-  test("stores favorite and last-used model preferences per project and preset", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-projects-"));
-    const projectDirectory = path.join(sandboxDirectory, "workspace-models");
+  test('stores favorite and last-used model preferences per project and preset', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-projects-'));
+    const projectDirectory = path.join(sandboxDirectory, 'workspace-models');
     await mkdir(projectDirectory, { recursive: true });
 
-    const database = createDatabase(path.join(sandboxDirectory, "playground.sqlite"));
+    const database = createDatabase(path.join(sandboxDirectory, 'playground.sqlite'));
     disposableClients.push(database.client);
 
     const store = createProjectStore(database);
     const project = await store.createProject({
-      name: "Workspace Models",
+      name: 'Workspace Models',
       workingDirectory: projectDirectory,
     });
 
     await store.updateProjectModelPreference(project.id, {
-      presetId: "codex",
-      modelId: "gpt-5-codex",
+      presetId: 'codex',
+      modelId: 'gpt-5-codex',
       isFavorite: true,
     });
     const settings = await store.updateProjectModelPreference(project.id, {
-      presetId: "codex",
-      modelId: "gpt-5-codex-mini",
+      presetId: 'codex',
+      modelId: 'gpt-5-codex-mini',
       markLastUsed: true,
     });
 
     expect(settings.modelPreferences).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          presetId: "codex",
-          modelId: "gpt-5-codex",
+          presetId: 'codex',
+          modelId: 'gpt-5-codex',
           isFavorite: true,
           lastUsedAt: null,
         }),
         expect.objectContaining({
-          presetId: "codex",
-          modelId: "gpt-5-codex-mini",
+          presetId: 'codex',
+          modelId: 'gpt-5-codex-mini',
           isFavorite: false,
         }),
       ]),
     );
     expect(
-      settings.modelPreferences.find((entry) => entry.modelId === "gpt-5-codex-mini")?.lastUsedAt,
+      settings.modelPreferences.find((entry) => entry.modelId === 'gpt-5-codex-mini')?.lastUsedAt,
     ).toEqual(expect.any(String));
   });
 });

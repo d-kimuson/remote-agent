@@ -1,5 +1,6 @@
-import { hc } from "hono/client";
-import type { RouteType } from "../../../shared/api.ts";
+import { hc } from 'hono/client';
+
+import type { RouteType } from '../../../shared/api.ts';
 
 type Fetch = typeof fetch;
 
@@ -15,7 +16,7 @@ export class HttpError extends Error {
 }
 
 const customFetch: Fetch = async (input, init) => {
-  const response = await fetch(input, { ...init, credentials: "same-origin" });
+  const response = await fetch(input, { ...init, credentials: 'same-origin' });
   if (!response.ok) {
     throw new HttpError(response.status, response.statusText);
   }
@@ -24,6 +25,6 @@ const customFetch: Fetch = async (input, init) => {
 
 export const apiFetch = customFetch;
 
-export const honoClient = hc<RouteType>("/api", {
+export const honoClient = hc<RouteType>('/api', {
   fetch: customFetch,
 });

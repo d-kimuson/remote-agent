@@ -1,11 +1,11 @@
-import type { ChatMessage, ChatMessageKind, RawEvent } from "../../../../shared/acp.ts";
+import type { ChatMessage, ChatMessageKind, RawEvent } from '../../../../shared/acp.ts';
 
-export type { ChatMessage } from "../../../../shared/acp.ts";
+export type { ChatMessage } from '../../../../shared/acp.ts';
 
 export type TranscriptMap = Record<string, readonly ChatMessage[]>;
 
 export const createChatMessage = (
-  role: ChatMessage["role"],
+  role: ChatMessage['role'],
   text: string,
   rawEvents: readonly RawEvent[] = [],
   options?: { readonly kind?: ChatMessageKind },

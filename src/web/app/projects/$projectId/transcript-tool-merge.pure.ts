@@ -1,4 +1,4 @@
-import type { ChatMessage, RawEvent } from "../../../../shared/acp.ts";
+import type { ChatMessage, RawEvent } from '../../../../shared/acp.ts';
 
 const firstEvent = (m: ChatMessage): RawEvent | null => m.rawEvents[0] ?? null;
 
@@ -26,14 +26,14 @@ export const mergeToolCallResultMessages = (
       continue;
     }
     const r0 = firstEvent(m);
-    const kind = m.kind ?? "legacy_assistant_turn";
+    const kind = m.kind ?? 'legacy_assistant_turn';
 
     if (r0 === null) {
       out.push(m);
       continue;
     }
 
-    if (kind === "tool_call" && r0.type === "toolCall") {
+    if (kind === 'tool_call' && r0.type === 'toolCall') {
       const id = r0.toolCallId;
       const acc: RawEvent[] = [r0];
       let found = -1;
@@ -45,32 +45,32 @@ export const mergeToolCallResultMessages = (
         if (m2 === undefined) {
           break;
         }
-        if (m2.role === "user") {
+        if (m2.role === 'user') {
           break;
         }
         const s = firstEvent(m2);
         if (s === null) {
           continue;
         }
-        const k2 = m2.kind ?? "legacy_assistant_turn";
-        if (k2 === "tool_result" && s.type === "toolResult" && s.toolCallId === id) {
+        const k2 = m2.kind ?? 'legacy_assistant_turn';
+        if (k2 === 'tool_result' && s.type === 'toolResult' && s.toolCallId === id) {
           acc.push(s);
           found = j;
           break;
         }
-        if (k2 === "tool_error" && s.type === "toolError" && s.toolCallId === id) {
+        if (k2 === 'tool_error' && s.type === 'toolError' && s.toolCallId === id) {
           acc.push(s);
           found = j;
           break;
         }
-        if (k2 === "tool_call") {
+        if (k2 === 'tool_call') {
           break;
         }
       }
       if (found >= 0) {
         consumed.add(found);
       }
-      out.push({ ...m, kind: "legacy_assistant_turn", rawEvents: acc, text: "" });
+      out.push({ ...m, kind: 'legacy_assistant_turn', rawEvents: acc, text: '' });
     } else {
       out.push(m);
     }

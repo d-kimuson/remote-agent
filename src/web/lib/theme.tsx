@@ -7,7 +7,7 @@ import {
   useState,
   type FC,
   type PropsWithChildren,
-} from "react";
+} from 'react';
 
 import {
   defaultThemePreference,
@@ -16,7 +16,7 @@ import {
   themeStorageKey,
   type ResolvedTheme,
   type ThemePreference,
-} from "./theme.pure.ts";
+} from './theme.pure.ts';
 
 type ThemeContextValue = {
   readonly preference: ThemePreference;
@@ -27,7 +27,7 @@ type ThemeContextValue = {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const getSystemPrefersDark = (): boolean => {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
 };
 
 const readStoredThemePreference = (): ThemePreference => {
@@ -47,7 +47,7 @@ const persistThemePreference = (preference: ThemePreference): void => {
 };
 
 const applyResolvedTheme = (theme: ResolvedTheme): void => {
-  document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.classList.toggle('dark', theme === 'dark');
 };
 
 export const ThemeProvider: FC<PropsWithChildren> = ({ children }) => {
@@ -60,16 +60,16 @@ export const ThemeProvider: FC<PropsWithChildren> = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    const mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
+    const mediaQueryList = window.matchMedia('(prefers-color-scheme: dark)');
     const syncSystemPreference = () => {
       setSystemPrefersDark(mediaQueryList.matches);
     };
 
     syncSystemPreference();
-    mediaQueryList.addEventListener("change", syncSystemPreference);
+    mediaQueryList.addEventListener('change', syncSystemPreference);
 
     return () => {
-      mediaQueryList.removeEventListener("change", syncSystemPreference);
+      mediaQueryList.removeEventListener('change', syncSystemPreference);
     };
   }, []);
 
@@ -88,9 +88,9 @@ export const ThemeProvider: FC<PropsWithChildren> = ({ children }) => {
       }
     };
 
-    window.addEventListener("storage", syncStoredPreference);
+    window.addEventListener('storage', syncStoredPreference);
     return () => {
-      window.removeEventListener("storage", syncStoredPreference);
+      window.removeEventListener('storage', syncStoredPreference);
     };
   }, []);
 
@@ -110,7 +110,7 @@ export const useTheme = (): ThemeContextValue => {
   const context = useContext(ThemeContext);
 
   if (context === null) {
-    throw new Error("useTheme must be used within ThemeProvider");
+    throw new Error('useTheme must be used within ThemeProvider');
   }
 
   return context;

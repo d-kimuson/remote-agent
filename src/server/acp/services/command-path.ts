@@ -1,6 +1,6 @@
-import { constants } from "node:fs";
-import { access } from "node:fs/promises";
-import path from "node:path";
+import { constants } from 'node:fs';
+import { access } from 'node:fs/promises';
+import path from 'node:path';
 
 const isExecutableFile = async (filePath: string): Promise<boolean> => {
   try {
@@ -16,8 +16,8 @@ const candidatePaths = (command: string): readonly string[] => {
     return [command];
   }
 
-  const localBinCandidate = path.join(process.cwd(), "node_modules", ".bin", command);
-  const pathValue = process.env["PATH"] ?? "";
+  const localBinCandidate = path.join(process.cwd(), 'node_modules', '.bin', command);
+  const pathValue = process.env['PATH'] ?? '';
   if (pathValue.length === 0) {
     return [localBinCandidate];
   }

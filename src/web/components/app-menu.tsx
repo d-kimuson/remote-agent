@@ -1,5 +1,5 @@
-import { Link } from "@tanstack/react-router";
-import { FolderKanban, Menu, PanelLeftClose, Settings, X } from "lucide-react";
+import { Link } from '@tanstack/react-router';
+import { FolderKanban, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
 import {
   createContext,
   useContext,
@@ -11,12 +11,12 @@ import {
   type PointerEvent,
   type PropsWithChildren,
   type ReactNode,
-} from "react";
-import { createPortal } from "react-dom";
+} from 'react';
+import { createPortal } from 'react-dom';
 
-import { Button } from "@/web/components/ui/button";
-import { AppHeader } from "@/web/components/app-header";
-import { cn } from "@/web/lib/utils";
+import { AppHeader } from '@/web/components/app-header';
+import { Button } from '@/web/components/ui/button';
+import { cn } from '@/web/lib/utils';
 
 type AppMenuContextValue = {
   readonly desktopTarget: HTMLElement | null;
@@ -64,8 +64,8 @@ const AppMenuBody: FC<{
   return (
     <div
       className={cn(
-        "app-sidebar flex h-full min-h-0 flex-col border-r border-sidebar-border text-sidebar-foreground shadow-2xl md:w-full md:max-w-none md:shadow-none",
-        isMobile ? "w-[86vw] max-w-[360px]" : "w-full",
+        'app-sidebar flex h-full min-h-0 flex-col border-r border-sidebar-border text-sidebar-foreground shadow-2xl md:w-full md:max-w-none md:shadow-none',
+        isMobile ? 'w-[86vw] max-w-[360px]' : 'w-full',
       )}
     >
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
@@ -219,8 +219,8 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
 
         <div
           className={cn(
-            "fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity md:hidden",
-            mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
+            'fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px] transition-opacity md:hidden',
+            mobileOpen ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',
           )}
         >
           <button
@@ -231,8 +231,8 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
           />
           <div
             className={cn(
-              "relative h-full transition-transform duration-200 ease-out",
-              mobileOpen ? "translate-x-0" : "-translate-x-full",
+              'relative h-full transition-transform duration-200 ease-out',
+              mobileOpen ? 'translate-x-0' : '-translate-x-full',
             )}
           >
             <AppMenuBody

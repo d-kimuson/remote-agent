@@ -1,5 +1,5 @@
-import { and, eq } from "drizzle-orm";
-import { array, parse } from "valibot";
+import { and, eq } from 'drizzle-orm';
+import { array, parse } from 'valibot';
 
 import {
   agentProviderStatusSchema,
@@ -7,11 +7,11 @@ import {
   modelOptionSchema,
   type AgentModelCatalogResponse,
   type AgentProviderStatus,
-} from "../../../shared/acp.ts";
-import { agentProviderCatalogsTable, enabledAgentProvidersTable } from "../../db/schema.ts";
-import { type AppDatabase, getDefaultDatabase } from "../../db/sqlite.ts";
-import { agentPresets } from "../presets.ts";
-import { emitAcpSse } from "../services/sse-broadcast.ts";
+} from '../../../shared/acp.ts';
+import { agentProviderCatalogsTable, enabledAgentProvidersTable } from '../../db/schema.ts';
+import { type AppDatabase, getDefaultDatabase } from '../../db/sqlite.ts';
+import { agentPresets } from '../presets.ts';
+import { emitAcpSse } from '../services/sse-broadcast.ts';
 
 const parseCatalog = (
   record: typeof agentProviderCatalogsTable.$inferSelect | undefined,
@@ -152,7 +152,7 @@ export const createProviderCatalogStore = (database: AppDatabase = getDefaultDat
       });
 
     if (emitIfChanged && !catalogEquals(previous, catalog)) {
-      emitAcpSse({ type: "agent_catalog_updated", presetId, cwd });
+      emitAcpSse({ type: 'agent_catalog_updated', presetId, cwd });
     }
   };
 

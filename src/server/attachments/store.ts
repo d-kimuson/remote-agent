@@ -1,9 +1,9 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
-import type { UploadedAttachment } from "../../shared/acp.ts";
+import type { UploadedAttachment } from '../../shared/acp.ts';
 
 export type ResolvedAttachment = UploadedAttachment & {
   readonly storedPath: string;
@@ -14,20 +14,20 @@ type AttachmentEntry = ResolvedAttachment & {
 };
 
 const attachmentStore = new Map<string, AttachmentEntry>();
-const uploadsDirectory = path.join(tmpdir(), "acp-playground-attachments");
+const uploadsDirectory = path.join(tmpdir(), 'acp-playground-attachments');
 
 const normalizeAttachmentName = (name: string): string => {
   const normalizedName = path.basename(name).trim();
-  return normalizedName.length > 0 ? normalizedName : "attachment";
+  return normalizedName.length > 0 ? normalizedName : 'attachment';
 };
 
 const toStoredFilename = (attachmentId: string, name: string): string => {
   const normalizedName = normalizeAttachmentName(name)
-    .replaceAll("/", "_")
-    .replaceAll("\\", "_")
-    .replaceAll("\u0000", "");
+    .replaceAll('/', '_')
+    .replaceAll('\\', '_')
+    .replaceAll('\u0000', '');
 
-  return `${attachmentId}-${normalizedName.length > 0 ? normalizedName : "attachment"}`;
+  return `${attachmentId}-${normalizedName.length > 0 ? normalizedName : 'attachment'}`;
 };
 
 const toUploadedAttachment = (entry: AttachmentEntry): UploadedAttachment => {
@@ -43,7 +43,7 @@ export const ingestAttachments = async (
   files: readonly File[],
 ): Promise<readonly UploadedAttachment[]> => {
   if (files.length === 0) {
-    throw new Error("files are required");
+    throw new Error('files are required');
   }
 
   await mkdir(uploadsDirectory, { recursive: true });
@@ -53,7 +53,7 @@ export const ingestAttachments = async (
   for (const file of files) {
     const attachmentId = randomUUID();
     const name = normalizeAttachmentName(file.name);
-    const mediaType = file.type.trim().length > 0 ? file.type : "application/octet-stream";
+    const mediaType = file.type.trim().length > 0 ? file.type : 'application/octet-stream';
     const storedPath = path.join(uploadsDirectory, toStoredFilename(attachmentId, name));
 
     await writeFile(storedPath, Buffer.from(await file.arrayBuffer()));

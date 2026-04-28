@@ -1,28 +1,29 @@
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
+import type { ACPProvider } from '@mcpc-tech/acp-ai-provider';
 
-import type { ACPProvider } from "@mcpc-tech/acp-ai-provider";
-import { afterEach, describe, expect, test } from "vitest";
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 
-import type { AgentPreset } from "../../../shared/acp.ts";
-import { createDatabase } from "../../db/sqlite.ts";
-import { agentProviderCatalogsTable, sessionMessagesTable } from "../../db/schema.ts";
-import { createSessionStore } from "./session-store.ts";
+import type { AgentPreset } from '../../../shared/acp.ts';
+
+import { agentProviderCatalogsTable, sessionMessagesTable } from '../../db/schema.ts';
+import { createDatabase } from '../../db/sqlite.ts';
+import { createSessionStore } from './session-store.ts';
 
 const codexPreset: AgentPreset = {
-  id: "codex",
-  label: "Codex",
-  description: "test preset",
-  command: "npx",
-  args: ["-y", "@zed-industries/codex-acp"],
+  id: 'codex',
+  label: 'Codex',
+  description: 'test preset',
+  command: 'npx',
+  args: ['-y', '@zed-industries/codex-acp'],
 };
 
-const stubLanguageModel: ACPProvider["languageModel"] = (): ReturnType<
-  ACPProvider["languageModel"]
+const stubLanguageModel: ACPProvider['languageModel'] = (): ReturnType<
+  ACPProvider['languageModel']
 > => {
   /* oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub; full ACPLanguageModel is supplied by the real provider in production */
-  return {} as ReturnType<ACPProvider["languageModel"]>;
+  return {} as ReturnType<ACPProvider['languageModel']>;
 };
 
 const disposableClients: { close: () => void }[] = [];
@@ -33,29 +34,29 @@ afterEach(() => {
   }
 });
 
-describe("createSessionStore", () => {
-  test("persists session metadata and marks restored sessions as inactive", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+describe('createSessionStore', () => {
+  test('persists session metadata and marks restored sessions as inactive', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const firstDatabase = createDatabase(databasePath);
     disposableClients.push(firstDatabase.client);
 
     const firstStore = createSessionStore({
       database: firstDatabase,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-1",
+            sessionId: 'session-1',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -68,26 +69,26 @@ describe("createSessionStore", () => {
     const createdSession = await firstStore.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
     expect(createdSession).toMatchObject({
-      sessionId: "session-1",
-      origin: "new",
-      status: "paused",
+      sessionId: 'session-1',
+      origin: 'new',
+      status: 'paused',
       isActive: true,
     });
 
     const activeSessions = await firstStore.listSessions();
     expect(activeSessions).toEqual([
       expect.objectContaining({
-        sessionId: "session-1",
-        status: "paused",
+        sessionId: 'session-1',
+        status: 'paused',
         isActive: true,
-        currentModeId: "balanced",
-        currentModelId: "gpt-5-codex",
+        currentModeId: 'balanced',
+        currentModelId: 'gpt-5-codex',
       }),
     ]);
 
@@ -99,42 +100,42 @@ describe("createSessionStore", () => {
 
     expect(restoredSessions).toEqual([
       expect.objectContaining({
-        sessionId: "session-1",
-        origin: "new",
-        status: "inactive",
+        sessionId: 'session-1',
+        origin: 'new',
+        status: 'inactive',
         isActive: false,
         projectId: null,
       }),
     ]);
   });
 
-  test("updates persisted session metadata after mode and model changes", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('updates persisted session metadata after mode and model changes', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-2",
+            sessionId: 'session-2',
             modes: {
-              currentModeId: "balanced",
+              currentModeId: 'balanced',
               availableModes: [
-                { id: "balanced", name: "Balanced" },
-                { id: "high", name: "High" },
+                { id: 'balanced', name: 'Balanced' },
+                { id: 'high', name: 'High' },
               ],
             },
             models: {
-              currentModelId: "gpt-5-codex",
+              currentModelId: 'gpt-5-codex',
               availableModels: [
-                { modelId: "gpt-5-codex", name: "GPT-5 Codex" },
-                { modelId: "gpt-5-codex-mini", name: "GPT-5 Codex Mini" },
+                { modelId: 'gpt-5-codex', name: 'GPT-5 Codex' },
+                { modelId: 'gpt-5-codex-mini', name: 'GPT-5 Codex Mini' },
               ],
             },
           }),
@@ -148,14 +149,14 @@ describe("createSessionStore", () => {
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
-    await store.updateSession("session-2", {
-      modeId: "high",
-      modelId: "gpt-5-codex-mini",
+    await store.updateSession('session-2', {
+      modeId: 'high',
+      modelId: 'gpt-5-codex-mini',
     });
 
     const reloadedDatabase = createDatabase(databasePath);
@@ -166,37 +167,37 @@ describe("createSessionStore", () => {
 
     expect(restoredSessions).toEqual([
       expect.objectContaining({
-        sessionId: "session-2",
-        currentModeId: "high",
-        currentModelId: "gpt-5-codex-mini",
-        status: "inactive",
+        sessionId: 'session-2',
+        currentModeId: 'high',
+        currentModelId: 'gpt-5-codex-mini',
+        status: 'inactive',
         isActive: false,
       }),
     ]);
   });
 
-  test("persists user and assistant messages and returns them via listMessages", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('persists user and assistant messages and returns them via listMessages', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-msgs",
+            sessionId: 'session-msgs',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -206,7 +207,7 @@ describe("createSessionStore", () => {
       }),
       promptCollector: () =>
         Promise.resolve({
-          text: "pong",
+          text: 'pong',
           rawEvents: [],
           alreadyPersisted: false,
           assistantSegmentMessages: [],
@@ -216,31 +217,31 @@ describe("createSessionStore", () => {
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
-    await store.sendPrompt("session-msgs", { prompt: "ping" });
+    await store.sendPrompt('session-msgs', { prompt: 'ping' });
 
-    const messages = await store.listMessages("session-msgs");
+    const messages = await store.listMessages('session-msgs');
 
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({ role: "user", text: "ping" });
-    expect(messages[1]).toMatchObject({ role: "assistant", text: "pong" });
+    expect(messages[0]).toMatchObject({ role: 'user', text: 'ping' });
+    expect(messages[1]).toMatchObject({ role: 'assistant', text: 'pong' });
 
     const reloadedDatabase = createDatabase(databasePath);
     disposableClients.push(reloadedDatabase.client);
 
     const restoredStore = createSessionStore({ database: reloadedDatabase });
-    const restoredMessages = await restoredStore.listMessages("session-msgs");
+    const restoredMessages = await restoredStore.listMessages('session-msgs');
 
-    expect(restoredMessages.map((message) => message.text)).toEqual(["ping", "pong"]);
+    expect(restoredMessages.map((message) => message.text)).toEqual(['ping', 'pong']);
   });
 
-  test("marks active session as running only while a prompt response is pending", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('marks active session as running only while a prompt response is pending', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -250,19 +251,19 @@ describe("createSessionStore", () => {
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-running",
+            sessionId: 'session-running',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -274,7 +275,7 @@ describe("createSessionStore", () => {
         promptStarted.resolve();
         await releasePrompt.promise;
         return {
-          text: "pong",
+          text: 'pong',
           rawEvents: [],
           alreadyPersisted: false,
           assistantSegmentMessages: [],
@@ -285,19 +286,19 @@ describe("createSessionStore", () => {
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
-    const sendPromise = store.sendPrompt("session-running", { prompt: "ping" });
+    const sendPromise = store.sendPrompt('session-running', { prompt: 'ping' });
     await promptStarted.promise;
 
     expect(await store.listSessions()).toEqual([
       expect.objectContaining({
-        sessionId: "session-running",
+        sessionId: 'session-running',
         isActive: true,
-        status: "running",
+        status: 'running',
       }),
     ]);
 
@@ -305,41 +306,41 @@ describe("createSessionStore", () => {
     const response = await sendPromise;
 
     expect(response.session).toMatchObject({
-      sessionId: "session-running",
-      status: "paused",
+      sessionId: 'session-running',
+      status: 'paused',
       isActive: true,
     });
     expect(await store.listSessions()).toEqual([
       expect.objectContaining({
-        sessionId: "session-running",
+        sessionId: 'session-running',
         isActive: true,
-        status: "paused",
+        status: 'paused',
       }),
     ]);
   });
 
-  test("persists assistant error line when prompt collection throws", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('persists assistant error line when prompt collection throws', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-err",
+            sessionId: 'session-err',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -347,30 +348,30 @@ describe("createSessionStore", () => {
         setModel: async () => {},
         tools: {},
       }),
-      promptCollector: () => Promise.reject(new Error("model exploded")),
+      promptCollector: () => Promise.reject(new Error('model exploded')),
     });
 
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
-    await expect(store.sendPrompt("session-err", { prompt: "ping" })).rejects.toThrow(
-      "model exploded",
+    await expect(store.sendPrompt('session-err', { prompt: 'ping' })).rejects.toThrow(
+      'model exploded',
     );
 
-    const messages = await store.listMessages("session-err");
+    const messages = await store.listMessages('session-err');
     expect(messages).toHaveLength(2);
-    expect(messages[0]).toMatchObject({ role: "user", text: "ping" });
-    expect(messages[1]).toMatchObject({ role: "assistant", text: "Error: model exploded" });
+    expect(messages[0]).toMatchObject({ role: 'user', text: 'ping' });
+    expect(messages[1]).toMatchObject({ role: 'assistant', text: 'Error: model exploded' });
   });
 
-  test("loads an existing session into an active provider and persists it as loaded", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('loads an existing session into an active provider and persists it as loaded', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -379,7 +380,7 @@ describe("createSessionStore", () => {
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: ({ existingSessionId }) => {
         receivedExistingSessionId = existingSessionId ?? null;
 
@@ -387,14 +388,14 @@ describe("createSessionStore", () => {
           cleanup: () => {},
           initSession: () =>
             Promise.resolve({
-              sessionId: "ignored-by-load",
+              sessionId: 'ignored-by-load',
               modes: {
-                currentModeId: "balanced",
-                availableModes: [{ id: "balanced", name: "Balanced" }],
+                currentModeId: 'balanced',
+                availableModes: [{ id: 'balanced', name: 'Balanced' }],
               },
               models: {
-                currentModelId: "gpt-5-codex",
-                availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+                currentModelId: 'gpt-5-codex',
+                availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
               },
             }),
           languageModel: stubLanguageModel,
@@ -408,21 +409,21 @@ describe("createSessionStore", () => {
     const loadedSession = await store.loadSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "existing-session-1",
-      title: "Recovered Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
+      sessionId: 'existing-session-1',
+      title: 'Recovered Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
     });
 
-    expect(receivedExistingSessionId).toBe("existing-session-1");
+    expect(receivedExistingSessionId).toBe('existing-session-1');
     expect(loadedSession).toMatchObject({
-      sessionId: "existing-session-1",
-      origin: "loaded",
-      title: "Recovered Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-      status: "paused",
+      sessionId: 'existing-session-1',
+      origin: 'loaded',
+      title: 'Recovered Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
+      status: 'paused',
       isActive: true,
     });
 
@@ -434,19 +435,19 @@ describe("createSessionStore", () => {
 
     expect(restoredSessions).toEqual([
       expect.objectContaining({
-        sessionId: "existing-session-1",
-        origin: "loaded",
-        title: "Recovered Session",
-        updatedAt: "2026-04-27T00:00:00.000Z",
-        status: "inactive",
+        sessionId: 'existing-session-1',
+        origin: 'loaded',
+        title: 'Recovered Session',
+        updatedAt: '2026-04-27T00:00:00.000Z',
+        status: 'inactive',
         isActive: false,
       }),
     ]);
   });
 
-  test("imports an existing session into the database without starting a provider", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('imports an existing session into the database without starting a provider', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -454,18 +455,18 @@ describe("createSessionStore", () => {
     const store = createSessionStore({
       database,
       createProvider: () => {
-        throw new Error("provider should not start during importSession");
+        throw new Error('provider should not start during importSession');
       },
       importProviderMessages: (_presetId, sessionId) =>
         Promise.resolve([
           {
             id: `codex-log:${sessionId}:0`,
-            role: "user",
-            kind: "user",
-            text: "imported prompt",
+            role: 'user',
+            kind: 'user',
+            text: 'imported prompt',
             rawEvents: [],
-            createdAt: "2026-04-27T00:00:00.000Z",
-            updatedAt: "2026-04-27T00:00:00.000Z",
+            createdAt: '2026-04-27T00:00:00.000Z',
+            updatedAt: '2026-04-27T00:00:00.000Z',
             streamPartId: null,
             metadataJson: '{"source":"codex-session-log"}',
           },
@@ -475,50 +476,50 @@ describe("createSessionStore", () => {
     const importedSession = await store.importSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "existing-session-db-only",
-      title: "Recovered DB-only Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-      availableModes: [{ id: "balanced", name: "Balanced", description: null }],
-      availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
-      currentModeId: "balanced",
-      currentModelId: "gpt-5-codex",
+      sessionId: 'existing-session-db-only',
+      title: 'Recovered DB-only Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
+      availableModes: [{ id: 'balanced', name: 'Balanced', description: null }],
+      availableModels: [{ id: 'gpt-5-codex', name: 'GPT-5 Codex', description: null }],
+      currentModeId: 'balanced',
+      currentModelId: 'gpt-5-codex',
     });
 
     expect(importedSession).toMatchObject({
-      sessionId: "existing-session-db-only",
-      origin: "loaded",
-      title: "Recovered DB-only Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
-      status: "inactive",
+      sessionId: 'existing-session-db-only',
+      origin: 'loaded',
+      title: 'Recovered DB-only Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
+      status: 'inactive',
       isActive: false,
-      currentModeId: "balanced",
-      currentModelId: "gpt-5-codex",
+      currentModeId: 'balanced',
+      currentModelId: 'gpt-5-codex',
     });
     expect(importedSession.availableModels).toEqual([
-      { id: "gpt-5-codex", name: "GPT-5 Codex", description: null },
+      { id: 'gpt-5-codex', name: 'GPT-5 Codex', description: null },
     ]);
 
     const restoredSessions = await store.listSessions();
     expect(restoredSessions).toEqual([
       expect.objectContaining({
-        sessionId: "existing-session-db-only",
-        status: "inactive",
+        sessionId: 'existing-session-db-only',
+        status: 'inactive',
         isActive: false,
-        firstUserMessagePreview: "imported prompt",
-        availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
+        firstUserMessagePreview: 'imported prompt',
+        availableModels: [{ id: 'gpt-5-codex', name: 'GPT-5 Codex', description: null }],
       }),
     ]);
     expect(
-      (await store.listMessages("existing-session-db-only")).map((message) => message.text),
-    ).toEqual(["imported prompt"]);
+      (await store.listMessages('existing-session-db-only')).map((message) => message.text),
+    ).toEqual(['imported prompt']);
   });
 
-  test("listMessages backfills provider log messages for imported sessions with empty messages", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('listMessages backfills provider log messages for imported sessions with empty messages', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
@@ -526,7 +527,7 @@ describe("createSessionStore", () => {
     const store = createSessionStore({
       database,
       createProvider: () => {
-        throw new Error("provider should not start during importSession");
+        throw new Error('provider should not start during importSession');
       },
       importProviderMessages: () => Promise.resolve([]),
     });
@@ -534,19 +535,19 @@ describe("createSessionStore", () => {
     await store.importSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "existing-session-backfill",
-      title: "Backfill Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
+      sessionId: 'existing-session-backfill',
+      title: 'Backfill Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
       availableModes: [],
       availableModels: [],
       currentModeId: null,
       currentModelId: null,
     });
 
-    expect(await store.listMessages("existing-session-backfill")).toEqual([]);
+    expect(await store.listMessages('existing-session-backfill')).toEqual([]);
 
     const database2 = createDatabase(databasePath);
     disposableClients.push(database2.client);
@@ -557,12 +558,12 @@ describe("createSessionStore", () => {
         Promise.resolve([
           {
             id: `codex-log:${sessionId}:0`,
-            role: "user",
-            kind: "user",
-            text: "backfilled prompt",
+            role: 'user',
+            kind: 'user',
+            text: 'backfilled prompt',
             rawEvents: [],
-            createdAt: "2026-04-27T00:00:00.000Z",
-            updatedAt: "2026-04-27T00:00:00.000Z",
+            createdAt: '2026-04-27T00:00:00.000Z',
+            updatedAt: '2026-04-27T00:00:00.000Z',
             streamPartId: null,
             metadataJson: '{"source":"codex-session-log"}',
           },
@@ -570,37 +571,37 @@ describe("createSessionStore", () => {
     });
 
     expect(
-      (await storeAfterRestart.listMessages("existing-session-backfill")).map(
+      (await storeAfterRestart.listMessages('existing-session-backfill')).map(
         (message) => message.text,
       ),
-    ).toEqual(["backfilled prompt"]);
+    ).toEqual(['backfilled prompt']);
   });
 
-  test("listSessions enriches imported sessions with the cached provider catalog", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('listSessions enriches imported sessions with the cached provider catalog', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     await database.db.insert(agentProviderCatalogsTable).values({
-      presetId: "codex",
+      presetId: 'codex',
       cwd: sandboxDirectory,
-      availableModesJson: JSON.stringify([{ id: "balanced", name: "Balanced", description: null }]),
+      availableModesJson: JSON.stringify([{ id: 'balanced', name: 'Balanced', description: null }]),
       availableModelsJson: JSON.stringify([
-        { id: "gpt-5-codex", name: "GPT-5 Codex", description: null },
+        { id: 'gpt-5-codex', name: 'GPT-5 Codex', description: null },
       ]),
-      currentModeId: "balanced",
-      currentModelId: "gpt-5-codex",
+      currentModeId: 'balanced',
+      currentModelId: 'gpt-5-codex',
       lastError: null,
-      refreshedAt: "2026-04-27T00:00:00.000Z",
-      updatedAt: "2026-04-27T00:00:00.000Z",
+      refreshedAt: '2026-04-27T00:00:00.000Z',
+      updatedAt: '2026-04-27T00:00:00.000Z',
     });
 
     const store = createSessionStore({
       database,
       createProvider: () => {
-        throw new Error("provider should not start during importSession");
+        throw new Error('provider should not start during importSession');
       },
       importProviderMessages: () => Promise.resolve([]),
     });
@@ -608,12 +609,12 @@ describe("createSessionStore", () => {
     await store.importSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "existing-session-catalog-fallback",
-      title: "Catalog fallback Session",
-      updatedAt: "2026-04-27T00:00:00.000Z",
+      sessionId: 'existing-session-catalog-fallback',
+      title: 'Catalog fallback Session',
+      updatedAt: '2026-04-27T00:00:00.000Z',
       availableModes: [],
       availableModels: [],
       currentModeId: null,
@@ -622,37 +623,37 @@ describe("createSessionStore", () => {
 
     expect(await store.listSessions()).toEqual([
       expect.objectContaining({
-        sessionId: "existing-session-catalog-fallback",
-        currentModeId: "balanced",
-        currentModelId: "gpt-5-codex",
-        availableModes: [{ id: "balanced", name: "Balanced", description: null }],
-        availableModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex", description: null }],
+        sessionId: 'existing-session-catalog-fallback',
+        currentModeId: 'balanced',
+        currentModelId: 'gpt-5-codex',
+        availableModes: [{ id: 'balanced', name: 'Balanced', description: null }],
+        availableModels: [{ id: 'gpt-5-codex', name: 'GPT-5 Codex', description: null }],
       }),
     ]);
   });
 
-  test("imports Codex session log messages when loading a Codex session with no stored messages", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('imports Codex session log messages when loading a Codex session with no stored messages', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "ignored-by-load",
+            sessionId: 'ignored-by-load',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -664,23 +665,23 @@ describe("createSessionStore", () => {
         Promise.resolve([
           {
             id: `codex-log:${sessionId}:0`,
-            role: "user",
-            kind: "user",
-            text: "old prompt",
+            role: 'user',
+            kind: 'user',
+            text: 'old prompt',
             rawEvents: [],
-            createdAt: "2026-04-27T10:00:00.000Z",
-            updatedAt: "2026-04-27T10:00:00.000Z",
+            createdAt: '2026-04-27T10:00:00.000Z',
+            updatedAt: '2026-04-27T10:00:00.000Z',
             streamPartId: null,
             metadataJson: '{"source":"codex-session-log"}',
           },
           {
             id: `codex-log:${sessionId}:1`,
-            role: "assistant",
-            kind: "assistant_text",
-            text: "old answer",
+            role: 'assistant',
+            kind: 'assistant_text',
+            text: 'old answer',
             rawEvents: [],
-            createdAt: "2026-04-27T10:00:01.000Z",
-            updatedAt: "2026-04-27T10:00:01.000Z",
+            createdAt: '2026-04-27T10:00:01.000Z',
+            updatedAt: '2026-04-27T10:00:01.000Z',
             streamPartId: null,
             metadataJson: '{"source":"codex-session-log"}',
           },
@@ -690,46 +691,46 @@ describe("createSessionStore", () => {
     await store.loadSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "existing-codex-session",
+      sessionId: 'existing-codex-session',
       title: null,
       updatedAt: null,
     });
 
-    const messages = await store.listMessages("existing-codex-session");
-    expect(messages.map((message) => message.text)).toEqual(["old prompt", "old answer"]);
+    const messages = await store.listMessages('existing-codex-session');
+    expect(messages.map((message) => message.text)).toEqual(['old prompt', 'old answer']);
 
     const sessions = await store.listSessions();
     expect(sessions[0]).toMatchObject({
-      sessionId: "existing-codex-session",
-      firstUserMessagePreview: "old prompt",
+      sessionId: 'existing-codex-session',
+      firstUserMessagePreview: 'old prompt',
     });
   });
 
-  test("loadSession preserves createdAt and origin when rehydrating from the database", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('loadSession preserves createdAt and origin when rehydrating from the database', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-1",
+            sessionId: 'session-1',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -742,8 +743,8 @@ describe("createSessionStore", () => {
     const created = await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
     const createdAtBefore = created.createdAt;
@@ -753,22 +754,22 @@ describe("createSessionStore", () => {
 
     const storeAfterRestart = createSessionStore({
       database: database2,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: ({ existingSessionId }) => {
-        expect(existingSessionId).toBe("session-1");
+        expect(existingSessionId).toBe('session-1');
 
         return {
           cleanup: () => {},
           initSession: () =>
             Promise.resolve({
-              sessionId: "ignored",
+              sessionId: 'ignored',
               modes: {
-                currentModeId: "balanced",
-                availableModes: [{ id: "balanced", name: "Balanced" }],
+                currentModeId: 'balanced',
+                availableModes: [{ id: 'balanced', name: 'Balanced' }],
               },
               models: {
-                currentModelId: "gpt-5-codex",
-                availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+                currentModelId: 'gpt-5-codex',
+                availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
               },
             }),
           languageModel: stubLanguageModel,
@@ -782,42 +783,42 @@ describe("createSessionStore", () => {
     const loaded = await storeAfterRestart.loadSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "session-1",
+      sessionId: 'session-1',
       title: null,
       updatedAt: null,
     });
 
     expect(loaded.createdAt).toBe(createdAtBefore);
-    expect(loaded.origin).toBe("new");
+    expect(loaded.origin).toBe('new');
   });
 
-  test("loadSession restores the model used by the stored conversation", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('loadSession restores the model used by the stored conversation', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-model-restore",
+            sessionId: 'session-model-restore',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
+              currentModelId: 'gpt-5-codex',
               availableModels: [
-                { modelId: "gpt-5-codex", name: "GPT-5 Codex" },
-                { modelId: "gpt-5-codex-mini", name: "GPT-5 Codex Mini" },
+                { modelId: 'gpt-5-codex', name: 'GPT-5 Codex' },
+                { modelId: 'gpt-5-codex-mini', name: 'GPT-5 Codex Mini' },
               ],
             },
           }),
@@ -831,12 +832,12 @@ describe("createSessionStore", () => {
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
-    await store.updateSession("session-model-restore", {
-      modelId: "gpt-5-codex-mini",
+    await store.updateSession('session-model-restore', {
+      modelId: 'gpt-5-codex-mini',
     });
 
     const database2 = createDatabase(databasePath);
@@ -844,15 +845,15 @@ describe("createSessionStore", () => {
     const restoredModels: string[] = [];
     const storeAfterRestart = createSessionStore({
       database: database2,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "ignored",
+            sessionId: 'ignored',
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -868,40 +869,40 @@ describe("createSessionStore", () => {
     const loaded = await storeAfterRestart.loadSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "session-model-restore",
+      sessionId: 'session-model-restore',
       title: null,
       updatedAt: null,
     });
 
-    expect(restoredModels).toEqual(["gpt-5-codex-mini"]);
-    expect(loaded.currentModelId).toBe("gpt-5-codex-mini");
+    expect(restoredModels).toEqual(['gpt-5-codex-mini']);
+    expect(loaded.currentModelId).toBe('gpt-5-codex-mini');
   });
 
-  test("loadSession keeps existing session_messages (persistSession must not delete sessions row)", async () => {
-    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), "acp-playground-sessions-"));
-    const databasePath = path.join(sandboxDirectory, "playground.sqlite");
+  test('loadSession keeps existing session_messages (persistSession must not delete sessions row)', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'acp-playground-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'playground.sqlite');
 
     const database = createDatabase(databasePath);
     disposableClients.push(database.client);
 
     const store = createSessionStore({
       database,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: () => ({
         cleanup: () => {},
         initSession: () =>
           Promise.resolve({
-            sessionId: "session-1",
+            sessionId: 'session-1',
             modes: {
-              currentModeId: "balanced",
-              availableModes: [{ id: "balanced", name: "Balanced" }],
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
             },
             models: {
-              currentModelId: "gpt-5-codex",
-              availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
             },
           }),
         languageModel: stubLanguageModel,
@@ -914,22 +915,22 @@ describe("createSessionStore", () => {
     await store.createSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
     });
 
     await database.db.insert(sessionMessagesTable).values({
-      id: "message-row-1",
-      sessionId: "session-1",
-      role: "user",
-      text: "prior turn",
-      rawEventsJson: "[]",
-      createdAt: "2026-04-27T10:00:00.000Z",
-      messageKind: "user",
+      id: 'message-row-1',
+      sessionId: 'session-1',
+      role: 'user',
+      text: 'prior turn',
+      rawEventsJson: '[]',
+      createdAt: '2026-04-27T10:00:00.000Z',
+      messageKind: 'user',
       streamPartId: null,
-      metadataJson: "{}",
-      updatedAt: "2026-04-27T10:00:00.000Z",
+      metadataJson: '{}',
+      updatedAt: '2026-04-27T10:00:00.000Z',
     });
 
     const database2 = createDatabase(databasePath);
@@ -937,21 +938,21 @@ describe("createSessionStore", () => {
 
     const store2 = createSessionStore({
       database: database2,
-      resolveCommand: () => Promise.resolve("/bin/codex"),
+      resolveCommand: () => Promise.resolve('/bin/codex'),
       createProvider: ({ existingSessionId }) => {
-        expect(existingSessionId).toBe("session-1");
+        expect(existingSessionId).toBe('session-1');
         return {
           cleanup: () => {},
           initSession: () =>
             Promise.resolve({
-              sessionId: "ignored",
+              sessionId: 'ignored',
               modes: {
-                currentModeId: "balanced",
-                availableModes: [{ id: "balanced", name: "Balanced" }],
+                currentModeId: 'balanced',
+                availableModes: [{ id: 'balanced', name: 'Balanced' }],
               },
               models: {
-                currentModelId: "gpt-5-codex",
-                availableModels: [{ modelId: "gpt-5-codex", name: "GPT-5 Codex" }],
+                currentModelId: 'gpt-5-codex',
+                availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
               },
             }),
           languageModel: stubLanguageModel,
@@ -965,20 +966,20 @@ describe("createSessionStore", () => {
     await store2.loadSession({
       projectId: null,
       preset: codexPreset,
-      command: "npx",
-      args: ["-y", "@zed-industries/codex-acp"],
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
       cwd: sandboxDirectory,
-      sessionId: "session-1",
+      sessionId: 'session-1',
       title: null,
       updatedAt: null,
     });
 
-    const messages = await store2.listMessages("session-1");
+    const messages = await store2.listMessages('session-1');
     expect(messages).toEqual([
       expect.objectContaining({
-        id: "message-row-1",
-        role: "user",
-        text: "prior turn",
+        id: 'message-row-1',
+        role: 'user',
+        text: 'prior turn',
       }),
     ]);
   });

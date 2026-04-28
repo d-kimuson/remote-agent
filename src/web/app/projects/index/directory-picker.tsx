@@ -1,10 +1,10 @@
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { ChevronRight, Folder } from "lucide-react";
-import { useEffect, useState, type FC } from "react";
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { ChevronRight, Folder } from 'lucide-react';
+import { useEffect, useState, type FC } from 'react';
 
-import { Checkbox } from "../../../components/ui/checkbox.tsx";
-import { Label } from "../../../components/ui/label.tsx";
-import { fetchDirectoryListing } from "../../../lib/api/acp.ts";
+import { Checkbox } from '../../../components/ui/checkbox.tsx';
+import { Label } from '../../../components/ui/label.tsx';
+import { fetchDirectoryListing } from '../../../lib/api/acp.ts';
 
 export type DirectoryPickerProps = {
   readonly onPathChange: (path: string) => void;
@@ -15,7 +15,7 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
   const [showHidden, setShowHidden] = useState(false);
 
   const { data } = useSuspenseQuery({
-    queryKey: ["directory-listing", currentPath, showHidden] as const,
+    queryKey: ['directory-listing', currentPath, showHidden] as const,
     queryFn: () => fetchDirectoryListing(currentPath, showHidden),
   });
 
@@ -25,13 +25,13 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
     }
   }, [data?.currentPath, onPathChange]);
 
-  const directoryEntries = (data?.entries ?? []).filter((entry) => entry.type === "directory");
+  const directoryEntries = (data?.entries ?? []).filter((entry) => entry.type === 'directory');
 
   return (
     <div className="rounded-md border">
       <div className="border-b bg-muted/50 p-3">
         <p className="text-sm font-medium">
-          Current: <span className="font-mono">{data?.currentPath ?? "~"}</span>
+          Current: <span className="font-mono">{data?.currentPath ?? '~'}</span>
         </p>
       </div>
       <div className="flex items-center gap-2 border-b p-3">
@@ -58,7 +58,7 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
                 }}
                 type="button"
               >
-                {entry.name === ".." ? (
+                {entry.name === '..' ? (
                   <ChevronRight className="size-4 rotate-180" />
                 ) : (
                   <Folder className="size-4 text-blue-500" />

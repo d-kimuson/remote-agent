@@ -1,6 +1,6 @@
-import { safeParse, unknown } from "valibot";
+import { safeParse, unknown } from 'valibot';
 
-import type { RawEvent } from "@/shared/acp";
+import type { RawEvent } from '@/shared/acp';
 
 const parseUnknownJson = (value: string): unknown => {
   const parsed: unknown = JSON.parse(value);
@@ -8,7 +8,7 @@ const parseUnknownJson = (value: string): unknown => {
 };
 
 const getObjectValue = (value: unknown, key: string): unknown => {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return undefined;
   }
 
@@ -22,7 +22,7 @@ const getObjectValue = (value: unknown, key: string): unknown => {
 };
 
 const stringifyUnknown = (value: unknown): string => {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value;
   }
 
@@ -30,26 +30,26 @@ const stringifyUnknown = (value: unknown): string => {
 };
 
 const extractText = (value: unknown): string => {
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value;
   }
 
-  if (typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === 'number' || typeof value === 'boolean') {
     return String(value);
   }
 
-  const text = getObjectValue(value, "text");
-  if (typeof text === "string") {
+  const text = getObjectValue(value, 'text');
+  if (typeof text === 'string') {
     return text;
   }
 
-  const title = getObjectValue(value, "title");
-  if (typeof title === "string") {
+  const title = getObjectValue(value, 'title');
+  if (typeof title === 'string') {
     return title;
   }
 
-  const content = getObjectValue(value, "content");
-  if (typeof content === "string") {
+  const content = getObjectValue(value, 'content');
+  if (typeof content === 'string') {
     return content;
   }
 
@@ -57,47 +57,47 @@ const extractText = (value: unknown): string => {
 };
 
 const normalizePlanEvent = (value: unknown, rawText: string): RawEvent | null => {
-  const entriesValue = getObjectValue(value, "entries");
+  const entriesValue = getObjectValue(value, 'entries');
   if (!Array.isArray(entriesValue)) {
     return null;
   }
 
   return {
-    type: "plan",
+    type: 'plan',
     entries: entriesValue.map(extractText),
     rawText,
   };
 };
 
 const normalizeDiffEvent = (value: unknown, rawText: string): RawEvent | null => {
-  const pathValue = getObjectValue(value, "path");
-  if (typeof pathValue !== "string" || pathValue.length === 0) {
+  const pathValue = getObjectValue(value, 'path');
+  if (typeof pathValue !== 'string' || pathValue.length === 0) {
     return null;
   }
 
-  const oldTextValue = getObjectValue(value, "oldText");
-  const newTextValue = getObjectValue(value, "newText");
+  const oldTextValue = getObjectValue(value, 'oldText');
+  const newTextValue = getObjectValue(value, 'newText');
 
   return {
-    type: "diff",
+    type: 'diff',
     path: pathValue,
-    oldText: typeof oldTextValue === "string" ? oldTextValue : null,
-    newText: typeof newTextValue === "string" ? newTextValue : null,
+    oldText: typeof oldTextValue === 'string' ? oldTextValue : null,
+    newText: typeof newTextValue === 'string' ? newTextValue : null,
     rawText,
   };
 };
 
 const normalizeTerminalEvent = (value: unknown, rawText: string): RawEvent | null => {
-  const textValue = getObjectValue(value, "text") ?? getObjectValue(value, "output");
-  if (typeof textValue !== "string") {
+  const textValue = getObjectValue(value, 'text') ?? getObjectValue(value, 'output');
+  if (typeof textValue !== 'string') {
     return null;
   }
 
-  const terminalIdValue = getObjectValue(value, "terminalId");
+  const terminalIdValue = getObjectValue(value, 'terminalId');
 
   return {
-    type: "terminal",
-    terminalId: typeof terminalIdValue === "string" ? terminalIdValue : null,
+    type: 'terminal',
+    terminalId: typeof terminalIdValue === 'string' ? terminalIdValue : null,
     text: textValue,
     rawText,
   };
@@ -105,22 +105,22 @@ const normalizeTerminalEvent = (value: unknown, rawText: string): RawEvent | nul
 
 export const normalizeRawEvent = (rawValue: unknown): RawEvent | null => {
   const rawText = stringifyUnknown(rawValue);
-  const parsedValue = typeof rawValue === "string" ? parseUnknownJson(rawValue) : rawValue;
+  const parsedValue = typeof rawValue === 'string' ? parseUnknownJson(rawValue) : rawValue;
   const looseObject = safeParse(unknown(), parsedValue);
   if (!looseObject.success) {
     return null;
   }
 
-  const typeValue = getObjectValue(looseObject.output, "type");
-  if (typeValue === "plan") {
+  const typeValue = getObjectValue(looseObject.output, 'type');
+  if (typeValue === 'plan') {
     return normalizePlanEvent(looseObject.output, rawText);
   }
 
-  if (typeValue === "diff") {
+  if (typeValue === 'diff') {
     return normalizeDiffEvent(looseObject.output, rawText);
   }
 
-  if (typeValue === "terminal") {
+  if (typeValue === 'terminal') {
     return normalizeTerminalEvent(looseObject.output, rawText);
   }
 

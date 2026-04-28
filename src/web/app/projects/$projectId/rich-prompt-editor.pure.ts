@@ -1,6 +1,6 @@
-import type { SlashCommand } from "../../../../shared/acp.ts";
+import type { SlashCommand } from '../../../../shared/acp.ts';
 
-export type RichPromptFormat = "bold" | "italic" | "code" | "bulletList" | "quote";
+export type RichPromptFormat = 'bold' | 'italic' | 'code' | 'bulletList' | 'quote';
 
 export type RichPromptSelection = {
   readonly start: number;
@@ -42,8 +42,8 @@ const applyInlineFormat = ({
 
 const lineRangeFor = (value: string, selection: RichPromptSelection): RichPromptSelection => {
   const { end, start } = normalizeSelection(selection);
-  const lineStart = value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
-  const nextLineBreak = value.indexOf("\n", end);
+  const lineStart = value.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+  const nextLineBreak = value.indexOf('\n', end);
 
   return {
     start: lineStart,
@@ -63,14 +63,14 @@ const applyLinePrefix = ({
   const range = lineRangeFor(value, selection);
   const block = value.slice(range.start, range.end);
   const nextBlock = block
-    .split("\n")
+    .split('\n')
     .map((line) => {
       if (line.trim().length === 0 || line.startsWith(prefix)) {
         return line;
       }
       return `${prefix}${line}`;
     })
-    .join("\n");
+    .join('\n');
   const nextValue = `${value.slice(0, range.start)}${nextBlock}${value.slice(range.end)}`;
 
   return {
@@ -91,20 +91,20 @@ export const applyRichPromptFormat = ({
   readonly selection: RichPromptSelection;
   readonly format: RichPromptFormat;
 }): RichPromptEditResult => {
-  if (format === "bold") {
-    return applyInlineFormat({ value, selection, prefix: "**", suffix: "**" });
+  if (format === 'bold') {
+    return applyInlineFormat({ value, selection, prefix: '**', suffix: '**' });
   }
-  if (format === "italic") {
-    return applyInlineFormat({ value, selection, prefix: "_", suffix: "_" });
+  if (format === 'italic') {
+    return applyInlineFormat({ value, selection, prefix: '_', suffix: '_' });
   }
-  if (format === "code") {
-    return applyInlineFormat({ value, selection, prefix: "`", suffix: "`" });
+  if (format === 'code') {
+    return applyInlineFormat({ value, selection, prefix: '`', suffix: '`' });
   }
-  if (format === "bulletList") {
-    return applyLinePrefix({ value, selection, prefix: "- " });
+  if (format === 'bulletList') {
+    return applyLinePrefix({ value, selection, prefix: '- ' });
   }
-  if (format === "quote") {
-    return applyLinePrefix({ value, selection, prefix: "> " });
+  if (format === 'quote') {
+    return applyLinePrefix({ value, selection, prefix: '> ' });
   }
 
   const exhaustive: never = format;
@@ -148,7 +148,7 @@ export const appendRichPromptText = ({
     return trimmedAddition;
   }
 
-  const separator = /[\s\n]$/.test(value) ? "" : " ";
+  const separator = /[\s\n]$/.test(value) ? '' : ' ';
   return `${value}${separator}${trimmedAddition}`;
 };
 
@@ -164,7 +164,7 @@ export const slashCommandQueryFromPrompt = ({
   }
 
   const beforeCaret = value.slice(0, selection.start);
-  const activeLineStart = beforeCaret.lastIndexOf("\n") + 1;
+  const activeLineStart = beforeCaret.lastIndexOf('\n') + 1;
   const activeLineBeforeCaret = beforeCaret.slice(activeLineStart);
   const match = /^\/([A-Za-z0-9_-]*)$/.exec(activeLineBeforeCaret);
 
@@ -194,7 +194,7 @@ export const replaceSlashCommandQuery = ({
   readonly commandName: string;
 }): RichPromptEditResult => {
   const beforeCaret = value.slice(0, selection.start);
-  const activeLineStart = beforeCaret.lastIndexOf("\n") + 1;
+  const activeLineStart = beforeCaret.lastIndexOf('\n') + 1;
   const nextValue = `${value.slice(0, activeLineStart)}/${commandName} ${value.slice(
     selection.end,
   )}`;

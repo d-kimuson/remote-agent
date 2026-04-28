@@ -10,10 +10,6 @@ checks:
     match: \.(m|c)?(j|t)sx?$
     group: lint
     command: pnpm exec oxlint --type-aware --fix {{ ctx.CHANGED_FILES }}
-  - name: typecheck
-    match: \.(m|c)?tsx?$
-    group: typecheck
-    command: pnpm exec tsc --noEmit
   - name: typecheck-tsgo
     match: \.(m|c)?tsx?$
     group: typecheck

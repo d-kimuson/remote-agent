@@ -1,6 +1,7 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from 'vitest';
 
-import type { AgentPreset, SessionSummary } from "../../../../shared/acp.ts";
+import type { AgentPreset, SessionSummary } from '../../../../shared/acp.ts';
+
 import {
   appendTranscriptMessage,
   buildDraftSession,
@@ -11,36 +12,36 @@ import {
   resolveSelectedSessionId,
   resolveSessionListTitle,
   shouldShowConversationLoading,
-} from "./chat-state.pure.ts";
-import { createChatMessage } from "./types.ts";
+} from './chat-state.pure.ts';
+import { createChatMessage } from './types.ts';
 
 const presets = [
   {
-    id: "other",
-    label: "Other",
-    description: "fallback preset",
-    command: "other-agent",
+    id: 'other',
+    label: 'Other',
+    description: 'fallback preset',
+    command: 'other-agent',
     args: [],
   },
   {
-    id: "codex",
-    label: "Codex",
-    description: "preferred preset",
-    command: "codex",
+    id: 'codex',
+    label: 'Codex',
+    description: 'preferred preset',
+    command: 'codex',
     args: [],
   },
 ] satisfies readonly AgentPreset[];
 
 const session = {
-  sessionId: "session-1",
-  origin: "new",
-  status: "paused",
-  projectId: "project-1",
-  presetId: "codex",
-  command: "codex",
+  sessionId: 'session-1',
+  origin: 'new',
+  status: 'paused',
+  projectId: 'project-1',
+  presetId: 'codex',
+  command: 'codex',
   args: [],
-  cwd: "/tmp/project",
-  createdAt: "2026-04-27T12:00:00.000Z",
+  cwd: '/tmp/project',
+  createdAt: '2026-04-27T12:00:00.000Z',
   isActive: true,
   title: null,
   firstUserMessagePreview: null,
@@ -51,61 +52,61 @@ const session = {
   availableModels: [],
 } satisfies SessionSummary;
 
-describe("chat-state.pure", () => {
-  test("resolveSessionListTitle prefers title then preview then transcript", () => {
+describe('chat-state.pure', () => {
+  test('resolveSessionListTitle prefers title then preview then transcript', () => {
     expect(
       resolveSessionListTitle(
-        { ...session, title: "  Named  ", firstUserMessagePreview: "ignored" },
-        "transcript",
+        { ...session, title: '  Named  ', firstUserMessagePreview: 'ignored' },
+        'transcript',
       ),
-    ).toBe("Named");
+    ).toBe('Named');
     expect(
       resolveSessionListTitle(
-        { ...session, title: null, firstUserMessagePreview: "  hello world  " },
+        { ...session, title: null, firstUserMessagePreview: '  hello world  ' },
         null,
       ),
-    ).toBe("hello world");
+    ).toBe('hello world');
     expect(
-      resolveSessionListTitle({ ...session, title: null, firstUserMessagePreview: null }, "hi"),
-    ).toBe("hi");
+      resolveSessionListTitle({ ...session, title: null, firstUserMessagePreview: null }, 'hi'),
+    ).toBe('hi');
     expect(
       resolveSessionListTitle(
-        { ...session, title: null, firstUserMessagePreview: null, presetId: "codex" },
+        { ...session, title: null, firstUserMessagePreview: null, presetId: 'codex' },
         null,
       ),
-    ).toBe("codex");
+    ).toBe('codex');
   });
 
-  test("defaultPresetId prefers codex", () => {
-    expect(defaultPresetId(presets)).toBe("codex");
+  test('defaultPresetId prefers codex', () => {
+    expect(defaultPresetId(presets)).toBe('codex');
   });
 
-  test("buildDraftSession falls back to first preset metadata", () => {
+  test('buildDraftSession falls back to first preset metadata', () => {
     expect(
       buildDraftSession({
-        cwd: "/tmp/project",
-        presetId: "",
+        cwd: '/tmp/project',
+        presetId: '',
         presets,
       }),
     ).toEqual({
-      presetId: "other",
-      label: "Other",
-      command: "other-agent",
-      cwd: "/tmp/project",
+      presetId: 'other',
+      label: 'Other',
+      command: 'other-agent',
+      cwd: '/tmp/project',
     });
   });
 
-  test("resolveSelectedSessionId falls back to the first persisted session", () => {
-    expect(resolveSelectedSessionId([session], "missing")).toBe("session-1");
-    expect(resolveSelectedSessionId([], "missing")).toBeNull();
+  test('resolveSelectedSessionId falls back to the first persisted session', () => {
+    expect(resolveSelectedSessionId([session], 'missing')).toBe('session-1');
+    expect(resolveSelectedSessionId([], 'missing')).toBeNull();
   });
 
-  test("buildSessionEntries always prepends the draft session", () => {
+  test('buildSessionEntries always prepends the draft session', () => {
     const draftSession = {
-      presetId: "codex",
-      label: "Codex",
-      command: "codex",
-      cwd: "/tmp/project",
+      presetId: 'codex',
+      label: 'Codex',
+      command: 'codex',
+      cwd: '/tmp/project',
     };
 
     expect(
@@ -113,51 +114,51 @@ describe("chat-state.pure", () => {
         draftSession,
         sessions: [session],
       }).map((entry) => entry.kind),
-    ).toEqual(["draft", "existing"]);
+    ).toEqual(['draft', 'existing']);
 
     expect(
       buildSessionEntries({
         draftSession,
         sessions: [],
       }).map((entry) => entry.kind),
-    ).toEqual(["draft"]);
+    ).toEqual(['draft']);
   });
 
-  test("buildPromptText trims prompt and appends attachments", () => {
-    expect(buildPromptText("  hello  ", ["a.ts", "b.ts"])).toBe(
-      "hello\n\nAttached files:\n- a.ts\n- b.ts",
+  test('buildPromptText trims prompt and appends attachments', () => {
+    expect(buildPromptText('  hello  ', ['a.ts', 'b.ts'])).toBe(
+      'hello\n\nAttached files:\n- a.ts\n- b.ts',
     );
-    expect(buildPromptText("   ", ["a.ts"])).toBe("");
+    expect(buildPromptText('   ', ['a.ts'])).toBe('');
   });
 
-  test("appendTranscriptMessage and moveTranscript preserve message order", () => {
-    const userMessage = createChatMessage("user", "hello");
-    const assistantMessage = createChatMessage("assistant", "world");
+  test('appendTranscriptMessage and moveTranscript preserve message order', () => {
+    const userMessage = createChatMessage('user', 'hello');
+    const assistantMessage = createChatMessage('assistant', 'world');
 
     const appended = appendTranscriptMessage({
       message: userMessage,
-      transcriptKey: "draft",
+      transcriptKey: 'draft',
       transcripts: {},
     });
     const moved = moveTranscript({
-      from: "draft",
-      to: "session-1",
+      from: 'draft',
+      to: 'session-1',
       transcripts: appendTranscriptMessage({
         message: assistantMessage,
-        transcriptKey: "draft",
+        transcriptKey: 'draft',
         transcripts: appended,
       }),
     });
 
-    expect(moved["draft"]).toBeUndefined();
-    expect(moved["session-1"]?.map((message) => message.text)).toEqual(["hello", "world"]);
+    expect(moved['draft']).toBeUndefined();
+    expect(moved['session-1']?.map((message) => message.text)).toEqual(['hello', 'world']);
   });
 
-  test("shouldShowConversationLoading only treats missing existing transcripts as loading", () => {
+  test('shouldShowConversationLoading only treats missing existing transcripts as loading', () => {
     expect(
       shouldShowConversationLoading({
         isDraftSession: true,
-        transcriptKey: "draft",
+        transcriptKey: 'draft',
         transcripts: {},
       }),
     ).toBe(false);
@@ -165,7 +166,7 @@ describe("chat-state.pure", () => {
     expect(
       shouldShowConversationLoading({
         isDraftSession: false,
-        transcriptKey: "session-1",
+        transcriptKey: 'session-1',
         transcripts: {},
       }),
     ).toBe(true);
@@ -173,8 +174,8 @@ describe("chat-state.pure", () => {
     expect(
       shouldShowConversationLoading({
         isDraftSession: false,
-        transcriptKey: "session-1",
-        transcripts: { "session-1": [] },
+        transcriptKey: 'session-1',
+        transcripts: { 'session-1': [] },
       }),
     ).toBe(false);
   });

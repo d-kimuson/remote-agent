@@ -1,65 +1,66 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test } from 'vitest';
 
-import type { ChatMessage, RawEvent } from "../../../../shared/acp.ts";
+import type { ChatMessage, RawEvent } from '../../../../shared/acp.ts';
+
 import {
   chatMessageClipboardText,
   rawEventClipboardText,
   toolBlockClipboardText,
-} from "./chat-block-copy.pure.ts";
+} from './chat-block-copy.pure.ts';
 
 const baseMessage = (overrides: Partial<ChatMessage>): ChatMessage => ({
-  id: "m1",
-  role: "assistant",
-  text: "",
+  id: 'm1',
+  role: 'assistant',
+  text: '',
   rawEvents: [],
-  createdAt: "2026-01-01T00:00:00.000Z",
+  createdAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 });
 
-describe("rawEventClipboardText", () => {
-  test("plan entries are copied as a readable block", () => {
+describe('rawEventClipboardText', () => {
+  test('plan entries are copied as a readable block', () => {
     const event: RawEvent = {
-      type: "plan",
-      entries: ["調査", "実装"],
-      rawText: "",
+      type: 'plan',
+      entries: ['調査', '実装'],
+      rawText: '',
     };
 
-    expect(rawEventClipboardText(event)).toBe("プラン (plan)\n調査\n実装");
+    expect(rawEventClipboardText(event)).toBe('プラン (plan)\n調査\n実装');
   });
 
-  test("diff keeps old and new text labels", () => {
+  test('diff keeps old and new text labels', () => {
     const event: RawEvent = {
-      type: "diff",
-      path: "src/app.ts",
-      oldText: "old",
-      newText: "new",
-      rawText: "",
+      type: 'diff',
+      path: 'src/app.ts',
+      oldText: 'old',
+      newText: 'new',
+      rawText: '',
     };
 
-    expect(rawEventClipboardText(event)).toBe("差分 · src/app.ts\n--- old\nold\n--- new\nnew");
+    expect(rawEventClipboardText(event)).toBe('差分 · src/app.ts\n--- old\nold\n--- new\nnew');
   });
 });
 
-describe("toolBlockClipboardText", () => {
-  test("joins args and output in one copy payload", () => {
+describe('toolBlockClipboardText', () => {
+  test('joins args and output in one copy payload', () => {
     expect(
       toolBlockClipboardText({
-        type: "tool",
-        key: "tool-1",
-        toolCallId: "1",
+        type: 'tool',
+        key: 'tool-1',
+        toolCallId: '1',
         call: {
-          type: "toolCall",
-          toolCallId: "1",
-          toolName: "Read",
+          type: 'toolCall',
+          toolCallId: '1',
+          toolName: 'Read',
           inputText: '{"file":"a.ts"}',
-          rawText: "",
+          rawText: '',
         },
         result: {
-          type: "toolResult",
-          toolCallId: "1",
-          toolName: "Read",
-          outputText: "content",
-          rawText: "",
+          type: 'toolResult',
+          toolCallId: '1',
+          toolName: 'Read',
+          outputText: 'content',
+          rawText: '',
         },
         error: null,
       }),
@@ -67,15 +68,15 @@ describe("toolBlockClipboardText", () => {
   });
 });
 
-describe("chatMessageClipboardText", () => {
-  test("combines assistant text and raw event blocks", () => {
+describe('chatMessageClipboardText', () => {
+  test('combines assistant text and raw event blocks', () => {
     expect(
       chatMessageClipboardText(
         baseMessage({
-          text: "本文",
-          rawEvents: [{ type: "terminal", terminalId: null, text: "pnpm test", rawText: "" }],
+          text: '本文',
+          rawEvents: [{ type: 'terminal', terminalId: null, text: 'pnpm test', rawText: '' }],
         }),
       ),
-    ).toBe("本文\n\nターミナル (terminal)\npnpm test");
+    ).toBe('本文\n\nターミナル (terminal)\npnpm test');
   });
 });

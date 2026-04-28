@@ -1,5 +1,5 @@
-import { resolver, type validator as vValidator } from "hono-openapi";
-import { object, string } from "valibot";
+import { resolver, type validator as vValidator } from 'hono-openapi';
+import { object, string } from 'valibot';
 
 export type ResolverSchema = Parameters<typeof resolver>[0];
 
@@ -8,7 +8,7 @@ export const errorResponseSchema = object({
 });
 
 export const jsonContent = (schema: ResolverSchema) => ({
-  "application/json": {
+  'application/json': {
     schema: resolver(schema),
   },
 });
@@ -23,6 +23,6 @@ export const validationErrorHook = (
   c: Parameters<NonNullable<Parameters<typeof vValidator>[2]>>[1],
 ) => {
   if (!result.success) {
-    return c.json({ error: result.error?.[0]?.message ?? "invalid request" }, 400);
+    return c.json({ error: result.error?.[0]?.message ?? 'invalid request' }, 400);
   }
 };
