@@ -1,11 +1,11 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { History, MessageSquareDashed, Search } from "lucide-react";
+import { History, MessageSquareDashed, Plus, Search } from "lucide-react";
 import { useMemo, useState, type FC } from "react";
 
 import type { SessionSummary, SessionsResponse } from "../../../../shared/acp.ts";
 import { Badge } from "../../../components/ui/badge.tsx";
-import { Button } from "../../../components/ui/button.tsx";
+import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import { Input } from "../../../components/ui/input.tsx";
 import {
   fetchProject,
@@ -13,9 +13,17 @@ import {
   fetchSessions,
   loadSessionRequest,
 } from "../../../lib/api/acp.ts";
+import { cn } from "../../../lib/utils.ts";
 import { resolveSessionListTitle } from "./chat-state.pure.ts";
 import { LoadSessionDialog } from "./load-session-dialog.tsx";
-import { filterSessionsByQuery, sortSessionsNewestFirst } from "./project-session-list.pure.ts";
+import {
+  filterSessionsByQuery,
+  sessionStatusBadgeClassName,
+  sessionStatusLabel,
+  sessionStatusRowClassName,
+  sessionTimestamp,
+  sortSessionsNewestFirst,
+} from "./project-session-list.pure.ts";
 import { ProjectMenuContent } from "./project-menu-content.tsx";
 import { projectQueryKey, sessionsQueryKey } from "./queries.ts";
 
@@ -32,11 +40,14 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
   session,
 }) => {
   const title = resolveSessionListTitle(session, null, { maxChars: 120 });
-  const updatedAt = session.updatedAt ?? session.createdAt;
+  const timestamp = sessionTimestamp(session);
 
   return (
     <Link
-      className="flex items-start gap-3 rounded-lg border bg-background/70 px-4 py-3 transition-colors hover:border-foreground/15 hover:bg-background"
+      className={cn(
+        "flex items-start gap-3 rounded-lg border border-l-4 bg-background/70 px-4 py-3 transition-colors hover:border-foreground/15 hover:bg-background",
+        sessionStatusRowClassName(session.status),
+      )}
       params={{ projectId }}
       search={{ "session-id": session.sessionId }}
       to="/projects/$projectId"
@@ -48,9 +59,11 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
         </div>
         <p className="truncate font-mono text-xs text-muted-foreground">{session.cwd}</p>
       </div>
-      <div className="shrink-0 text-right text-xs text-muted-foreground">
-        <p>{formatDateTime(updatedAt)}</p>
-        <p>{session.status}</p>
+      <div className="flex shrink-0 flex-col items-end gap-1 text-right text-xs text-muted-foreground">
+        <time dateTime={timestamp}>{formatDateTime(timestamp)}</time>
+        <Badge className={sessionStatusBadgeClassName(session.status)} variant="outline">
+          {sessionStatusLabel(session.status)}
+        </Badge>
       </div>
     </Link>
   );
@@ -175,6 +188,16 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
                 value={query}
               />
             </div>
+            <Link
+              aria-label="新規セッション"
+              className={buttonVariants({ className: "w-full md:w-auto", variant: "default" })}
+              params={{ projectId }}
+              search={{}}
+              to="/projects/$projectId"
+            >
+              <Plus className="size-4" />
+              新規セッション
+            </Link>
             <Button
               className="w-full md:w-auto"
               onClick={handleOpenLoadSessionDialog}

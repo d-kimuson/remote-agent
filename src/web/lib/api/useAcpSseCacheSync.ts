@@ -1,8 +1,20 @@
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useEffect, useRef } from "react";
+import { toast } from "sonner";
 
-import { type AcpSseEvent, parseAcpSseEventJson } from "../../../shared/acp.ts";
 import {
+  type AcpSseEvent,
+  parseAcpSseEventJson,
+  type ProjectsResponse,
+  type SessionStatus,
+  type SessionSummary,
+  type SessionsResponse,
+} from "../../../shared/acp.ts";
+import { addSessionPausedAppNotification } from "../../pwa/notification-center.ts";
+import { showSessionPausedNotification } from "../../pwa/notifications.ts";
+import { fetchProjects, fetchSessions } from "./acp.ts";
+import {
+  projectsQueryKey,
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from "../../app/projects/$projectId/queries.ts";
@@ -14,13 +26,17 @@ const mergeEventToPending = (
   pending: {
     needSessionsList: boolean;
     messageSessionIds: Set<string>;
+    pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
   },
   event: AcpSseEvent,
+  knownStatuses: Map<string, SessionStatus>,
+  statusFromCache: (sessionId: string) => SessionStatus | null,
 ) => {
   if (event.type === "session_removed") {
     pending.removedSessionIds.add(event.sessionId);
     pending.needSessionsList = true;
+    knownStatuses.delete(event.sessionId);
     return;
   }
   if (event.type === "session_messages_updated") {
@@ -30,40 +46,158 @@ const mergeEventToPending = (
   }
   if (event.type === "session_updated") {
     pending.needSessionsList = true;
+    if (event.status !== undefined) {
+      const previousStatus = knownStatuses.get(event.sessionId) ?? statusFromCache(event.sessionId);
+      if (previousStatus === "running" && event.status === "paused") {
+        pending.pausedSessionIds.add(event.sessionId);
+      }
+      knownStatuses.set(event.sessionId, event.status);
+    }
   }
 };
 
-const flushPending = (
+const sessionTitleFrom = (session: SessionSummary): string => {
+  const title = session.title ?? session.firstUserMessagePreview ?? session.sessionId;
+  return title.trim();
+};
+
+const sessionUrlFrom = (session: SessionSummary): string => {
+  const searchParams = new URLSearchParams({ "session-id": session.sessionId });
+  return session.projectId === null || session.projectId === undefined
+    ? `/projects?${searchParams.toString()}`
+    : `/projects/${session.projectId}?${searchParams.toString()}`;
+};
+
+const projectNameFrom = async (
+  queryClient: QueryClient,
+  projectId: string | null | undefined,
+): Promise<string> => {
+  if (projectId === null || projectId === undefined) {
+    return "ACP Playground";
+  }
+
+  const cachedProjects = queryClient.getQueryData<ProjectsResponse>(projectsQueryKey);
+  const cachedProject = cachedProjects?.projects.find((project) => project.id === projectId);
+  if (cachedProject !== undefined) {
+    return cachedProject.name;
+  }
+
+  const projects = await queryClient.fetchQuery({
+    queryKey: projectsQueryKey,
+    queryFn: fetchProjects,
+  });
+  return projects.projects.find((project) => project.id === projectId)?.name ?? projectId;
+};
+
+const notifyPausedSessions = async (
+  queryClient: QueryClient,
+  sessions: readonly SessionSummary[],
+  pausedSessionIds: ReadonlySet<string>,
+): Promise<void> => {
+  for (const pausedSessionId of pausedSessionIds) {
+    const session = sessions.find((entry) => entry.sessionId === pausedSessionId);
+    if (session === undefined) {
+      continue;
+    }
+
+    const timestamp = Date.now();
+    const projectName = await projectNameFrom(queryClient, session.projectId);
+    const sessionTitle = sessionTitleFrom(session);
+    const url = sessionUrlFrom(session);
+    addSessionPausedAppNotification({
+      projectId: session.projectId ?? "unknown",
+      projectName,
+      sessionId: session.sessionId,
+      sessionTitle,
+      timestamp,
+      url,
+    });
+    toast.success("Agent paused", {
+      description: sessionTitle.length > 0 ? sessionTitle : session.sessionId,
+    });
+    void showSessionPausedNotification({
+      projectId: session.projectId ?? "unknown",
+      projectName,
+      sessionId: session.sessionId,
+      sessionTitle,
+      timestamp,
+      url,
+    });
+  }
+};
+
+const flushPending = async (
   queryClient: QueryClient,
   pending: {
     needSessionsList: boolean;
     messageSessionIds: Set<string>;
+    pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
   },
-) => {
-  for (const sessionId of pending.removedSessionIds) {
-    queryClient.removeQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
-  }
-  if (pending.needSessionsList) {
-    void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-  }
-  for (const sessionId of pending.messageSessionIds) {
-    void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
-  }
+  knownStatuses: Map<string, SessionStatus>,
+): Promise<void> => {
+  const work = {
+    needSessionsList: pending.needSessionsList,
+    messageSessionIds: new Set(pending.messageSessionIds),
+    pausedSessionIds: new Set(pending.pausedSessionIds),
+    removedSessionIds: new Set(pending.removedSessionIds),
+  };
   pending.needSessionsList = false;
   pending.messageSessionIds.clear();
+  pending.pausedSessionIds.clear();
   pending.removedSessionIds.clear();
+
+  const cachedSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+  for (const sessionId of work.removedSessionIds) {
+    queryClient.removeQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
+  }
+  let freshSessions: readonly SessionSummary[] | null = null;
+  if (work.needSessionsList) {
+    const sessionsResponse = await queryClient.fetchQuery({
+      queryKey: sessionsQueryKey,
+      queryFn: fetchSessions,
+    });
+    freshSessions = sessionsResponse.sessions;
+
+    for (const session of sessionsResponse.sessions) {
+      const previousStatus =
+        knownStatuses.get(session.sessionId) ??
+        cachedSessions?.sessions.find((entry) => entry.sessionId === session.sessionId)?.status ??
+        null;
+      if (previousStatus === "running" && session.status === "paused") {
+        work.pausedSessionIds.add(session.sessionId);
+      }
+      knownStatuses.set(session.sessionId, session.status);
+    }
+  }
+  for (const sessionId of work.messageSessionIds) {
+    void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
+  }
+  if (freshSessions !== null && work.pausedSessionIds.size > 0) {
+    await notifyPausedSessions(queryClient, freshSessions, work.pausedSessionIds);
+  }
 };
 
 export const useAcpSseCacheSync = (): void => {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const knownStatusesRef = useRef(new Map<string, SessionStatus>());
 
   useEffect(() => {
+    const knownStatuses = knownStatusesRef.current;
     const pending = {
       needSessionsList: false,
       messageSessionIds: new Set<string>(),
+      pausedSessionIds: new Set<string>(),
       removedSessionIds: new Set<string>(),
+    };
+
+    const statusFromCache = (sessionId: string): SessionStatus | null => {
+      const sessionsResponse = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+      return (
+        sessionsResponse?.sessions.find((session) => session.sessionId === sessionId)?.status ??
+        null
+      );
     };
 
     const scheduleFlush = () => {
@@ -72,7 +206,7 @@ export const useAcpSseCacheSync = (): void => {
       }
       timerRef.current = setTimeout(() => {
         timerRef.current = undefined;
-        flushPending(queryClient, pending);
+        void flushPending(queryClient, pending, knownStatuses);
       }, ACP_SSE_INVALIDATE_DEBOUNCE_MS);
     };
 
@@ -87,7 +221,7 @@ export const useAcpSseCacheSync = (): void => {
       } catch {
         return;
       }
-      mergeEventToPending(pending, event);
+      mergeEventToPending(pending, event, knownStatuses, statusFromCache);
       scheduleFlush();
     };
     source.addEventListener("message", onMessage);
@@ -101,9 +235,10 @@ export const useAcpSseCacheSync = (): void => {
       const hasWork =
         pending.needSessionsList ||
         pending.messageSessionIds.size > 0 ||
+        pending.pausedSessionIds.size > 0 ||
         pending.removedSessionIds.size > 0;
       if (hasWork) {
-        flushPending(queryClient, pending);
+        void flushPending(queryClient, pending, knownStatuses);
       }
     };
   }, [queryClient]);

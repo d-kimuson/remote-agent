@@ -239,6 +239,14 @@ export const createSessionStore = ({
 }: SessionStoreDependencies = {}) => {
   const runtimeSessions = new Map<string, SessionEntry>();
 
+  const emitSessionUpdated = (session: SessionSummary): void => {
+    emitAcpSse({
+      type: "session_updated",
+      sessionId: session.sessionId,
+      status: session.status,
+    });
+  };
+
   const persistSession = async (session: SessionSummary): Promise<void> => {
     // DELETE+INSERT だと session_messages が CASCADE で全消去されるため upsert にする。
     await database.db
@@ -277,7 +285,7 @@ export const createSessionStore = ({
           availableModelsJson: JSON.stringify(session.availableModels),
         },
       });
-    emitAcpSse({ type: "session_updated", sessionId: session.sessionId });
+    emitSessionUpdated(session);
   };
 
   const getSessionEntry = (sessionId: string): SessionEntry => {
@@ -789,7 +797,7 @@ export const createSessionStore = ({
 
     entry.runningPromptCount += 1;
     setSessionStatus(entry, sessionStatusFromEntry(entry));
-    emitAcpSse({ type: "session_updated", sessionId });
+    emitSessionUpdated(entry.session);
 
     let result: Pick<MessageResponse, "assistantSegmentMessages" | "rawEvents" | "text"> | null =
       null;
@@ -810,7 +818,7 @@ export const createSessionStore = ({
     } finally {
       entry.runningPromptCount = Math.max(0, entry.runningPromptCount - 1);
       setSessionStatus(entry, sessionStatusFromEntry(entry));
-      emitAcpSse({ type: "session_updated", sessionId });
+      emitSessionUpdated(entry.session);
     }
 
     if (result === null) {

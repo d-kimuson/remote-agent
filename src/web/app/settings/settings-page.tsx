@@ -9,13 +9,46 @@ import {
   CardHeader,
   CardTitle,
 } from "../../components/ui/card.tsx";
+import { Label } from "../../components/ui/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select.tsx";
+import { parseThemePreference, type ThemePreference } from "../../lib/theme.pure.ts";
+import { useTheme } from "../../lib/theme.tsx";
 import {
   getNotificationPermissionState,
   requestNotificationPermission,
   showNotificationPreview,
 } from "../../pwa/notifications.ts";
 
+const themePreferenceChoices = [
+  {
+    value: "system",
+    label: "System",
+    description: "OS の外観設定に合わせます。",
+  },
+  {
+    value: "light",
+    label: "Light",
+    description: "常にライトテーマを使います。",
+  },
+  {
+    value: "dark",
+    label: "Dark",
+    description: "常にダークテーマを使います。",
+  },
+] as const satisfies readonly {
+  readonly value: ThemePreference;
+  readonly label: string;
+  readonly description: string;
+}[];
+
 export const SettingsPage: FC = () => {
+  const { preference, resolvedTheme, setPreference } = useTheme();
   const [notificationPermission, setNotificationPermission] = useState(
     getNotificationPermissionState,
   );
@@ -70,45 +103,83 @@ export const SettingsPage: FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Notifications</CardTitle>
-        <CardDescription>
-          バックグラウンド時の assistant 応答を Service Worker 通知で受け取るための設定。
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{notificationPermission}</Badge>
-          <Button
-            disabled={
-              notificationPermission === "denied" ||
-              notificationPermission === "granted" ||
-              notificationPermission === "unsupported"
-            }
-            onClick={() => {
-              void handleEnableNotifications();
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>UI の配色テーマを設定します。</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+          <div className="space-y-1">
+            <Label htmlFor="theme-preference">Theme</Label>
+            <p className="text-sm text-muted-foreground">
+              現在の表示は <span className="font-medium text-foreground">{resolvedTheme}</span>{" "}
+              です。
+            </p>
+          </div>
+          <Select
+            onValueChange={(nextPreference) => {
+              setPreference(parseThemePreference(nextPreference));
             }}
-            type="button"
-            variant="outline"
+            value={preference}
           >
-            Enable
-          </Button>
-          <Button
-            disabled={notificationPermission !== "granted"}
-            onClick={() => {
-              void handlePreviewNotification();
-            }}
-            type="button"
-            variant="outline"
-          >
-            Test
-          </Button>
-        </div>
-        {notificationError === null ? null : (
-          <p className="text-xs text-destructive">{notificationError}</p>
-        )}
-      </CardContent>
-    </Card>
+            <SelectTrigger className="w-full" id="theme-preference">
+              <SelectValue placeholder="Theme" />
+            </SelectTrigger>
+            <SelectContent align="end" className="min-w-64">
+              {themePreferenceChoices.map((choice) => (
+                <SelectItem key={choice.value} value={choice.value}>
+                  <div className="flex flex-col">
+                    <span>{choice.label}</span>
+                    <span className="text-xs text-muted-foreground">{choice.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            バックグラウンド時の assistant 応答を Service Worker 通知で受け取るための設定。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge variant="outline">{notificationPermission}</Badge>
+            <Button
+              disabled={
+                notificationPermission === "denied" ||
+                notificationPermission === "granted" ||
+                notificationPermission === "unsupported"
+              }
+              onClick={() => {
+                void handleEnableNotifications();
+              }}
+              type="button"
+              variant="outline"
+            >
+              Enable
+            </Button>
+            <Button
+              disabled={notificationPermission !== "granted"}
+              onClick={() => {
+                void handlePreviewNotification();
+              }}
+              type="button"
+              variant="outline"
+            >
+              Test
+            </Button>
+          </div>
+          {notificationError === null ? null : (
+            <p className="text-xs text-destructive">{notificationError}</p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 };

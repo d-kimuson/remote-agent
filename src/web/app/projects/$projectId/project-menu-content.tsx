@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { FolderKanban, MessageSquare, Settings } from "lucide-react";
+import { FolderKanban, MessageSquare, Plus, Settings } from "lucide-react";
 import type { FC } from "react";
 
 import type { SessionSummary } from "../../../../shared/acp.ts";
@@ -8,10 +8,24 @@ import { Badge } from "../../../components/ui/badge.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
 import { cn } from "../../../lib/utils.ts";
 import { resolveSessionListTitle } from "./chat-state.pure.ts";
-import { sortSessionsNewestFirst } from "./project-session-list.pure.ts";
+import {
+  sessionStatusBadgeClassName,
+  sessionStatusLabel,
+  sessionStatusRowClassName,
+  sessionTimestamp,
+  sortSessionsNewestFirst,
+} from "./project-session-list.pure.ts";
 
 const menuLinkClassName =
   "flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground";
+
+const formatDateTime = (iso: string): string =>
+  new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
 
 export const ProjectMenuContent: FC<{
   readonly projectId: string;
@@ -48,9 +62,22 @@ export const ProjectMenuContent: FC<{
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 border-t border-sidebar-border pt-3">
-          <p className="px-1 text-xs font-semibold tracking-[0.14em] text-muted-foreground">
-            RECENT SESSIONS
-          </p>
+          <div className="flex items-center justify-between gap-2 px-1">
+            <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">
+              RECENT SESSIONS
+            </p>
+            <Link
+              aria-label="新規セッション"
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              onClick={closeAppMenu}
+              params={{ projectId }}
+              search={{}}
+              title="新規セッション"
+              to="/projects/$projectId"
+            >
+              <Plus className="size-4" />
+            </Link>
+          </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-2 pr-2">
               {sortedSessions.length === 0 ? (
@@ -58,28 +85,48 @@ export const ProjectMenuContent: FC<{
                   No sessions yet.
                 </div>
               ) : null}
-              {sortedSessions.map((session) => (
-                <Link
-                  className="block rounded-lg border border-sidebar-border bg-background/60 px-3 py-2 transition-colors hover:border-foreground/15 hover:bg-background"
-                  key={session.sessionId}
-                  onClick={closeAppMenu}
-                  params={{ projectId }}
-                  search={{ "session-id": session.sessionId }}
-                  to="/projects/$projectId"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <p className="min-w-0 flex-1 truncate text-sm font-medium">
-                      {resolveSessionListTitle(session, null, { maxChars: 72 })}
+              {sortedSessions.map((session) => {
+                const timestamp = sessionTimestamp(session);
+                return (
+                  <Link
+                    className={cn(
+                      "block rounded-lg border border-l-4 border-sidebar-border bg-background/60 px-3 py-2 transition-colors hover:border-foreground/15 hover:bg-background",
+                      sessionStatusRowClassName(session.status),
+                    )}
+                    key={session.sessionId}
+                    onClick={closeAppMenu}
+                    params={{ projectId }}
+                    search={{ "session-id": session.sessionId }}
+                    to="/projects/$projectId"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {resolveSessionListTitle(session, null, { maxChars: 72 })}
+                      </p>
+                      <Badge className="shrink-0" variant="outline">
+                        {session.presetId ?? "custom"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
+                      {session.cwd}
                     </p>
-                    <Badge className="shrink-0" variant="outline">
-                      {session.presetId ?? "custom"}
-                    </Badge>
-                  </div>
-                  <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
-                    {session.cwd}
-                  </p>
-                </Link>
-              ))}
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <time
+                        className="text-[11px] tabular-nums text-muted-foreground"
+                        dateTime={timestamp}
+                      >
+                        {formatDateTime(timestamp)}
+                      </time>
+                      <Badge
+                        className={sessionStatusBadgeClassName(session.status)}
+                        variant="outline"
+                      >
+                        {sessionStatusLabel(session.status)}
+                      </Badge>
+                    </div>
+                  </Link>
+                );
+              })}
             </div>
           </ScrollArea>
         </div>

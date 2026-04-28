@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createAssistantNotificationPayload } from "./notifications.pure.ts";
+import {
+  createAssistantNotificationPayload,
+  createSessionPausedNotificationPayload,
+} from "./notifications.pure.ts";
 
 describe("createAssistantNotificationPayload", () => {
   test("normalizes whitespace and keeps routing metadata", () => {
@@ -51,5 +54,29 @@ describe("createAssistantNotificationPayload", () => {
 
     expect(payload.body.length).toBe(160);
     expect(payload.body.endsWith("…")).toBe(true);
+  });
+});
+
+describe("createSessionPausedNotificationPayload", () => {
+  test("creates a routeable paused-session notification", () => {
+    const payload = createSessionPausedNotificationPayload({
+      projectId: "project-1",
+      projectName: "ACP Playground",
+      sessionId: "session-1",
+      sessionTitle: "Implement notifications",
+      timestamp: 1_746_000_000_000,
+      url: "/projects/project-1?session-id=session-1",
+    });
+
+    expect(payload).toMatchObject({
+      title: "ACP Playground • Agent paused",
+      body: "Implement notifications is ready",
+      tag: "session-paused:session-1",
+      data: {
+        projectId: "project-1",
+        sessionId: "session-1",
+        url: "/projects/project-1?session-id=session-1",
+      },
+    });
   });
 });

@@ -1,7 +1,7 @@
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { useLocation, useNavigate } from "@tanstack/react-router";
-import { Bell, Menu } from "lucide-react";
-import type { FC } from "react";
+import { Link, useLocation, useNavigate } from "@tanstack/react-router";
+import { Bell, CheckCheck, Menu } from "lucide-react";
+import { useState, type FC } from "react";
 
 import { Button } from "@/web/components/ui/button";
 import {
@@ -12,8 +12,13 @@ import {
   SelectValue,
 } from "@/web/components/ui/select";
 import { fetchProjects } from "@/web/lib/api/acp";
-
-const projectsQueryKey = ["projects"] as const;
+import {
+  markAllAppNotificationsRead,
+  markAppNotificationRead,
+  notificationDisplayLimit,
+  useNotificationCenter,
+} from "@/web/pwa/notification-center";
+import { projectsQueryKey } from "@/web/app/projects/$projectId/queries";
 
 const currentProjectIdFromPath = (pathname: string): string | null => {
   const match = /^\/projects\/([^/]+)/.exec(pathname);
@@ -32,6 +37,108 @@ const compactPath = (path: string): string => {
 
   const tail = parts.slice(-2).join("/");
   return prefix === null ? `../${tail}` : `${prefix}/../${tail}`;
+};
+
+const NotificationButton: FC = () => {
+  const { notifications, unreadCount } = useNotificationCenter();
+  const [isOpen, setIsOpen] = useState(false);
+  const displayCount = unreadCount > 99 ? "99+" : String(unreadCount);
+  const visibleNotifications = notifications.slice(0, notificationDisplayLimit);
+
+  return (
+    <div className="relative shrink-0">
+      <Button
+        aria-expanded={isOpen}
+        aria-label={
+          unreadCount > 0 ? `Notifications, ${String(unreadCount)} unread` : "Notifications"
+        }
+        className="relative"
+        onClick={() => {
+          setIsOpen((current) => !current);
+        }}
+        size="icon-sm"
+        title={unreadCount > 0 ? `${String(unreadCount)} unread notifications` : "Notifications"}
+        type="button"
+        variant="ghost"
+      >
+        <Bell className="size-4" />
+        {unreadCount > 0 ? (
+          <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] leading-none font-semibold text-destructive-foreground">
+            {displayCount}
+          </span>
+        ) : null}
+      </Button>
+
+      {isOpen ? (
+        <div className="absolute top-9 right-0 z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-xl">
+          <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold">Notifications</p>
+              <p className="text-xs text-muted-foreground">
+                {unreadCount} unread · latest {notificationDisplayLimit}
+              </p>
+            </div>
+            <Button
+              disabled={unreadCount === 0}
+              onClick={markAllAppNotificationsRead}
+              size="sm"
+              type="button"
+              variant="ghost"
+            >
+              <CheckCheck className="size-4" />
+              Mark all read
+            </Button>
+          </div>
+
+          <div className="max-h-[420px] overflow-y-auto p-2">
+            {visibleNotifications.length === 0 ? (
+              <div className="rounded-md border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
+                No notifications.
+              </div>
+            ) : null}
+            <div className="space-y-2">
+              {visibleNotifications.map((notification) => {
+                const isUnread = notification.readAt === null;
+                return (
+                  <Link
+                    className="block"
+                    key={notification.id}
+                    onClick={() => {
+                      markAppNotificationRead(notification.id);
+                      setIsOpen(false);
+                    }}
+                    to={notification.url}
+                  >
+                    <article
+                      className={[
+                        "rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/55",
+                        isUnread
+                          ? "border-primary/30 bg-primary/[0.08]"
+                          : "border-border bg-background/70",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="min-w-0 truncate text-sm font-medium">{notification.title}</p>
+                        {isUnread ? (
+                          <span className="mt-1 size-2 shrink-0 rounded-full bg-primary" />
+                        ) : null}
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {notification.body}
+                      </p>
+                      <p className="mt-2 truncate font-mono text-[11px] text-muted-foreground">
+                        {notification.projectName}
+                      </p>
+                    </article>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 };
 
 export const AppHeader: FC<{ readonly onOpenMenu: () => void }> = ({ onOpenMenu }) => {
@@ -93,15 +200,9 @@ export const AppHeader: FC<{ readonly onOpenMenu: () => void }> = ({ onOpenMenu 
               </SelectContent>
             </Select>
           </div>
-          <button
-            aria-label="Notifications"
-            className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            type="button"
-          >
-            <Bell className="size-4" />
-          </button>
         </>
       )}
+      <NotificationButton />
     </header>
   );
 };

@@ -7,6 +7,29 @@
     <meta name="theme-color" content="#0f172a" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <title>ACP Playground</title>
+    <script>
+      (() => {
+        const storageKey = "acp-playground:theme";
+        const preference = (() => {
+          try {
+            const stored = window.localStorage.getItem(storageKey);
+            return stored === "light" || stored === "dark" || stored === "system"
+              ? stored
+              : "system";
+          } catch {
+            return "system";
+          }
+        })();
+        const resolvedTheme =
+          preference === "system"
+            ? window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light"
+            : preference;
+
+        document.documentElement.classList.toggle("dark", resolvedTheme === "dark");
+      })();
+    </script>
   </head>
   <body>
     <div id="app"></div>

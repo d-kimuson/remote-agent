@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { QueryClientProviderWrapper } from "./lib/api/QueryClientProviderWrapper";
+import { ThemeProvider } from "./lib/theme.tsx";
 import { registerServiceWorker } from "./pwa/register-service-worker.ts";
 import { routeTree } from "./routeTree.gen";
 
@@ -36,8 +37,10 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 root.render(
   <StrictMode>
-    <QueryClientProviderWrapper>
-      <RouterProvider router={router} />
-    </QueryClientProviderWrapper>
+    <ThemeProvider>
+      <QueryClientProviderWrapper>
+        <RouterProvider router={router} />
+      </QueryClientProviderWrapper>
+    </ThemeProvider>
   </StrictMode>,
 );

@@ -414,6 +414,7 @@ export const acpSseEventSchema = union([
   object({
     type: literal("session_updated"),
     sessionId: pipe(string(), trim()),
+    status: optional(sessionStatusSchema),
   }),
   object({
     type: literal("session_messages_updated"),

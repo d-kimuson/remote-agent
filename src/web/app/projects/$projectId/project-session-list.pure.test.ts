@@ -1,7 +1,14 @@
 import { describe, expect, test } from "vitest";
 
 import type { SessionSummary } from "../../../../shared/acp.ts";
-import { filterSessionsByQuery, sortSessionsNewestFirst } from "./project-session-list.pure.ts";
+import {
+  filterSessionsByQuery,
+  sessionStatusBadgeClassName,
+  sessionStatusLabel,
+  sessionStatusRowClassName,
+  sessionTimestamp,
+  sortSessionsNewestFirst,
+} from "./project-session-list.pure.ts";
 
 const session = {
   sessionId: "session-1",
@@ -59,5 +66,29 @@ describe("project-session-list.pure", () => {
       "new",
       "old",
     ]);
+  });
+
+  test("sessionTimestamp prefers updatedAt", () => {
+    expect(
+      sessionTimestamp({
+        ...session,
+        createdAt: "2026-04-27T12:00:00.000Z",
+        updatedAt: "2026-04-28T12:00:00.000Z",
+      }),
+    ).toBe("2026-04-28T12:00:00.000Z");
+    expect(sessionTimestamp({ ...session, updatedAt: null })).toBe("2026-04-27T12:00:00.000Z");
+  });
+
+  test("sessionStatusLabel and class names distinguish status colors", () => {
+    expect(sessionStatusLabel("paused")).toBe("Paused");
+    expect(sessionStatusLabel("running")).toBe("Running");
+    expect(sessionStatusLabel("inactive")).toBe("Inactive");
+
+    expect(sessionStatusBadgeClassName("paused")).toContain("yellow");
+    expect(sessionStatusBadgeClassName("running")).toContain("green");
+    expect(sessionStatusBadgeClassName("inactive")).toContain("gray");
+    expect(sessionStatusRowClassName("paused")).toContain("yellow");
+    expect(sessionStatusRowClassName("running")).toContain("green");
+    expect(sessionStatusRowClassName("inactive")).toContain("gray");
   });
 });

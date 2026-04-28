@@ -12,6 +12,15 @@ export type AssistantNotificationInput = {
   readonly timestamp: number;
 };
 
+export type SessionPausedNotificationInput = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly sessionId: string;
+  readonly sessionTitle: string;
+  readonly url: string;
+  readonly timestamp: number;
+};
+
 export type AssistantNotificationPayload = {
   readonly title: string;
   readonly body: string;
@@ -25,6 +34,8 @@ export type AssistantNotificationPayload = {
   };
   readonly timestamp: number;
 };
+
+export type SessionPausedNotificationPayload = AssistantNotificationPayload;
 
 const normalizeNotificationBody = (text: string): string => text.trim().replaceAll(/\s+/g, " ");
 
@@ -45,6 +56,26 @@ export const createAssistantNotificationPayload = (
     title: `${input.projectName} • Agent response`,
     body: normalizedBody.length > 0 ? normalizedBody : "Agent response received",
     tag: `session:${input.sessionId}`,
+    icon: notificationIconPath,
+    badge: notificationBadgePath,
+    data: {
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      url: input.url,
+    },
+    timestamp: input.timestamp,
+  };
+};
+
+export const createSessionPausedNotificationPayload = (
+  input: SessionPausedNotificationInput,
+): SessionPausedNotificationPayload => {
+  const normalizedTitle = truncateNotificationBody(normalizeNotificationBody(input.sessionTitle));
+
+  return {
+    title: `${input.projectName} • Agent paused`,
+    body: normalizedTitle.length > 0 ? `${normalizedTitle} is ready` : "Session is ready",
+    tag: `session-paused:${input.sessionId}`,
     icon: notificationIconPath,
     badge: notificationBadgePath,
     data: {

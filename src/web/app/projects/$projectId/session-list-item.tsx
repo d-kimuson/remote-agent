@@ -4,6 +4,7 @@ import type { SessionSummary } from "../../../../shared/acp.ts";
 import { Badge } from "../../../components/ui/badge.tsx";
 import { cn } from "../../../lib/utils.ts";
 import type { DraftSession } from "./chat-state.pure.ts";
+import { sessionStatusBadgeClassName, sessionStatusLabel } from "./project-session-list.pure.ts";
 
 export const SessionListItem: FC<{
   readonly session:
@@ -27,6 +28,10 @@ export const SessionListItem: FC<{
 
   const badgeLabel =
     session.kind === "draft" ? session.draft.label : (session.session.presetId ?? "custom");
+  const statusLabel =
+    session.kind === "draft" ? "Draft" : sessionStatusLabel(session.session.status);
+  const statusClassName =
+    session.kind === "draft" ? "" : sessionStatusBadgeClassName(session.session.status);
 
   return (
     <button
@@ -43,8 +48,11 @@ export const SessionListItem: FC<{
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-2">
             <p className="truncate text-sm font-medium tracking-[0.01em]">{listTitle}</p>
-            <Badge variant="secondary">
-              {session.kind === "draft" ? "draft" : session.session.status}
+            <Badge
+              className={statusClassName}
+              variant={session.kind === "draft" ? "secondary" : "outline"}
+            >
+              {statusLabel}
             </Badge>
           </div>
           <p className="truncate text-xs text-muted-foreground">{subtitle}</p>

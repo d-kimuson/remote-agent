@@ -30,7 +30,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../../../components/ui/select.tsx";
-import { Textarea } from "../../../components/ui/textarea.tsx";
 import {
   createSessionRequest,
   deleteSessionRequest,
@@ -69,6 +68,7 @@ import {
   sessionsQueryKey,
 } from "./queries.ts";
 import { ProjectMenuContent } from "./project-menu-content.tsx";
+import { RichPromptEditor } from "./rich-prompt-editor.tsx";
 import { createChatMessage, type TranscriptMap } from "./types.ts";
 
 /** 既存セッションからモデル/モード一覧を借りられないときの Select 用プレースホルダー（送信時は undefined を送る） */
@@ -206,6 +206,9 @@ export const ProjectChatPage: FC<{
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [isAttachDialogOpen, setIsAttachDialogOpen] = useState(false);
+  const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
+    readonly string[]
+  >([]);
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
@@ -378,8 +381,13 @@ export const ProjectChatPage: FC<{
     sendPromptMutation.isPending ||
     updateSessionMutation.isPending ||
     uploadAttachmentsMutation.isPending;
-  const isAwaitingAssistantResponse =
-    createSessionMutation.isPending || sendPromptMutation.isPending;
+  const isAssistantRequestPending = createSessionMutation.isPending || sendPromptMutation.isPending;
+  const isEditorDisabled = isAssistantRequestPending;
+  const isAwaitingActiveAssistantResponse =
+    isAssistantRequestPending && awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
+  const isSelectedSessionRunning =
+    !shouldUseDraftSession && selectedSession !== null && selectedSession.status === "running";
+  const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
   const handleMessagesHydrated = useCallback(
     (targetSessionId: string, messages: readonly ChatMessage[]) => {
       setTranscripts((current) => {
@@ -390,7 +398,11 @@ export const ProjectChatPage: FC<{
             [targetSessionId]: messages.map((message) => ({ ...message })),
           };
         }
-        if (messages.length === 0 && isAwaitingAssistantResponse) {
+        if (
+          messages.length === 0 &&
+          isAssistantRequestPending &&
+          awaitingAssistantTranscriptKeys.includes(targetSessionId)
+        ) {
           return current;
         }
         /**
@@ -407,7 +419,7 @@ export const ProjectChatPage: FC<{
         };
       });
     },
-    [isAwaitingAssistantResponse],
+    [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
   const canSend = buildPromptText(prompt, attachmentNames).length > 0 && !isSending;
@@ -541,6 +553,7 @@ export const ProjectChatPage: FC<{
     const userMessage = createChatMessage("user", nextPrompt, [], { kind: "user" });
     const initialTranscriptKey = activeTranscriptKey;
 
+    setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
     setPrompt("");
     setTranscripts((current) =>
       appendTranscriptMessage({
@@ -578,6 +591,10 @@ export const ProjectChatPage: FC<{
         });
 
         activeSessionId = sessionResponse.session.sessionId;
+        setAwaitingAssistantTranscriptKeys([
+          initialTranscriptKey,
+          sessionResponse.session.sessionId,
+        ]);
         upsertSessionInCache(sessionResponse.session);
         setTranscripts((current) =>
           moveTranscript({
@@ -631,8 +648,10 @@ export const ProjectChatPage: FC<{
       setPendingTuningModelId(null);
       setPendingTuningModeId(null);
       setAttachedFiles([]);
+      setAwaitingAssistantTranscriptKeys([]);
     } catch (error) {
       const message = error instanceof Error ? error.message : "failed to send prompt";
+      setAwaitingAssistantTranscriptKeys([]);
       setPrompt(previousPrompt);
       setTranscripts((current) =>
         appendTranscriptMessage({
@@ -738,7 +757,7 @@ export const ProjectChatPage: FC<{
             )}
             <ScrollArea className="min-h-0 flex-1 bg-[color-mix(in_oklab,var(--muted)_12%,var(--background))]">
               <div className="space-y-6 px-3 py-5 md:px-5">
-                {transcript.length === 0 && !isAwaitingAssistantResponse ? (
+                {transcript.length === 0 && !shouldShowThinking ? (
                   <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/60 bg-card/30 px-6 py-12 text-center">
                     <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
                     <p className="text-sm font-medium text-foreground/90">No messages</p>
@@ -747,9 +766,7 @@ export const ProjectChatPage: FC<{
                     </p>
                   </div>
                 ) : null}
-                {transcript.length > 0 &&
-                visibleTranscript.length === 0 &&
-                !isAwaitingAssistantResponse ? (
+                {transcript.length > 0 && visibleTranscript.length === 0 && !shouldShowThinking ? (
                   <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/50 bg-card/20 px-6 py-8 text-center text-sm text-muted-foreground">
                     表示できるメッセージがありません（内部メタのみの可能性）
                   </div>
@@ -792,7 +809,7 @@ export const ProjectChatPage: FC<{
                   );
                 })}
 
-                {isAwaitingAssistantResponse ? (
+                {shouldShowThinking ? (
                   <div
                     className={cn(
                       "flex w-full min-w-0 flex-col",
@@ -830,17 +847,12 @@ export const ProjectChatPage: FC<{
                 )}
               </div>
 
-              <Textarea
-                className="min-h-28 resize-none"
-                onChange={(event) => {
-                  setPrompt(event.target.value);
-                }}
-                onKeyDown={(event) => {
-                  if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
-                    event.preventDefault();
-                    if (canSend) {
-                      void handleSendPrompt();
-                    }
+              <RichPromptEditor
+                disabled={isEditorDisabled}
+                onChange={setPrompt}
+                onSubmit={() => {
+                  if (canSend) {
+                    void handleSendPrompt();
                   }
                 }}
                 placeholder={shouldUseDraftSession ? "Start a new session..." : "Reply..."}

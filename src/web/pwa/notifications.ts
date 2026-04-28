@@ -1,7 +1,9 @@
 import {
   createAssistantNotificationPayload,
+  createSessionPausedNotificationPayload,
   type AssistantNotificationInput,
   type AssistantNotificationPayload,
+  type SessionPausedNotificationInput,
 } from "./notifications.pure.ts";
 
 export type NotificationPermissionState = NotificationPermission | "unsupported";
@@ -49,6 +51,12 @@ export const showAssistantResponseNotification = async (
   input: AssistantNotificationInput,
 ): Promise<boolean> => {
   return showNotification(createAssistantNotificationPayload(input));
+};
+
+export const showSessionPausedNotification = async (
+  input: SessionPausedNotificationInput,
+): Promise<boolean> => {
+  return showNotification(createSessionPausedNotificationPayload(input));
 };
 
 export const showNotificationPreview = async (
