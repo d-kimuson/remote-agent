@@ -3,7 +3,7 @@ import { FolderKanban, Menu, PanelLeftClose, Settings, X } from "lucide-react";
 import {
   createContext,
   useContext,
-  useEffect,
+  useLayoutEffect,
   useState,
   type FC,
   type PropsWithChildren,
@@ -54,7 +54,7 @@ const AppMenuBody: FC<{
   readonly onCollapse?: () => void;
 }> = ({ closeMobileMenu, hasCustomContent, isMobile, onCollapse, setTarget }) => {
   return (
-    <div className="flex h-full min-h-0 w-[86vw] max-w-[360px] flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground shadow-2xl md:w-[340px] md:max-w-none md:shadow-none">
+    <div className="app-sidebar flex h-full min-h-0 w-[86vw] max-w-[360px] flex-col border-r border-sidebar-border text-sidebar-foreground shadow-2xl md:w-[340px] md:max-w-none md:shadow-none">
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
         <div className="flex min-w-0 items-center gap-2">
           <Menu className="size-4 text-muted-foreground" />
@@ -92,7 +92,7 @@ const AppMenuBody: FC<{
 export const AppMenuPortal: FC<PropsWithChildren> = ({ children }) => {
   const context = useContext(AppMenuContext);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     context?.setHasCustomContent(true);
     return () => {
       context?.setHasCustomContent(false);
@@ -146,7 +146,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
         openMenu,
       }}
     >
-      <div className="flex min-h-screen bg-background">
+      <div className="app-shell flex min-h-screen">
         {desktopExpanded ? (
           <aside className="hidden h-screen shrink-0 md:block">
             <AppMenuBody
@@ -188,7 +188,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
           </div>
         </div>
 
-        <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="app-workspace flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
           <AppHeader onOpenMenu={openMenu} />
           <div className="min-h-0 flex-1 overflow-auto">{children}</div>
         </main>

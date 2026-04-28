@@ -491,13 +491,15 @@ export const createSessionStore = ({
     if (initialModeId !== null && initialModeId !== undefined && initialModeId.length > 0) {
       await provider.setMode(initialModeId);
     }
-    if (initialModelId !== null && initialModelId !== undefined && initialModelId.length > 0) {
+    const hasInitialModelTuning =
+      initialModelId !== null && initialModelId !== undefined && initialModelId.length > 0;
+    if (hasInitialModelTuning) {
       await provider.setModel(initialModelId);
     }
 
     if (
       (initialModeId !== null && initialModeId !== undefined && initialModeId.length > 0) ||
-      (initialModelId !== null && initialModelId !== undefined && initialModelId.length > 0)
+      hasInitialModelTuning
     ) {
       session = parse(sessionSummarySchema, {
         ...session,
@@ -719,11 +721,11 @@ export const createSessionStore = ({
       prompt: request.prompt,
     });
 
-    if (request.modelId !== null && request.modelId !== undefined && request.modelId.length > 0) {
-      await entry.provider.setModel(request.modelId);
-    }
     if (request.modeId !== null && request.modeId !== undefined && request.modeId.length > 0) {
       await entry.provider.setMode(request.modeId);
+    }
+    if (request.modelId !== null && request.modelId !== undefined && request.modelId.length > 0) {
+      await entry.provider.setModel(request.modelId);
     }
     if (request.modelId !== undefined || request.modeId !== undefined) {
       entry.session = parse(sessionSummarySchema, {

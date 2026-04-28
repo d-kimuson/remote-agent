@@ -90,7 +90,7 @@ export const ProjectMenuContent: FC<{
                 return (
                   <Link
                     className={cn(
-                      "block rounded-lg border border-l-4 border-sidebar-border bg-background/60 px-3 py-2 transition-colors hover:border-foreground/15 hover:bg-background",
+                      "block rounded-lg border border-l-4 border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70",
                       sessionStatusRowClassName(session.status),
                     )}
                     key={session.sessionId}

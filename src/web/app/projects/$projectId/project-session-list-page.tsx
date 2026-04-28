@@ -45,7 +45,7 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
   return (
     <Link
       className={cn(
-        "flex items-start gap-3 rounded-lg border border-l-4 bg-background/70 px-4 py-3 transition-colors hover:border-foreground/15 hover:bg-background",
+        "app-card-hover flex items-start gap-3 rounded-lg border border-l-4 bg-card/80 px-4 py-3 transition-colors hover:border-foreground/15",
         sessionStatusRowClassName(session.status),
       )}
       params={{ projectId }}
@@ -162,7 +162,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
   };
 
   return (
-    <div className="min-h-full bg-background">
+    <div className="app-page">
       <ProjectMenuContent
         projectId={projectId}
         sessionCount={projectSessions.length}
@@ -212,7 +212,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
 
         <main className="space-y-3">
           {sessions.length === 0 ? (
-            <div className="rounded-lg border border-dashed bg-background/60 px-6 py-14 text-center">
+            <div className="app-panel rounded-lg border-dashed px-6 py-14 text-center">
               <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground" />
               <p className="text-sm font-medium">No sessions found.</p>
             </div>

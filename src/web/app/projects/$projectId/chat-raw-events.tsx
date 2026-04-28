@@ -5,6 +5,8 @@ import type { RawEvent } from "../../../../shared/acp.ts";
 import { cn } from "../../../lib/utils.ts";
 import { AcpToolUseCard } from "./acp-tool-use-card.tsx";
 import { planRawEventsForRender } from "./acp-event-plan.pure.ts";
+import { rawEventClipboardText } from "./chat-block-copy.pure.ts";
+import { CopyBlockButton } from "./copy-block-button.tsx";
 import { filterDisplayableRawEvents } from "./transcript-display.pure.ts";
 
 const MAX_TEXT_LEN = 16_000;
@@ -15,9 +17,10 @@ const truncate = (value: string): string =>
 const MetaBlock: FC<{
   readonly icon: typeof Wrench;
   readonly title: string;
+  readonly copyText: string;
   readonly children: ReactNode;
   readonly className?: string;
-}> = ({ icon: Icon, title, children, className }) => {
+}> = ({ icon: Icon, title, copyText, children, className }) => {
   return (
     <div
       className={cn(
@@ -25,9 +28,12 @@ const MetaBlock: FC<{
         className,
       )}
     >
-      <div className="flex items-center gap-1.5 border-b border-border/35 px-2.5 py-1.5 font-medium text-muted-foreground/90">
-        <Icon className="size-3.5 shrink-0" />
-        <span>{title}</span>
+      <div className="flex items-center gap-2 border-b border-border/35 px-2.5 py-1.5 font-medium text-muted-foreground/90">
+        <div className="flex min-w-0 flex-1 items-center gap-1.5">
+          <Icon className="size-3.5 shrink-0" />
+          <span className="min-w-0 truncate">{title}</span>
+        </div>
+        <CopyBlockButton className="-my-1 opacity-80 hover:opacity-100" text={copyText} />
       </div>
       <div className="px-2.5 py-2">{children}</div>
     </div>
@@ -39,6 +45,7 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
     return (
       <MetaBlock
         className="border-violet-500/20 bg-violet-500/5"
+        copyText={rawEventClipboardText(event)}
         icon={Brain}
         title="思考 (thinking)"
       >
@@ -51,7 +58,11 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
 
   if (event.type === "toolInput") {
     return (
-      <MetaBlock icon={Wrench} title="ツール入力 (tool-input)">
+      <MetaBlock
+        copyText={rawEventClipboardText(event)}
+        icon={Wrench}
+        title="ツール入力 (tool-input)"
+      >
         <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px]">
           {truncate(event.text.length > 0 ? event.text : "（空）")}
         </pre>
@@ -63,6 +74,7 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
     return (
       <MetaBlock
         className="border-sky-500/20 bg-sky-500/5"
+        copyText={rawEventClipboardText(event)}
         icon={SplitSquareVertical}
         title={`ストリーム · ${event.partType}`}
       >
@@ -79,7 +91,7 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
 
   if (event.type === "plan") {
     return (
-      <MetaBlock icon={Sparkles} title="プラン (plan)">
+      <MetaBlock copyText={rawEventClipboardText(event)} icon={Sparkles} title="プラン (plan)">
         <ul className="list-inside list-disc space-y-1 text-[11px]">
           {event.entries.map((entry) => (
             <li className="whitespace-pre-wrap" key={entry}>
@@ -93,7 +105,11 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
 
   if (event.type === "diff") {
     return (
-      <MetaBlock icon={SplitSquareVertical} title={`差分 · ${event.path}`}>
+      <MetaBlock
+        copyText={rawEventClipboardText(event)}
+        icon={SplitSquareVertical}
+        title={`差分 · ${event.path}`}
+      >
         <pre className="max-h-48 overflow-y-auto font-mono text-[11px] text-muted-foreground">
           {truncate(`--- old\n${event.oldText ?? ""}\n--- new\n${event.newText ?? ""}`.trimEnd())}
         </pre>
@@ -103,7 +119,11 @@ const AcpOneLooseEvent: FC<{ readonly event: RawEvent }> = ({ event }) => {
 
   if (event.type === "terminal") {
     return (
-      <MetaBlock icon={TerminalSquare} title="ターミナル (terminal)">
+      <MetaBlock
+        copyText={rawEventClipboardText(event)}
+        icon={TerminalSquare}
+        title="ターミナル (terminal)"
+      >
         <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap break-words font-mono text-[11px]">
           {truncate(event.text)}
         </pre>

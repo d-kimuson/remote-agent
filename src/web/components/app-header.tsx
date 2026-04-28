@@ -70,7 +70,7 @@ const NotificationButton: FC = () => {
       </Button>
 
       {isOpen ? (
-        <div className="absolute top-9 right-0 z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-xl">
+        <div className="app-panel-strong absolute top-9 right-0 z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg text-popover-foreground">
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <div className="min-w-0">
               <p className="text-sm font-semibold">Notifications</p>
@@ -153,7 +153,7 @@ export const AppHeader: FC<{ readonly onOpenMenu: () => void }> = ({ onOpenMenu 
   const projectPathSuffix = location.pathname.endsWith("/sessions") ? "sessions" : "chat";
 
   return (
-    <header className="sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b border-border/50 bg-background/90 px-3 backdrop-blur supports-backdrop-filter:bg-background/75">
+    <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
       <Button
         aria-label="Open menu"
         className="shrink-0"

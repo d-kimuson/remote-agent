@@ -31,7 +31,7 @@ export const ProjectList: FC = () => {
 
   if (projects.length === 0) {
     return (
-      <Card>
+      <Card className="app-panel">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <FolderIcon className="mb-4 size-12 text-muted-foreground" />
           <h3 className="mb-2 text-lg font-medium">No projects yet</h3>
@@ -46,7 +46,7 @@ export const ProjectList: FC = () => {
   return (
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {projects.map((project) => (
-        <Card className="transition-shadow hover:shadow-md" key={project.id}>
+        <Card className="app-panel app-card-hover" key={project.id}>
           <CardHeader>
             <CardTitle className="flex items-start justify-start gap-2">
               <FolderIcon className="size-5 shrink-0" />

@@ -10,6 +10,7 @@ import {
   moveTranscript,
   resolveSelectedSessionId,
   resolveSessionListTitle,
+  shouldShowConversationLoading,
 } from "./chat-state.pure.ts";
 import { createChatMessage } from "./types.ts";
 
@@ -150,5 +151,31 @@ describe("chat-state.pure", () => {
 
     expect(moved["draft"]).toBeUndefined();
     expect(moved["session-1"]?.map((message) => message.text)).toEqual(["hello", "world"]);
+  });
+
+  test("shouldShowConversationLoading only treats missing existing transcripts as loading", () => {
+    expect(
+      shouldShowConversationLoading({
+        isDraftSession: true,
+        transcriptKey: "draft",
+        transcripts: {},
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldShowConversationLoading({
+        isDraftSession: false,
+        transcriptKey: "session-1",
+        transcripts: {},
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldShowConversationLoading({
+        isDraftSession: false,
+        transcriptKey: "session-1",
+        transcripts: { "session-1": [] },
+      }),
+    ).toBe(false);
   });
 });

@@ -1,14 +1,17 @@
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient, useSuspenseQuery } from "@tanstack/react-query";
-import { MessageSquareDashed, Loader2, Paperclip, Send, Trash2 } from "lucide-react";
+import { ArrowDown, Loader2, MessageSquareDashed, Paperclip, Send, Trash2 } from "lucide-react";
 import {
   Suspense,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type FC,
+  type ReactNode,
+  type UIEventHandler,
 } from "react";
 
 import type {
@@ -22,6 +25,7 @@ import type {
 import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
 import { Badge } from "../../../components/ui/badge.tsx";
 import { Button } from "../../../components/ui/button.tsx";
+import { Label } from "../../../components/ui/label.tsx";
 import { ScrollArea } from "../../../components/ui/scroll-area.tsx";
 import {
   Select,
@@ -45,6 +49,8 @@ import {
 import { cn } from "../../../lib/utils.ts";
 import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
 import { AttachFilesDialog } from "./attach-files-dialog.tsx";
+import { chatMessageClipboardText } from "./chat-block-copy.pure.ts";
+import { isNearScrollBottom } from "./chat-scroll.pure.ts";
 import {
   appendTranscriptMessage,
   buildDraftSession,
@@ -53,8 +59,10 @@ import {
   draftSessionTranscriptKey,
   moveTranscript,
   resolveSessionListTitle,
+  shouldShowConversationLoading,
 } from "./chat-state.pure.ts";
 import { ChatRawEvents } from "./chat-raw-events.tsx";
+import { CopyBlockButton } from "./copy-block-button.tsx";
 import {
   filterDisplayableRawEvents,
   shouldDisplayTranscriptMessage,
@@ -138,6 +146,26 @@ const presetLabelFrom = ({
   readonly presets: readonly { readonly id: string; readonly label: string }[];
 }): string => presets.find((preset) => preset.id === presetId)?.label ?? presetId ?? "custom";
 
+const LoadingConversation: FC = () => (
+  <div className="mx-auto flex max-w-md items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-card/35 px-5 py-8 text-sm text-muted-foreground">
+    <Loader2 className="size-4 animate-spin" />
+    <span>会話を読み込んでいます</span>
+  </div>
+);
+
+const FieldControl: FC<{
+  readonly htmlFor: string;
+  readonly label: string;
+  readonly children: ReactNode;
+}> = ({ htmlFor, label, children }) => (
+  <div className="min-w-44 flex-1 space-y-1.5 sm:flex-none">
+    <Label className="px-1 text-[11px] font-medium text-muted-foreground" htmlFor={htmlFor}>
+      {label}
+    </Label>
+    {children}
+  </div>
+);
+
 /** useSuspenseQuery 必須のため、下書き時のみマウントしてカタログを state に反映する。 */
 const DraftAgentModelCatalogLoader: FC<{
   readonly projectId: string;
@@ -167,7 +195,7 @@ const SessionMessagesHydrator: FC<{
     queryFn: () => fetchSessionMessages(sessionId),
   });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     onHydrated(sessionId, data.messages);
   }, [data.messages, dataUpdatedAt, onHydrated, sessionId]);
 
@@ -212,6 +240,11 @@ export const ProjectChatPage: FC<{
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
+  const chatContentRef = useRef<HTMLDivElement | null>(null);
+  const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
+  const shouldStickToBottomRef = useRef(true);
+  const lastActiveTranscriptKeyRef = useRef<string | null>(null);
+  const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
@@ -292,22 +325,37 @@ export const ProjectChatPage: FC<{
       availableModes: modesFromSession ? t.availableModes : (c?.availableModes ?? t.availableModes),
       currentModelId:
         (modelsFromSession ? t.currentModelId : c?.currentModelId) ?? t.currentModelId ?? null,
-      currentModeId:
-        (modesFromSession ? t.currentModeId : c?.currentModeId) ?? t.currentModeId ?? null,
+      currentModeId: (modesFromSession ? t.currentModeId : c?.currentModeId) ?? t.currentModeId,
     };
   }, [modelModeTemplateSession, probedModelCatalog]);
 
   const draftModelSourceHasList = draftModelModeListSource.availableModels.length > 0;
   const draftModeSourceHasList = draftModelModeListSource.availableModes.length > 0;
 
-  const activeTranscriptKey = shouldUseDraftSession ? draftSessionTranscriptKey : sessionId;
+  const activeTranscriptKey = sessionId ?? draftSessionTranscriptKey;
 
   const transcript = transcripts[activeTranscriptKey] ?? [];
+  const isTranscriptHydrating = shouldShowConversationLoading({
+    isDraftSession: shouldUseDraftSession,
+    transcriptKey: activeTranscriptKey,
+    transcripts,
+  });
   const mergedForDisplay = mergeToolCallResultMessages(transcript);
   const visibleTranscript = mergedForDisplay.filter((message) => {
     const d = filterDisplayableRawEvents(message.rawEvents);
     return shouldDisplayTranscriptMessage(message, d);
   });
+  const chatScrollSignature = visibleTranscript
+    .map((message) =>
+      [
+        message.id,
+        message.updatedAt ?? "",
+        message.text.length,
+        message.rawEvents.length,
+        message.rawEvents.map((event) => event.rawText.length).join("."),
+      ].join(":"),
+    )
+    .join("|");
   const projectUrl = `/projects/${projectId}`;
 
   const navigateToSession = (
@@ -353,8 +401,8 @@ export const ProjectChatPage: FC<{
   const sendPromptMutation = useMutation({
     mutationFn: ({
       attachmentIds,
-      modeId: tuningModeId,
       modelId: tuningModelId,
+      modeId: tuningModeId,
       sessionId: targetSessionId,
       nextPrompt,
     }: {
@@ -366,8 +414,8 @@ export const ProjectChatPage: FC<{
     }) =>
       sendPromptRequest(targetSessionId, {
         attachmentIds,
-        modeId: tuningModeId,
         modelId: tuningModelId,
+        modeId: tuningModeId,
         prompt: nextPrompt,
       }),
   });
@@ -553,6 +601,8 @@ export const ProjectChatPage: FC<{
     const userMessage = createChatMessage("user", nextPrompt, [], { kind: "user" });
     const initialTranscriptKey = activeTranscriptKey;
 
+    shouldStickToBottomRef.current = true;
+    setIsChatFollowingTail(true);
     setAwaitingAssistantTranscriptKeys([initialTranscriptKey]);
     setPrompt("");
     setTranscripts((current) =>
@@ -687,8 +737,45 @@ export const ProjectChatPage: FC<{
   const firstUserTextInTranscript = (targetSessionId: string) =>
     transcripts[targetSessionId]?.find((message) => message.role === "user")?.text ?? null;
 
+  const handleChatScroll: UIEventHandler<HTMLDivElement> = (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (target.dataset["slot"] !== "scroll-area-viewport") {
+      return;
+    }
+
+    const nextIsFollowing = isNearScrollBottom({
+      clientHeight: target.clientHeight,
+      scrollHeight: target.scrollHeight,
+      scrollTop: target.scrollTop,
+    });
+    shouldStickToBottomRef.current = nextIsFollowing;
+    setIsChatFollowingTail(nextIsFollowing);
+  };
+
+  const handleJumpToLatest = () => {
+    shouldStickToBottomRef.current = true;
+    setIsChatFollowingTail(true);
+    scrollAnchorRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
+  };
+
+  useLayoutEffect(() => {
+    const didSessionChange = lastActiveTranscriptKeyRef.current !== activeTranscriptKey;
+    if (didSessionChange) {
+      lastActiveTranscriptKeyRef.current = activeTranscriptKey;
+      shouldStickToBottomRef.current = true;
+      setIsChatFollowingTail(true);
+    }
+    if (!shouldStickToBottomRef.current) {
+      return;
+    }
+    scrollAnchorRef.current?.scrollIntoView({ block: "end" });
+  }, [activeTranscriptKey, chatScrollSignature, shouldShowThinking, transcript.length]);
+
   return (
-    <div className="h-full bg-background">
+    <div className="app-page h-full">
       {shouldUseDraftSession && (
         <Suspense fallback={null}>
           <DraftAgentModelCatalogLoader
@@ -725,7 +812,7 @@ export const ProjectChatPage: FC<{
         </header>
 
         <section className="min-h-0 flex-1 pt-4">
-          <div className="flex h-full min-h-0 flex-col rounded-lg border bg-background">
+          <div className="app-panel flex h-full min-h-0 flex-col overflow-hidden rounded-lg">
             {shouldUseDraftSession ? null : (
               <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3">
                 <h2 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight">
@@ -755,85 +842,118 @@ export const ProjectChatPage: FC<{
                 ) : null}
               </div>
             )}
-            <ScrollArea className="min-h-0 flex-1 bg-[color-mix(in_oklab,var(--muted)_12%,var(--background))]">
-              <div className="space-y-6 px-3 py-5 md:px-5">
-                {transcript.length === 0 && !shouldShowThinking ? (
-                  <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/60 bg-card/30 px-6 py-12 text-center">
-                    <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
-                    <p className="text-sm font-medium text-foreground/90">No messages</p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      下の欄に入力して会話を始められます
-                    </p>
-                  </div>
-                ) : null}
-                {transcript.length > 0 && visibleTranscript.length === 0 && !shouldShowThinking ? (
-                  <div className="mx-auto max-w-md rounded-2xl border border-dashed border-border/50 bg-card/20 px-6 py-8 text-center text-sm text-muted-foreground">
-                    表示できるメッセージがありません（内部メタのみの可能性）
-                  </div>
-                ) : null}
+            <div className="relative min-h-0 flex-1">
+              <ScrollArea
+                className="app-transcript-surface h-full"
+                onScrollCapture={handleChatScroll}
+              >
+                <div className="space-y-6 px-3 py-5 md:px-5" ref={chatContentRef}>
+                  {isTranscriptHydrating ? <LoadingConversation /> : null}
+                  {!isTranscriptHydrating && transcript.length === 0 && !shouldShowThinking ? (
+                    <div className="mx-auto max-w-md rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
+                      <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
+                      <p className="text-sm font-medium text-foreground/90">No messages</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        下の欄に入力して会話を始められます
+                      </p>
+                    </div>
+                  ) : null}
+                  {!isTranscriptHydrating &&
+                  transcript.length > 0 &&
+                  visibleTranscript.length === 0 &&
+                  !shouldShowThinking ? (
+                    <div className="mx-auto max-w-md rounded-lg border border-dashed border-border/60 bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
+                      表示できるメッセージがありません（内部メタのみの可能性）
+                    </div>
+                  ) : null}
 
-                {visibleTranscript.map((message) => {
-                  const isUser = message.role === "user";
-                  return (
-                    <div
-                      className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
-                      key={message.id}
-                    >
+                  {visibleTranscript.map((message) => {
+                    const isUser = message.role === "user";
+                    return (
                       <div
-                        className={cn(
-                          "flex min-w-0 flex-col gap-1",
-                          CONVERSATION_COLUMN_CLASS,
-                          isUser ? "items-stretch" : "items-stretch",
-                        )}
+                        className={cn("flex w-full", isUser ? "justify-end" : "justify-start")}
+                        key={message.id}
                       >
-                        <time
+                        <div
                           className={cn(
-                            "select-none text-xs tabular-nums text-muted-foreground",
-                            isUser ? "w-full pr-0.5 text-right" : "w-full pl-0.5 text-left",
+                            "flex min-w-0 flex-col gap-1",
+                            CONVERSATION_COLUMN_CLASS,
+                            isUser ? "items-stretch" : "items-stretch",
                           )}
-                          dateTime={message.createdAt}
                         >
-                          {formatDateTime(message.createdAt)}
-                        </time>
-                        {isUser ? (
-                          <div className="w-full rounded-2xl border border-border/60 bg-slate-50 px-3 py-3 text-foreground shadow-sm dark:bg-slate-900/50">
-                            <TranscriptMessageBody message={message} />
+                          <div
+                            className={cn(
+                              "flex w-full items-center gap-1",
+                              isUser ? "justify-end" : "justify-start",
+                            )}
+                          >
+                            {!isUser ? (
+                              <CopyBlockButton text={chatMessageClipboardText(message)} />
+                            ) : null}
+                            <time
+                              className="select-none text-xs tabular-nums text-muted-foreground"
+                              dateTime={message.createdAt}
+                            >
+                              {formatDateTime(message.createdAt)}
+                            </time>
+                            {isUser ? (
+                              <CopyBlockButton text={chatMessageClipboardText(message)} />
+                            ) : null}
                           </div>
-                        ) : (
-                          <div className="w-full min-w-0 text-card-foreground">
-                            <TranscriptMessageBody message={message} />
-                          </div>
-                        )}
+                          {isUser ? (
+                            <div className="app-user-message w-full rounded-lg border px-3 py-3 text-foreground shadow-sm">
+                              <TranscriptMessageBody message={message} />
+                            </div>
+                          ) : (
+                            <div className="w-full min-w-0 text-card-foreground">
+                              <TranscriptMessageBody message={message} />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {shouldShowThinking ? (
+                    <div
+                      className={cn(
+                        "flex w-full min-w-0 flex-col",
+                        CONVERSATION_COLUMN_CLASS,
+                        "pl-0.5",
+                      )}
+                      role="status"
+                    >
+                      <div className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border/60 bg-card/70 px-4 py-3 text-sm text-muted-foreground shadow-sm">
+                        <Loader2
+                          aria-hidden
+                          className="size-4 shrink-0 animate-spin text-muted-foreground"
+                        />
+                        <span>
+                          <span className="font-medium text-foreground">{thinkingModelLabel}</span>
+                          <span> が考えています…</span>
+                        </span>
                       </div>
                     </div>
-                  );
-                })}
+                  ) : null}
+                  <div aria-hidden ref={scrollAnchorRef} />
+                </div>
+              </ScrollArea>
+              {!isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking) ? (
+                <Button
+                  aria-label="Jump to latest message"
+                  className="absolute right-4 bottom-4 size-9 rounded-full border bg-background/90 shadow-md backdrop-blur"
+                  onClick={handleJumpToLatest}
+                  size="icon"
+                  title="最新へ移動"
+                  type="button"
+                  variant="outline"
+                >
+                  <ArrowDown className="size-4" />
+                </Button>
+              ) : null}
+            </div>
 
-                {shouldShowThinking ? (
-                  <div
-                    className={cn(
-                      "flex w-full min-w-0 flex-col",
-                      CONVERSATION_COLUMN_CLASS,
-                      "pl-0.5",
-                    )}
-                    role="status"
-                  >
-                    <div className="flex w-full items-center gap-2.5 rounded-2xl border border-dashed border-border/50 bg-card/50 px-4 py-3 text-sm text-muted-foreground shadow-sm">
-                      <Loader2
-                        aria-hidden
-                        className="size-4 shrink-0 animate-spin text-muted-foreground"
-                      />
-                      <span>
-                        <span className="font-medium text-foreground">{thinkingModelLabel}</span>
-                        <span> が考えています…</span>
-                      </span>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </ScrollArea>
-
-            <div className="border-t bg-background p-4">
+            <div className="border-t bg-card/80 p-4">
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 {attachedFiles.length === 0 ? (
                   <span className="text-xs text-muted-foreground">No attached files</span>
@@ -863,7 +983,7 @@ export const ProjectChatPage: FC<{
                 <div className="flex flex-1 flex-wrap items-center gap-2">
                   {shouldUseDraftSession ? (
                     <>
-                      <div className="min-w-44 flex-1 sm:flex-none">
+                      <FieldControl htmlFor="draft-provider-select" label="Provider">
                         <Select
                           onValueChange={(value) => {
                             if (value !== null) {
@@ -872,7 +992,7 @@ export const ProjectChatPage: FC<{
                           }}
                           value={activePresetId}
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full" id="draft-provider-select">
                             <SelectValue placeholder="Provider" />
                           </SelectTrigger>
                           <SelectContent>
@@ -883,8 +1003,8 @@ export const ProjectChatPage: FC<{
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="min-w-44 flex-1 sm:flex-none">
+                      </FieldControl>
+                      <FieldControl htmlFor="draft-model-select" label="Model">
                         <Select
                           onValueChange={(value) => {
                             if (!draftModelSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
@@ -904,6 +1024,7 @@ export const ProjectChatPage: FC<{
                           <SelectTrigger
                             className="w-full"
                             disabled={!draftModelSourceHasList}
+                            id="draft-model-select"
                             title={
                               !draftModelSourceHasList
                                 ? "エージェントに問い合わせて一覧を取得中か、利用可能なモデルがありません"
@@ -926,8 +1047,8 @@ export const ProjectChatPage: FC<{
                             )}
                           </SelectContent>
                         </Select>
-                      </div>
-                      <div className="min-w-44 flex-1 sm:flex-none">
+                      </FieldControl>
+                      <FieldControl htmlFor="draft-mode-select" label="Mode">
                         <Select
                           onValueChange={(value) => {
                             if (!draftModeSourceHasList || value === DRAFT_FALLBACK_SELECT_VALUE) {
@@ -947,13 +1068,14 @@ export const ProjectChatPage: FC<{
                           <SelectTrigger
                             className="w-full"
                             disabled={!draftModeSourceHasList}
+                            id="draft-mode-select"
                             title={
                               !draftModeSourceHasList
-                                ? "エージェントに問い合わせて一覧を取得中か、利用可能なモードがありません"
+                                ? "エージェントに問い合わせて一覧を取得中か、利用可能な mode がありません"
                                 : undefined
                             }
                           >
-                            <SelectValue placeholder="Effort" />
+                            <SelectValue placeholder="Mode" />
                           </SelectTrigger>
                           <SelectContent>
                             {draftModeSourceHasList ? (
@@ -969,11 +1091,11 @@ export const ProjectChatPage: FC<{
                             )}
                           </SelectContent>
                         </Select>
-                      </div>
+                      </FieldControl>
                     </>
                   ) : selectedSession !== null ? (
                     <>
-                      <div className="min-w-44 flex-1 sm:flex-none">
+                      <FieldControl htmlFor="session-model-select" label="Model">
                         <Select
                           onValueChange={(value) => {
                             if (value !== null) {
@@ -988,7 +1110,7 @@ export const ProjectChatPage: FC<{
                                 undefined)
                           }
                         >
-                          <SelectTrigger className="w-full">
+                          <SelectTrigger className="w-full" id="session-model-select">
                             <SelectValue placeholder="Model" />
                           </SelectTrigger>
                           <SelectContent>
@@ -999,33 +1121,36 @@ export const ProjectChatPage: FC<{
                             ))}
                           </SelectContent>
                         </Select>
-                      </div>
-
-                      <div className="min-w-44 flex-1 sm:flex-none">
-                        <Select
-                          onValueChange={(value) => {
-                            if (value !== null) {
-                              void handleUpdateSession({ modeId: value });
+                      </FieldControl>
+                      {selectedSession.availableModes.length > 0 ? (
+                        <FieldControl htmlFor="session-mode-select" label="Mode">
+                          <Select
+                            onValueChange={(value) => {
+                              if (value !== null) {
+                                void handleUpdateSession({ modeId: value });
+                              }
+                            }}
+                            value={
+                              selectedSession.isActive
+                                ? (selectedSession.currentModeId ?? undefined)
+                                : (pendingTuningModeId ??
+                                  selectedSession.currentModeId ??
+                                  undefined)
                             }
-                          }}
-                          value={
-                            selectedSession.isActive
-                              ? (selectedSession.currentModeId ?? undefined)
-                              : (pendingTuningModeId ?? selectedSession.currentModeId ?? undefined)
-                          }
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue placeholder="Effort" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {selectedSession.availableModes.map((mode) => (
-                              <SelectItem key={mode.id} value={mode.id}>
-                                {mode.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
+                          >
+                            <SelectTrigger className="w-full" id="session-mode-select">
+                              <SelectValue placeholder="Mode" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {selectedSession.availableModes.map((mode) => (
+                                <SelectItem key={mode.id} value={mode.id}>
+                                  {mode.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </FieldControl>
+                      ) : null}
                     </>
                   ) : null}
 

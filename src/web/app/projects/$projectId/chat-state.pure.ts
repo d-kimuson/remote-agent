@@ -133,6 +133,29 @@ export const appendTranscriptMessage = ({
   [transcriptKey]: [...(transcripts[transcriptKey] ?? []), message],
 });
 
+export const hasHydratedTranscript = ({
+  transcriptKey,
+  transcripts,
+}: {
+  readonly transcriptKey: string;
+  readonly transcripts: TranscriptMap;
+}): boolean => Object.hasOwn(transcripts, transcriptKey);
+
+export const shouldShowConversationLoading = ({
+  isDraftSession,
+  transcriptKey,
+  transcripts,
+}: {
+  readonly isDraftSession: boolean;
+  readonly transcriptKey: string;
+  readonly transcripts: TranscriptMap;
+}): boolean =>
+  !isDraftSession &&
+  !hasHydratedTranscript({
+    transcriptKey,
+    transcripts,
+  });
+
 export const moveTranscript = ({
   from,
   to,

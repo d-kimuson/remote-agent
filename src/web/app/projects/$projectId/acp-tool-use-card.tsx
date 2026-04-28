@@ -5,6 +5,8 @@ import { Card, CardContent } from "../../../components/ui/card.tsx";
 import { cn } from "../../../lib/utils.ts";
 import type { AcpToolMergeItem } from "./acp-event-plan.pure.ts";
 import { resolveAcpToolCardTitle } from "./acp-tool-display-title.pure.ts";
+import { toolBlockClipboardText } from "./chat-block-copy.pure.ts";
+import { CopyBlockButton } from "./copy-block-button.tsx";
 
 const MAX_LEN = 32_000;
 const take = (s: string) => (s.length > MAX_LEN ? `${s.slice(0, MAX_LEN)}…` : s);
@@ -19,6 +21,7 @@ export const AcpToolUseCard: FC<{
   }
   const title = resolveAcpToolCardTitle({ call, result, error });
   const [open, setOpen] = useState(false);
+  const copyText = toolBlockClipboardText(item);
 
   return (
     <Card
@@ -27,33 +30,36 @@ export const AcpToolUseCard: FC<{
         className,
       )}
     >
-      <button
-        aria-expanded={open}
-        className={cn(
-          "inline-flex w-full min-w-0 items-center justify-between gap-2 border-0 border-b border-blue-200/70 bg-transparent px-3 py-2.5 text-left font-inherit transition-colors hover:bg-blue-100/50 sm:px-3.5 dark:border-blue-800/50 dark:hover:bg-blue-900/20",
-        )}
-        onClick={() => {
-          setOpen((o) => !o);
-        }}
-        type="button"
-      >
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <Wrench className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
-          <span
-            className="min-w-0 truncate text-sm font-medium leading-snug text-foreground"
-            title={title}
-          >
-            {title}
-          </span>
-        </div>
-        <ChevronDown
+      <div className="flex items-center gap-1 border-b border-blue-200/70 pr-2 dark:border-blue-800/50">
+        <button
+          aria-expanded={open}
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            open ? "rotate-180" : "",
+            "inline-flex min-w-0 flex-1 items-center justify-between gap-2 border-0 bg-transparent px-3 py-2.5 text-left font-inherit transition-colors hover:bg-blue-100/50 sm:px-3.5 dark:hover:bg-blue-900/20",
           )}
-          aria-hidden
-        />
-      </button>
+          onClick={() => {
+            setOpen((o) => !o);
+          }}
+          type="button"
+        >
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <Wrench className="size-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span
+              className="min-w-0 truncate text-sm font-medium leading-snug text-foreground"
+              title={title}
+            >
+              {title}
+            </span>
+          </div>
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              open ? "rotate-180" : "",
+            )}
+            aria-hidden
+          />
+        </button>
+        <CopyBlockButton className="opacity-80 hover:opacity-100" text={copyText} />
+      </div>
       {open ? (
         <CardContent className="space-y-3 border-0 py-3">
           {call !== null ? (

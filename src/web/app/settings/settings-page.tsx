@@ -104,7 +104,7 @@ export const SettingsPage: FC = () => {
 
   return (
     <div className="space-y-6">
-      <Card>
+      <Card className="app-panel">
         <CardHeader>
           <CardTitle>Appearance</CardTitle>
           <CardDescription>UI の配色テーマを設定します。</CardDescription>
@@ -140,7 +140,7 @@ export const SettingsPage: FC = () => {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="app-panel">
         <CardHeader>
           <CardTitle>Notifications</CardTitle>
           <CardDescription>
