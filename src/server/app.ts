@@ -6,7 +6,7 @@ import { routes } from "./routes.ts";
 export const honoApp = new Hono();
 honoApp.route("/api", routes);
 honoApp.get(
-  "/openapi.json",
+  "/api/openapi.json",
   openAPIRouteHandler(honoApp, {
     documentation: {
       info: {
