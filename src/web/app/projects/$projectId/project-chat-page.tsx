@@ -25,14 +25,17 @@ import {
 } from "react";
 import { toast } from "sonner";
 
-import type {
-  AgentPreset,
-  AgentModelCatalogResponse,
-  ChatMessage,
-  ChatMessageKind,
-  SessionSummary,
-  SessionsResponse,
-  UploadedAttachment,
+import {
+  parseAcpSseEventJson,
+  type AcpSseEvent,
+  type AgentPreset,
+  type AgentModelCatalogResponse,
+  type ChatMessage,
+  type ChatMessageKind,
+  type SessionMessagesResponse,
+  type SessionSummary,
+  type SessionsResponse,
+  type UploadedAttachment,
 } from "../../../../shared/acp.ts";
 import { ChatMarkdown } from "../../../components/chat-markdown.tsx";
 import { Button } from "../../../components/ui/button.tsx";
@@ -60,6 +63,7 @@ import {
   updateSessionRequest,
   uploadAttachmentsRequest,
 } from "../../../lib/api/acp.ts";
+import { ACP_SSE_BROWSER_EVENT } from "../../../lib/api/acp-sse-browser-event.ts";
 import { cn } from "../../../lib/utils.ts";
 import { showAssistantResponseNotification } from "../../../pwa/notifications.ts";
 import {
@@ -541,15 +545,15 @@ export const ProjectChatPage: FC<{
     .join("|");
   const projectUrl = `/projects/${projectId}`;
 
-  const navigateToSession = (
-    nextSessionId: string | null,
-    options: { readonly replace?: boolean } = {},
-  ) => {
-    void navigate({
-      search: { "session-id": nextSessionId ?? undefined },
-      replace: options.replace === true,
-    });
-  };
+  const navigateToSession = useCallback(
+    (nextSessionId: string | null, options: { readonly replace?: boolean } = {}) => {
+      void navigate({
+        search: { "session-id": nextSessionId ?? undefined },
+        replace: options.replace === true,
+      });
+    },
+    [navigate],
+  );
 
   useEffect(() => {
     setDraftModelId(null);
@@ -645,6 +649,51 @@ export const ProjectChatPage: FC<{
   const isSelectedSessionRunning =
     !shouldUseDraftSession && selectedSession !== null && selectedSession.status === "running";
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
+  useEffect(() => {
+    if (!shouldUseDraftSession || !isAssistantRequestPending) {
+      return;
+    }
+
+    const onAcpSseEvent = (event: Event) => {
+      if (!(event instanceof CustomEvent)) {
+        return;
+      }
+      const detail: unknown = event.detail;
+      const parsed = (() => {
+        try {
+          return parseAcpSseEventJson(JSON.stringify(detail));
+        } catch {
+          return null;
+        }
+      })();
+      if (parsed === null) {
+        return;
+      }
+      const sseEvent: AcpSseEvent = parsed;
+      if (sseEvent.type === "agent_catalog_updated" || sseEvent.type === "session_removed") {
+        return;
+      }
+      const nextSessionId = sseEvent.sessionId;
+      setAwaitingAssistantTranscriptKeys((current) =>
+        current.includes(nextSessionId) ? current : [...current, nextSessionId],
+      );
+      setTranscripts((current) =>
+        current[nextSessionId] === undefined
+          ? moveTranscript({
+              from: draftSessionTranscriptKey,
+              to: nextSessionId,
+              transcripts: current,
+            })
+          : current,
+      );
+      navigateToSession(nextSessionId);
+    };
+
+    window.addEventListener(ACP_SSE_BROWSER_EVENT, onAcpSseEvent);
+    return () => {
+      window.removeEventListener(ACP_SSE_BROWSER_EVENT, onAcpSseEvent);
+    };
+  }, [isAssistantRequestPending, navigateToSession, shouldUseDraftSession]);
   const handleMessagesHydrated = useCallback(
     (targetSessionId: string, messages: readonly ChatMessage[]) => {
       setTranscripts((current) => {
@@ -729,6 +778,21 @@ export const ProjectChatPage: FC<{
       sessions.some((entry) => entry.sessionId === session.sessionId)
         ? sessions.map((entry) => (entry.sessionId === session.sessionId ? session : entry))
         : [session, ...sessions],
+    );
+  };
+
+  const appendSessionMessageInCache = (targetSessionId: string, message: ChatMessage) => {
+    queryClient.setQueryData<SessionMessagesResponse>(
+      sessionMessagesQueryKey(targetSessionId),
+      (current) => {
+        if (current === undefined) {
+          return { messages: [message] };
+        }
+        if (current.messages.some((entry) => entry.id === message.id)) {
+          return current;
+        }
+        return { messages: [...current.messages, message] };
+      },
     );
   };
 
@@ -930,6 +994,7 @@ export const ProjectChatPage: FC<{
       }
 
       const resolvedActiveSessionId = activeSessionId;
+      appendSessionMessageInCache(resolvedActiveSessionId, userMessage);
       const inactiveTuning: { modelId?: string; modeId?: string } = {};
       if (sessionForTuning !== null && !sessionForTuning.isActive) {
         const modelEffective = pendingTuningModelId ?? sessionForTuning.currentModelId ?? null;

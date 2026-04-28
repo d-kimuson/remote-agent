@@ -39,6 +39,7 @@ export type PromptStreamPersistence = {
     readonly rawEvents: readonly RawEvent[];
     readonly metadataJson: string;
     readonly updatedAt: string;
+    readonly notify?: "messages_updated" | "none";
   }) => Promise<void>;
 };
 
@@ -77,8 +78,18 @@ export const collectPromptStream = async (input: {
   readonly sessionId: string;
   readonly now: () => string;
   readonly persistence: PromptStreamPersistence;
+  readonly onTextDelta?: (input: {
+    readonly sessionId: string;
+    readonly message: ChatMessage;
+    readonly delta: string;
+  }) => void;
+  readonly onReasoningDelta?: (input: {
+    readonly sessionId: string;
+    readonly message: ChatMessage;
+    readonly delta: string;
+  }) => void;
 }): Promise<CollectPromptStreamResult> => {
-  const { provider, prompt, sessionId, now, persistence } = input;
+  const { provider, prompt, sessionId, now, persistence, onTextDelta, onReasoningDelta } = input;
 
   const result = streamText({
     includeRawChunks: true,
@@ -110,8 +121,13 @@ export const collectPromptStream = async (input: {
 
   const updateStreamRow = async (
     streamPartId: string,
-    patch: { text: string; rawEvents: readonly RawEvent[]; metadataJson?: string },
-  ): Promise<void> => {
+    patch: {
+      text: string;
+      rawEvents: readonly RawEvent[];
+      metadataJson?: string;
+      notify?: "messages_updated" | "none";
+    },
+  ): Promise<ChatMessage | null> => {
     const t = now();
     await persistence.updateByStreamPartId({
       sessionId,
@@ -120,26 +136,29 @@ export const collectPromptStream = async (input: {
       rawEvents: patch.rawEvents,
       metadataJson: patch.metadataJson ?? "{}",
       updatedAt: t,
+      notify: patch.notify,
     });
     const messageId = streamMessageIds.get(streamPartId);
     if (messageId === undefined) {
-      return;
+      return null;
     }
     const idx = assistantSegmentMessages.findIndex((m) => m.id === messageId);
     if (idx === -1) {
-      return;
+      return null;
     }
     const prev = assistantSegmentMessages[idx];
     if (prev === undefined) {
-      return;
+      return null;
     }
-    assistantSegmentMessages[idx] = {
+    const nextMessage = {
       ...prev,
       text: patch.text,
       rawEvents: [...patch.rawEvents],
       updatedAt: t,
       metadataJson: patch.metadataJson ?? prev.metadataJson,
     };
+    assistantSegmentMessages[idx] = nextMessage;
+    return nextMessage;
   };
 
   for await (const part of result.fullStream) {
@@ -168,7 +187,14 @@ export const collectPromptStream = async (input: {
         const next = prev + part.text;
         streamBuffers.set(key, next);
         aggregatedText.value += part.text;
-        await updateStreamRow(streamPartIdForRow(part.id), { text: next, rawEvents: [] });
+        const message = await updateStreamRow(streamPartIdForRow(part.id), {
+          text: next,
+          rawEvents: [],
+          notify: "none",
+        });
+        if (message !== null) {
+          onTextDelta?.({ sessionId, message, delta: part.text });
+        }
         break;
       }
       case "text-end": {
@@ -208,10 +234,14 @@ export const collectPromptStream = async (input: {
         const prev = streamBuffers.get(key) ?? "";
         const next = prev + part.text;
         streamBuffers.set(key, next);
-        await updateStreamRow(streamPartIdForRow(part.id), {
+        const message = await updateStreamRow(streamPartIdForRow(part.id), {
           text: next,
           rawEvents: [],
+          notify: "none",
         });
+        if (message !== null) {
+          onReasoningDelta?.({ sessionId, message, delta: part.text });
+        }
         break;
       }
       case "reasoning-end": {
@@ -261,7 +291,11 @@ export const collectPromptStream = async (input: {
         const prev = streamBuffers.get(key) ?? "";
         const next = prev + part.delta;
         streamBuffers.set(key, next);
-        await updateStreamRow(streamPartIdForRow(part.id), { text: next, rawEvents: [] });
+        await updateStreamRow(streamPartIdForRow(part.id), {
+          text: next,
+          rawEvents: [],
+          notify: "none",
+        });
         break;
       }
       case "tool-input-end": {

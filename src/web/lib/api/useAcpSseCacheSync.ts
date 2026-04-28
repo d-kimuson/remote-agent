@@ -6,6 +6,7 @@ import {
   type AcpSseEvent,
   parseAcpSseEventJson,
   type ProjectsResponse,
+  type SessionMessagesResponse,
   type SessionStatus,
   type SessionSummary,
   type SessionsResponse,
@@ -19,9 +20,23 @@ import {
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from "../../app/projects/$projectId/queries.ts";
+import { dispatchAcpSseBrowserEvent } from "./acp-sse-browser-event.ts";
+import { applySessionStreamDeltaToMessages } from "./acp-sse-cache.pure.ts";
 
 /** ACP のストリーミングで SSE が連打されるため、invalidate の間隔を空ける */
 const ACP_SSE_INVALIDATE_DEBOUNCE_MS = 300;
+
+const applyTextDelta = (queryClient: QueryClient, event: AcpSseEvent): boolean => {
+  if (event.type !== "session_text_delta" && event.type !== "session_reasoning_delta") {
+    return false;
+  }
+
+  queryClient.setQueryData<SessionMessagesResponse>(
+    sessionMessagesQueryKey(event.sessionId),
+    (current) => applySessionStreamDeltaToMessages(current, event),
+  );
+  return true;
+};
 
 const mergeEventToPending = (
   pending: {
@@ -180,7 +195,8 @@ const flushPending = async (
     }
   }
   for (const sessionId of work.messageSessionIds) {
-    void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
+    const queryKey = sessionMessagesQueryKey(sessionId);
+    void queryClient.invalidateQueries({ queryKey, refetchType: "all" });
   }
   for (const key of work.catalogUpdates) {
     if (key.length > 0) {
@@ -237,12 +253,16 @@ export const useAcpSseCacheSync = (): void => {
       } catch {
         return;
       }
+      dispatchAcpSseBrowserEvent(event);
+      if (applyTextDelta(queryClient, event)) {
+        return;
+      }
       mergeEventToPending(pending, event, knownStatuses, statusFromCache);
       scheduleFlush();
     };
-    source.addEventListener("message", onMessage);
+    source.onmessage = onMessage;
     return () => {
-      source.removeEventListener("message", onMessage);
+      source.onmessage = null;
       source.close();
       if (timerRef.current !== undefined) {
         clearTimeout(timerRef.current);

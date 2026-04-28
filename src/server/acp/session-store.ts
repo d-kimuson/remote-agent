@@ -436,7 +436,9 @@ export const createSessionStore = ({
             eq(sessionMessagesTable.streamPartId, input.streamPartId),
           ),
         );
-      emitAcpSse({ type: "session_messages_updated", sessionId: input.sessionId });
+      if (input.notify !== "none") {
+        emitAcpSse({ type: "session_messages_updated", sessionId: input.sessionId });
+      }
     },
   };
 
@@ -761,6 +763,38 @@ export const createSessionStore = ({
           sessionId,
           now: () => new Date().toISOString(),
           persistence: streamPersistence,
+          onTextDelta: ({ sessionId: deltaSessionId, message, delta }) => {
+            if (message.streamPartId === null || message.streamPartId === undefined) {
+              return;
+            }
+            emitAcpSse({
+              type: "session_text_delta",
+              sessionId: deltaSessionId,
+              messageId: message.id,
+              streamPartId: message.streamPartId,
+              delta,
+              text: message.text,
+              createdAt: message.createdAt,
+              updatedAt: message.updatedAt ?? message.createdAt,
+              metadataJson: message.metadataJson,
+            });
+          },
+          onReasoningDelta: ({ sessionId: deltaSessionId, message, delta }) => {
+            if (message.streamPartId === null || message.streamPartId === undefined) {
+              return;
+            }
+            emitAcpSse({
+              type: "session_reasoning_delta",
+              sessionId: deltaSessionId,
+              messageId: message.id,
+              streamPartId: message.streamPartId,
+              delta,
+              text: message.text,
+              createdAt: message.createdAt,
+              updatedAt: message.updatedAt ?? message.createdAt,
+              metadataJson: message.metadataJson,
+            });
+          },
         });
 
         return {
