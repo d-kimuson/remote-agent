@@ -8,7 +8,6 @@ import { Badge } from "../../../components/ui/badge.tsx";
 import { Button, buttonVariants } from "../../../components/ui/button.tsx";
 import { Input } from "../../../components/ui/input.tsx";
 import {
-  fetchAppInfo,
   fetchAgentProviders,
   fetchProject,
   fetchResumableSessions,
@@ -16,15 +15,8 @@ import {
   loadSessionRequest,
 } from "../../../lib/api/acp.ts";
 import { cn } from "../../../lib/utils.ts";
-import { defaultPresetId, resolveSessionListTitle } from "./chat-state.pure.ts";
+import { resolveSessionListTitle } from "./chat-state.pure.ts";
 import { LoadSessionDialog } from "./load-session-dialog.tsx";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../../../components/ui/select.tsx";
 import {
   filterSessionsByQuery,
   sessionStatusBadgeClassName,
@@ -34,12 +26,7 @@ import {
   sortSessionsNewestFirst,
 } from "./project-session-list.pure.ts";
 import { ProjectMenuContent } from "./project-menu-content.tsx";
-import {
-  agentProvidersQueryKey,
-  appInfoQueryKey,
-  projectQueryKey,
-  sessionsQueryKey,
-} from "./queries.ts";
+import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from "./queries.ts";
 
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat("ja-JP", {
@@ -90,10 +77,6 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
   });
-  const { data: appInfoData } = useSuspenseQuery({
-    queryKey: appInfoQueryKey,
-    queryFn: fetchAppInfo,
-  });
   const { data: providerData } = useSuspenseQuery({
     queryKey: agentProvidersQueryKey,
     queryFn: fetchAgentProviders,
@@ -107,7 +90,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     () => providerData.providers.filter((entry) => entry.enabled).map((entry) => entry.preset),
     [providerData.providers],
   );
-  const [loadPresetId, setLoadPresetId] = useState(() => defaultPresetId(selectablePresets));
+  const [loadPresetId, setLoadPresetId] = useState<string | null>(null);
   const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
   const projectSessions = useMemo(
     () => sessionsData.sessions.filter((session) => session.projectId === projectId),
@@ -148,10 +131,17 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
   };
 
   const handleOpenLoadSessionDialog = () => {
+    setLoadPresetId(null);
+    discoverResumableSessionsMutation.reset();
     setIsLoadSessionDialogOpen(true);
+  };
+
+  const handleSelectLoadProvider = (presetId: string) => {
+    setLoadPresetId(presetId);
+    discoverResumableSessionsMutation.reset();
     discoverResumableSessionsMutation.mutate({
       projectId,
-      presetId: loadPresetId,
+      presetId,
       cwd: projectData.project.workingDirectory,
     });
   };
@@ -165,6 +155,10 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     readonly title: string | null;
     readonly updatedAt: string | null;
   }) => {
+    if (loadPresetId === null) {
+      return;
+    }
+
     const response = await loadSessionMutation.mutateAsync({
       projectId,
       presetId: loadPresetId,
@@ -198,14 +192,12 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
       />
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6">
         <header className="flex flex-col gap-4 border-b pb-5">
-          <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div className="min-w-0 space-y-2">
-              <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-                セッションリスト
-              </h1>
-              <Badge variant="outline">{projectSessions.length} sessions</Badge>
-            </div>
-            <div className="relative w-full md:w-80">
+          <div className="min-w-0 space-y-2">
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">セッションリスト</h1>
+            <Badge variant="outline">{projectSessions.length} sessions</Badge>
+          </div>
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="relative w-full lg:max-w-sm">
               <Search className="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 className="pl-8"
@@ -216,46 +208,28 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
                 value={query}
               />
             </div>
-            <Link
-              aria-label="新規セッション"
-              className={buttonVariants({ className: "w-full md:w-auto", variant: "default" })}
-              params={{ projectId }}
-              search={{}}
-              to="/projects/$projectId"
-            >
-              <Plus className="size-4" />
-              新規セッション
-            </Link>
-            <Select
-              disabled={selectablePresets.length === 0}
-              onValueChange={(value) => {
-                if (value !== null) {
-                  setLoadPresetId(value);
-                }
-              }}
-              value={loadPresetId}
-            >
-              <SelectTrigger className="w-full md:w-48" aria-label="読み込み provider">
-                <SelectValue placeholder="Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {selectablePresets.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>
-                    {preset.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button
-              className="w-full md:w-auto"
-              disabled={selectablePresets.length === 0}
-              onClick={handleOpenLoadSessionDialog}
-              type="button"
-              variant="outline"
-            >
-              <History className="size-4" />
-              既存セッションを読み込む
-            </Button>
+            <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+              <Link
+                aria-label="新規セッション"
+                className={buttonVariants({ className: "w-full sm:w-auto", variant: "default" })}
+                params={{ projectId }}
+                search={{}}
+                to="/projects/$projectId"
+              >
+                <Plus className="size-4" />
+                新規セッション
+              </Link>
+              <Button
+                className="w-full sm:w-72 sm:min-w-72"
+                disabled={selectablePresets.length === 0}
+                onClick={handleOpenLoadSessionDialog}
+                type="button"
+                variant="outline"
+              >
+                <History className="size-4" />
+                既存セッションを読み込む
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -274,7 +248,11 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
 
       {isLoadSessionDialogOpen ? (
         <LoadSessionDialog
-          capability={discoverResumableSessionsMutation.data?.capability ?? null}
+          capability={
+            loadPresetId === null
+              ? null
+              : (discoverResumableSessionsMutation.data?.capability ?? null)
+          }
           error={
             discoverResumableSessionsMutation.error instanceof Error
               ? discoverResumableSessionsMutation.error
@@ -284,6 +262,8 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
           isLoadingSession={loadSessionMutation.isPending}
           onClose={() => {
             setIsLoadSessionDialogOpen(false);
+            setLoadPresetId(null);
+            discoverResumableSessionsMutation.reset();
           }}
           onLoadSession={(session) => {
             void handleLoadExistingSession({
@@ -292,11 +272,12 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
               updatedAt: session.updatedAt ?? null,
             });
           }}
-          providerLabel={
-            appInfoData.agentPresets.find((preset) => preset.id === loadPresetId)?.label ??
-            loadPresetId
+          onSelectProvider={handleSelectLoadProvider}
+          providerPresets={selectablePresets}
+          selectedProviderId={loadPresetId}
+          sessions={
+            loadPresetId === null ? [] : (discoverResumableSessionsMutation.data?.sessions ?? [])
           }
-          sessions={discoverResumableSessionsMutation.data?.sessions ?? []}
         />
       ) : null}
     </div>
