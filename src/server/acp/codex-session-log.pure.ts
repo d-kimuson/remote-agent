@@ -49,6 +49,14 @@ const stringifyToolInput = (value: unknown): string => {
   return typeof value === 'string' ? stringifyJsonLikeString(value) : stringifyUnknown(value);
 };
 
+const parseJsonTextOrString = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
 const optionalObjectEntry = (key: string, value: unknown): readonly [string, unknown][] => {
   return value === undefined ? [] : [[key, value]];
 };
@@ -121,6 +129,166 @@ const summaryTextFromReasoning = (summary: unknown): string => {
     .join('\n\n');
 };
 
+const importedAssistantRawJson = ({
+  id,
+  kind,
+  text,
+  rawEvents,
+  timestamp,
+  metadata,
+}: {
+  readonly id: string;
+  readonly kind: NonNullable<ChatMessage['kind']>;
+  readonly text: string;
+  readonly rawEvents: readonly RawEvent[];
+  readonly timestamp: string;
+  readonly metadata: unknown;
+}): PersistedMessageRaw => {
+  switch (kind) {
+    case 'assistant_text':
+      return {
+        schemaVersion: 1,
+        type: 'assistant_text',
+        role: 'assistant',
+        streamPartId: id,
+        providerStreamId: id,
+        text,
+        createdAt: timestamp,
+      };
+    case 'reasoning':
+      return {
+        schemaVersion: 1,
+        type: 'reasoning',
+        role: 'assistant',
+        streamPartId: id,
+        providerStreamId: id,
+        text,
+        createdAt: timestamp,
+      };
+    case 'tool_call': {
+      const event = rawEvents[0];
+      if (event?.type === 'toolCall') {
+        return {
+          schemaVersion: 1,
+          type: 'tool_call',
+          role: 'assistant',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          part: {
+            type: 'tool-call',
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            input: parseJsonTextOrString(event.inputText),
+          },
+          text,
+          createdAt: timestamp,
+        };
+      }
+      break;
+    }
+    case 'tool_result': {
+      const event = rawEvents[0];
+      if (event?.type === 'toolResult') {
+        return {
+          schemaVersion: 1,
+          type: 'tool_result',
+          role: 'assistant',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          part: {
+            type: 'tool-result',
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            output: parseJsonTextOrString(event.outputText),
+          },
+          text,
+          createdAt: timestamp,
+        };
+      }
+      break;
+    }
+    case 'tool_error': {
+      const event = rawEvents[0];
+      if (event?.type === 'toolError') {
+        return {
+          schemaVersion: 1,
+          type: 'tool_error',
+          role: 'assistant',
+          toolCallId: event.toolCallId,
+          toolName: event.toolName,
+          part: {
+            type: 'tool-error',
+            toolCallId: event.toolCallId,
+            toolName: event.toolName,
+            error: parseJsonTextOrString(event.errorText),
+          },
+          text,
+          createdAt: timestamp,
+        };
+      }
+      break;
+    }
+    case 'legacy_assistant_turn':
+    case 'raw_meta':
+    case 'tool_input':
+    case 'tool_output_denied':
+    case 'tool_approval_request':
+    case 'source':
+    case 'file':
+    case 'stream_start':
+    case 'stream_finish':
+    case 'step_start':
+    case 'step_finish':
+    case 'abort':
+    case 'stream_error':
+    case 'user':
+    case 'x-error':
+      break;
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+
+  return {
+    schemaVersion: 1,
+    type: 'legacy_assistant_turn',
+    role: 'assistant',
+    text,
+    rawEvents: [...rawEvents],
+    metadata,
+    createdAt: timestamp,
+  };
+};
+
+const importedRawJson = ({
+  id,
+  role,
+  kind,
+  text,
+  rawEvents,
+  timestamp,
+  metadata,
+}: {
+  readonly id: string;
+  readonly role: ChatMessage['role'];
+  readonly kind: NonNullable<ChatMessage['kind']>;
+  readonly text: string;
+  readonly rawEvents: readonly RawEvent[];
+  readonly timestamp: string;
+  readonly metadata: unknown;
+}): PersistedMessageRaw =>
+  role === 'user'
+    ? {
+        schemaVersion: 1,
+        type: 'user',
+        role: 'user',
+        text,
+        attachments: [],
+        createdAt: timestamp,
+      }
+    : importedAssistantRawJson({ id, kind, text, rawEvents, timestamp, metadata });
+
 const buildMessage = ({
   sessionId,
   index,
@@ -140,27 +308,19 @@ const buildMessage = ({
   readonly timestamp: string;
   readonly metadataJson?: string;
 }): ChatMessage => {
-  const rawJson: PersistedMessageRaw =
-    role === 'user'
-      ? {
-          schemaVersion: 1,
-          type: 'user',
-          role: 'user',
-          text,
-          attachments: [],
-          createdAt: timestamp,
-        }
-      : {
-          schemaVersion: 1,
-          type: 'legacy_assistant_turn',
-          role: 'assistant',
-          text,
-          rawEvents: [...rawEvents],
-          metadata: JSON.parse(metadataJson),
-          createdAt: timestamp,
-        };
+  const id = `codex-log:${sessionId}:${index}`;
+  const metadata: unknown = JSON.parse(metadataJson);
+  const rawJson = importedRawJson({
+    id,
+    role,
+    kind,
+    text,
+    rawEvents,
+    timestamp,
+    metadata,
+  });
   return {
-    id: `codex-log:${sessionId}:${index}`,
+    id,
     role,
     kind,
     rawJson,
@@ -207,25 +367,15 @@ const buildImportedMessage = ({
   readonly source: string;
 }): ChatMessage => {
   const metadataJson = JSON.stringify({ source });
-  const rawJson: PersistedMessageRaw =
-    role === 'user'
-      ? {
-          schemaVersion: 1,
-          type: 'user',
-          role: 'user',
-          text,
-          attachments: [],
-          createdAt: timestamp,
-        }
-      : {
-          schemaVersion: 1,
-          type: 'legacy_assistant_turn',
-          role: 'assistant',
-          text,
-          rawEvents: [...rawEvents],
-          metadata: { source },
-          createdAt: timestamp,
-        };
+  const rawJson = importedRawJson({
+    id,
+    role,
+    kind,
+    text,
+    rawEvents,
+    timestamp,
+    metadata: { source },
+  });
   return {
     id,
     role,
@@ -1100,6 +1250,15 @@ export const parsePiCodingAgentSessionLogText = (
           ...message,
           kind: isError ? 'tool_error' : 'tool_result',
           rawEvents: [rawEvent],
+          rawJson: importedRawJson({
+            id: message.id,
+            role: 'assistant',
+            kind: isError ? 'tool_error' : 'tool_result',
+            text: message.text,
+            rawEvents: [rawEvent],
+            timestamp: message.createdAt,
+            metadata: { source: 'pi-coding-agent-session-log' },
+          }),
         };
       });
       messages.push(...nextMessages);

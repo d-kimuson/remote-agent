@@ -8,6 +8,9 @@ import {
 
 const line = (value: unknown): string => JSON.stringify(value);
 
+const importedRawKinds = (messages: readonly { readonly rawJson: { readonly type: string } }[]) =>
+  messages.map((message) => message.rawJson.type);
+
 describe('parseCodexSessionLogText', () => {
   test('converts Codex JSONL response items into chat messages', () => {
     const text = [
@@ -155,6 +158,13 @@ describe('parseCodexSessionLogText', () => {
       ],
       ['assistant', 'assistant_text', 'done'],
     ]);
+    expect(importedRawKinds(imported.messages)).toEqual([
+      'user',
+      'reasoning',
+      'tool_call',
+      'tool_result',
+      'assistant_text',
+    ]);
     expect(imported.messages[2]?.rawEvents).toEqual([
       {
         type: 'toolCall',
@@ -275,6 +285,13 @@ describe('parseClaudeCodeSessionLogText', () => {
       ['assistant', 'tool_call', '{\n  "command": "pwd"\n}'],
       ['assistant', 'tool_result', '/repo\n'],
     ]);
+    expect(importedRawKinds(imported.messages)).toEqual([
+      'user',
+      'reasoning',
+      'assistant_text',
+      'tool_call',
+      'tool_result',
+    ]);
     expect(imported.messages[3]?.rawEvents).toEqual([
       {
         type: 'toolCall',
@@ -350,6 +367,12 @@ describe('parsePiCodingAgentSessionLogText', () => {
       ['assistant', 'reasoning', 'リポジトリを確認します'],
       ['assistant', 'tool_call', '{\n  "command": "ls -la"\n}'],
       ['assistant', 'tool_result', '合計 8\n'],
+    ]);
+    expect(importedRawKinds(imported.messages)).toEqual([
+      'user',
+      'reasoning',
+      'tool_call',
+      'tool_result',
     ]);
     expect(imported.messages[2]?.rawEvents).toEqual([
       {
