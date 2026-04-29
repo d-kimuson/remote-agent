@@ -95,6 +95,9 @@ importers:
       commander:
         specifier: 14.0.3
         version: 14.0.3
+      drizzle-docs-generator:
+        specifier: 0.7.2
+        version: 0.7.2(drizzle-orm@1.0.0-beta.20(@opentelemetry/api@1.9.0)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(mssql@11.0.1(@azure/core-client@1.10.1))(valibot@1.3.1(typescript@6.0.3))(zod@3.25.76))
       drizzle-kit:
         specifier: 1.0.0-beta.20
         version: 1.0.0-beta.20
@@ -3151,6 +3154,13 @@ packages:
     resolution: {integrity: sha512-nI4U3TottKAcAD9LLud4Cb7b2QztQMUEfHbvhTH09bqXTxnSie8WnjPALV/WMCrJZ6UV/qHJ6L03OqO3LcdYZw==}
     engines: {node: '>=12'}
 
+  drizzle-docs-generator@0.7.2:
+    resolution: {integrity: sha512-0HJGogFfHlkPJEagWtDJxcjKewvSk7f7wCU0gGXwIURw89cma4S7B8MJ+ZXmvqzcNVPlVC27Dvff1aCAd3zIDw==}
+    engines: {node: '>=24'}
+    hasBin: true
+    peerDependencies:
+      drizzle-orm: '>=0.44.0 || >=1.0.0-beta.0'
+
   drizzle-kit@1.0.0-beta.20:
     resolution: {integrity: sha512-qMUBnrOQIU+H32aF80BSn7lT1IQuKmofCypmkrKMuOMqvM0bhz5hjCHim1bLcXUzXYRtTSr6U2pe0MSV79WbAg==}
     hasBin: true
@@ -5609,6 +5619,11 @@ packages:
   typed-array-length@1.0.7:
     resolution: {integrity: sha512-3KS2b+kL7fsuk/eJZ7EQdnEmQoaho/r6KUef7hxvltNA5DR8NAUM+8wJMbJyZ4G9/7i3v5zPBIMN5aybAh2/Jg==}
     engines: {node: '>= 0.4'}
+
+  typescript@5.9.3:
+    resolution: {integrity: sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -8812,6 +8827,13 @@ snapshots:
 
   dotenv@17.4.2: {}
 
+  drizzle-docs-generator@0.7.2(drizzle-orm@1.0.0-beta.20(@opentelemetry/api@1.9.0)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(mssql@11.0.1(@azure/core-client@1.10.1))(valibot@1.3.1(typescript@6.0.3))(zod@3.25.76)):
+    dependencies:
+      commander: 14.0.3
+      drizzle-orm: 1.0.0-beta.20(@opentelemetry/api@1.9.0)(@types/mssql@9.1.11(@azure/core-client@1.10.1))(mssql@11.0.1(@azure/core-client@1.10.1))(valibot@1.3.1(typescript@6.0.3))(zod@3.25.76)
+      tsx: 4.21.0
+      typescript: 5.9.3
+
   drizzle-kit@1.0.0-beta.20:
     dependencies:
       '@drizzle-team/brocli': 0.11.0
@@ -11773,6 +11795,8 @@ snapshots:
       is-typed-array: 1.1.15
       possible-typed-array-names: 1.1.0
       reflect.getprototypeof: 1.0.10
+
+  typescript@5.9.3: {}
 
   typescript@6.0.3: {}
 
