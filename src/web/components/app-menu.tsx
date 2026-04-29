@@ -195,10 +195,10 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
 
   return (
     <AppMenuContext.Provider value={contextValue}>
-      <div className="app-shell flex min-h-screen">
+      <div className="app-shell flex h-full min-h-0">
         {desktopExpanded ? (
           <aside
-            className="relative hidden h-screen min-w-[280px] max-w-[520px] shrink-0 md:block"
+            className="relative hidden h-full min-w-[280px] max-w-[520px] shrink-0 md:block"
             style={desktopMenuStyle}
           >
             <AppMenuBody
@@ -250,7 +250,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
           </div>
         </div>
 
-        <main className="app-workspace flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+        <main className="app-workspace flex h-full min-w-0 flex-1 flex-col overflow-hidden">
           <AppHeader isDesktopMenuExpanded={desktopExpanded} onOpenMenu={openMenu} />
           <div className="min-h-0 flex-1 overflow-auto">{children}</div>
         </main>

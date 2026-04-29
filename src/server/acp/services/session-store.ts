@@ -40,6 +40,7 @@ import {
   sessionsTable,
 } from '../../db/schema.ts';
 import { type AppDatabase, getDefaultDatabase } from '../../db/sqlite.ts';
+import { resolveAuthMethodIdForPresetId } from '../preset-auth-method-id.pure.ts';
 import { agentPresets } from '../presets.ts';
 import {
   acpAiProviderAttachmentCapabilities,
@@ -272,6 +273,7 @@ type SessionStoreDependencies = {
   readonly createProvider?: (options: {
     readonly command: string;
     readonly args: readonly string[];
+    readonly authMethodId?: string;
     readonly cwd: string;
     readonly env?: Readonly<Record<string, string>>;
     readonly existingSessionId?: string;
@@ -464,10 +466,11 @@ const isAbortLikeError = (error: unknown): boolean =>
 
 export const createSessionStore = ({
   database = getDefaultDatabase(),
-  createProvider = ({ command, args, cwd, env, existingSessionId }) =>
+  createProvider = ({ command, args, authMethodId, cwd, env, existingSessionId }) =>
     createACPProvider({
       command,
       args: [...args],
+      authMethodId,
       env: env ?? buildAgentProcessEnv(),
       existingSessionId,
       session: {
@@ -910,6 +913,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
+      authMethodId: resolveAuthMethodIdForPresetId(preset?.id),
       cwd: launch.cwd,
       env: launch.env,
     });
@@ -1018,6 +1022,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
+      authMethodId: resolveAuthMethodIdForPresetId(preset.id),
       cwd: launch.cwd,
       env: launch.env,
       existingSessionId: sessionId,

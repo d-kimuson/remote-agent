@@ -9,7 +9,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 import type { AgentPreset } from '../../../shared/acp.ts';
 
 import { agentProviderCatalogsTable, sessionMessagesTable } from '../../db/schema.ts';
-import { createDatabase } from '../../db/sqlite.ts';
+import { createDatabase, createMemoryDatabase } from '../../db/sqlite.ts';
 import { createSessionStore } from './session-store.ts';
 
 const codexPreset: AgentPreset = {
@@ -175,6 +175,44 @@ describe('createSessionStore', () => {
         isActive: false,
       }),
     ]);
+  });
+
+  test('passes preset authMethodId to ACP provider creation for codex sessions', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    let observedAuthMethodId: string | undefined = undefined;
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: ({ authMethodId }) => {
+        observedAuthMethodId = authMethodId;
+        return {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: 'session-auth-method',
+              modes: { currentModeId: '', availableModes: [] },
+              models: { currentModelId: '', availableModels: [] },
+            }),
+          languageModel: stubLanguageModel,
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    expect(observedAuthMethodId).toBe('chatgpt');
   });
 
   test('updates generic session config options through the ACP connection and persists them', async () => {

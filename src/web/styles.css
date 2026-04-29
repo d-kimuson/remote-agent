@@ -130,13 +130,20 @@
     @apply border-border outline-ring/50;
   }
 
+  html,
+  body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Geist Variable', ui-sans-serif, sans-serif;
     background-image:
       linear-gradient(135deg, oklch(0.92 0.035 210 / 0.45), transparent 48%),
       linear-gradient(180deg, oklch(0.992 0.004 235), var(--app-canvas));
-    min-height: 100vh;
+    min-height: 100%;
   }
 
   .dark body {
@@ -148,6 +155,10 @@
   ::selection {
     background: color-mix(in oklch, var(--color-primary) 26%, transparent);
   }
+}
+
+#app {
+  height: 100%;
 }
 
 .app-shell {
