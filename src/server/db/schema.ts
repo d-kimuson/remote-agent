@@ -38,6 +38,7 @@ export const sessionsTable = sqliteTable(
     currentModelId: text('current_model_id'),
     availableModesJson: text('available_modes_json').notNull(),
     availableModelsJson: text('available_models_json').notNull(),
+    configOptionsJson: text('config_options_json').notNull().default('[]'),
   },
   (table) => [
     index('idx_sessions_created_at').on(table.createdAt),
@@ -94,6 +95,48 @@ export const projectModelPreferencesTable = sqliteTable(
     primaryKey({ columns: [table.projectId, table.presetId, table.modelId] }),
     index('idx_project_model_preferences_project_preset').on(table.projectId, table.presetId),
     index('idx_project_model_preferences_last_used').on(table.lastUsedAt),
+  ],
+);
+
+export const projectModePreferencesTable = sqliteTable(
+  'project_mode_preferences',
+  {
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projectsTable.id, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    presetId: text('preset_id').notNull(),
+    modeId: text('mode_id').notNull(),
+    lastUsedAt: text('last_used_at'),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.projectId, table.presetId, table.modeId] }),
+    index('idx_project_mode_preferences_project_preset').on(table.projectId, table.presetId),
+    index('idx_project_mode_preferences_last_used').on(table.lastUsedAt),
+  ],
+);
+
+export const routinesTable = sqliteTable(
+  'routines',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    enabled: text('enabled').notNull(),
+    kind: text('kind').notNull(),
+    configJson: text('config_json').notNull(),
+    sendConfigJson: text('send_config_json').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+    lastRunAt: text('last_run_at'),
+    nextRunAt: text('next_run_at'),
+    lastError: text('last_error'),
+  },
+  (table) => [
+    index('idx_routines_enabled_next_run_at').on(table.enabled, table.nextRunAt),
+    index('idx_routines_updated_at').on(table.updatedAt),
   ],
 );
 

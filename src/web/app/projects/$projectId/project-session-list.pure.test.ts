@@ -29,6 +29,7 @@ const session = {
   currentModelId: null,
   availableModes: [],
   availableModels: [],
+  configOptions: [],
 } satisfies SessionSummary;
 
 describe('project-session-list.pure', () => {

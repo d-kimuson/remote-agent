@@ -39,7 +39,13 @@ describe('filterDisplayableRawEvents', () => {
 
 describe('shouldDisplayTranscriptMessage', () => {
   test('隠し種別の assistant は出さない', () => {
-    for (const kind of ['stream_start', 'step_start', 'stream_finish', 'step_finish'] as const) {
+    for (const kind of [
+      'stream_start',
+      'step_start',
+      'stream_finish',
+      'step_finish',
+      'raw_meta',
+    ] as const) {
       expect(
         shouldDisplayTranscriptMessage(baseMeta({ kind, text: '{}', rawEvents: [] }), []),
       ).toBe(false);

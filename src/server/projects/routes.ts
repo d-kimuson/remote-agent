@@ -3,11 +3,14 @@ import { describeRoute, validator as vValidator } from 'hono-openapi';
 import { parse } from 'valibot';
 
 import {
+  createProjectWorktreeRequestSchema,
   createProjectRequestSchema,
   projectResponseSchema,
   projectSettingsResponseSchema,
+  projectWorktreeResponseSchema,
   projectsResponseSchema,
   updateProjectModelPreferenceRequestSchema,
+  updateProjectModePreferenceRequestSchema,
 } from '../../shared/acp.ts';
 import { errorResponseSchema, jsonResponse, validationErrorHook } from '../hono-utils.ts';
 import {
@@ -16,7 +19,9 @@ import {
   getProjectSettings,
   listProjects,
   updateProjectModelPreference,
+  updateProjectModePreference,
 } from './project-store.ts';
+import { createProjectWorktree } from './worktree-store.ts';
 
 export const projectRoutes = new Hono()
   .get(
@@ -72,6 +77,32 @@ export const projectRoutes = new Hono()
       }
     },
   )
+  .post(
+    '/:projectId/worktrees',
+    describeRoute({
+      summary: 'Create project worktree',
+      responses: {
+        201: jsonResponse('Created project worktree', projectWorktreeResponseSchema),
+        400: jsonResponse('Project worktree creation error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
+      },
+    }),
+    vValidator('json', createProjectWorktreeRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const response = parse(projectWorktreeResponseSchema, {
+          worktree: await createProjectWorktree(c.req.param('projectId'), c.req.valid('json')),
+        });
+        return c.json(response, 201);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to create worktree';
+        if (message.startsWith('Unknown project:')) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
   .get(
     '/:projectId/settings',
     describeRoute({
@@ -107,6 +138,32 @@ export const projectRoutes = new Hono()
       try {
         const response = parse(projectSettingsResponseSchema, {
           settings: await updateProjectModelPreference(
+            c.req.param('projectId'),
+            c.req.valid('json'),
+          ),
+        });
+        return c.json(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to update project settings';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .patch(
+    '/:projectId/mode-preferences',
+    describeRoute({
+      summary: 'Update project mode preferences',
+      responses: {
+        200: jsonResponse('Project settings', projectSettingsResponseSchema),
+        400: jsonResponse('Project settings update error', errorResponseSchema),
+      },
+    }),
+    vValidator('json', updateProjectModePreferenceRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const response = parse(projectSettingsResponseSchema, {
+          settings: await updateProjectModePreference(
             c.req.param('projectId'),
             c.req.valid('json'),
           ),

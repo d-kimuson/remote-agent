@@ -2,6 +2,8 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
+  BarChart3,
+  FileSymlink,
   Info,
   Loader2,
   Mic,
@@ -9,6 +11,7 @@ import {
   Paperclip,
   Send,
   ShieldAlert,
+  Square,
   Star,
   Trash2,
   X,
@@ -36,7 +39,9 @@ import {
   type AgentModelCatalogResponse,
   type ChatMessage,
   type ChatMessageKind,
+  type ModeOption,
   type ModelOption,
+  type SessionConfigOption,
   type SessionMessagesResponse,
   type SessionSummary,
   type SessionsResponse,
@@ -45,6 +50,8 @@ import {
 } from '../../../../shared/acp.ts';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
 import { Button } from '../../../components/ui/button.tsx';
+import { Checkbox } from '../../../components/ui/checkbox.tsx';
+import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
 import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 import {
@@ -59,6 +66,8 @@ import {
 } from '../../../components/ui/select.tsx';
 import { ACP_SSE_BROWSER_EVENT } from '../../../lib/api/acp-sse-browser-event.ts';
 import {
+  cancelSessionRequest,
+  createProjectWorktreeRequest,
   createSessionRequest,
   deleteSessionRequest,
   fetchAgentModelCatalog,
@@ -74,7 +83,9 @@ import {
   resolveAcpPermissionRequest,
   sendPromptRequest,
   sendPreparedPromptRequest,
+  updateProjectModePreferenceRequest,
   updateProjectModelPreferenceRequest,
+  updateSessionConfigOptionRequest,
   updateSessionRequest,
   uploadAttachmentsRequest,
 } from '../../../lib/api/acp.ts';
@@ -85,10 +96,18 @@ import {
   formatAcpSelectValueLabel,
   formatAcpSelectValueInfo,
 } from './acp-select-display.pure.ts';
+import {
+  acpSessionUpdateFromMessage,
+  acpToolStatusUpdateFromMessage,
+  latestAcpUsageUpdate,
+  latestAvailableSlashCommands,
+  vscodeFileUri,
+} from './acp-session-meta.pure.ts';
 import { chatMessageClipboardText } from './chat-block-copy.pure.ts';
 import { ChatRawEvents } from './chat-raw-events.tsx';
 import { isNearScrollBottom, nextUnreadMessageCount } from './chat-scroll.pure.ts';
 import {
+  attachmentContentBlockLabel,
   appendTranscriptMessage,
   buildDraftSession,
   buildPromptText,
@@ -124,6 +143,12 @@ import {
 } from './transcript-display.pure.ts';
 import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
 import { createChatMessage, type TranscriptMap } from './types.ts';
+import {
+  canSendWithDraftWorktreeState,
+  draftWorktreeNameError,
+  normalizeDraftWorktreeName,
+  shouldUsePreparedDraftSession as shouldUsePreparedDraftSessionForWorktree,
+} from './worktree-draft-session.pure.ts';
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = 'w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl';
@@ -155,6 +180,113 @@ const formatDateTime = (iso: string): string =>
     minute: '2-digit',
   }).format(new Date(iso));
 
+const formatUsagePercent = ({ size, used }: { readonly used: number; readonly size: number }) => {
+  if (size <= 0) {
+    return 'unknown';
+  }
+  return `${String(Math.round((Math.max(0, used) / size) * 100))}%`;
+};
+
+const AcpSessionMetaMessage: FC<{ readonly cwd: string; readonly message: ChatMessage }> = ({
+  cwd,
+  message,
+}) => {
+  const update = acpSessionUpdateFromMessage(message);
+  if (update?.sessionUpdate === 'usage_update') {
+    return (
+      <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs">
+        <div className="mb-1 flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
+          <BarChart3 className="size-3.5" />
+          Usage
+        </div>
+        <div className="grid gap-1 text-muted-foreground sm:grid-cols-3">
+          <span>
+            Context: {update.used.toLocaleString()} / {update.size.toLocaleString()}
+          </span>
+          <span>Used: {formatUsagePercent(update)}</span>
+          <span>
+            Cost:{' '}
+            {update.cost === null || update.cost === undefined
+              ? 'unknown'
+              : `${update.cost.amount.toLocaleString()} ${update.cost.currency}`}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (update?.sessionUpdate === 'available_commands_update') {
+    return (
+      <div className="rounded-lg border border-sky-500/25 bg-sky-500/5 px-3 py-2 text-xs">
+        <div className="mb-1 font-medium text-sky-700 dark:text-sky-300">Slash commands</div>
+        <div className="flex flex-wrap gap-1.5">
+          {update.availableCommands.map((command) => (
+            <span className="rounded bg-background/70 px-1.5 py-0.5 font-mono" key={command.name}>
+              /{command.name}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (update?.sessionUpdate === 'session_info_update') {
+    return (
+      <div className="rounded-lg border border-violet-500/25 bg-violet-500/5 px-3 py-2 text-xs">
+        <div className="mb-1 font-medium text-violet-700 dark:text-violet-300">
+          Session info updated
+        </div>
+        <div className="grid gap-1 text-muted-foreground sm:grid-cols-2">
+          <span>Title: {update.title ?? 'unchanged'}</span>
+          <span>Updated: {update.updatedAt ?? 'unchanged'}</span>
+        </div>
+      </div>
+    );
+  }
+
+  const toolUpdate = acpToolStatusUpdateFromMessage(message);
+  if (toolUpdate !== null) {
+    return (
+      <div className="rounded-lg border border-blue-500/25 bg-blue-500/5 px-3 py-2 text-xs">
+        <div className="mb-1 flex min-w-0 items-center gap-1.5 font-medium text-blue-700 dark:text-blue-300">
+          <FileSymlink className="size-3.5 shrink-0" />
+          <span className="min-w-0 truncate">{toolUpdate.title ?? toolUpdate.toolCallId}</span>
+          {toolUpdate.status === null || toolUpdate.status === undefined ? null : (
+            <span className="rounded bg-background/70 px-1.5 py-0.5 font-normal">
+              {toolUpdate.status}
+            </span>
+          )}
+        </div>
+        {toolUpdate.locations !== null &&
+        toolUpdate.locations !== undefined &&
+        toolUpdate.locations.length > 0 ? (
+          <div className="space-y-1">
+            {toolUpdate.locations.map((location) => (
+              <a
+                className="flex min-w-0 items-center gap-1.5 rounded bg-background/70 px-2 py-1 font-mono text-[11px] text-blue-700 hover:underline dark:text-blue-300"
+                href={vscodeFileUri({ cwd, path: location.path, line: location.line })}
+                key={`${location.path}:${String(location.line ?? '')}`}
+              >
+                <FileSymlink className="size-3 shrink-0" />
+                <span className="min-w-0 truncate">
+                  {location.path}
+                  {location.line === null || location.line === undefined
+                    ? ''
+                    : `:${String(location.line)}`}
+                </span>
+              </a>
+            ))}
+          </div>
+        ) : (
+          <div className="text-muted-foreground">No locations</div>
+        )}
+      </div>
+    );
+  }
+
+  return null;
+};
+
 const resolveSpeechRecognitionConstructor = (
   browserWindow: SpeechRecognitionWindow = window,
 ): SpeechRecognitionConstructor | null =>
@@ -168,12 +300,23 @@ const finalSpeechTextFromEvent = (event: SpeechRecognitionEvent): string =>
     .filter((text) => text.length > 0)
     .join(' ');
 
-const TranscriptMessageBody: FC<{ readonly message: ChatMessage }> = ({ message }) => {
+const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMessage }> = ({
+  cwd,
+  message,
+}) => {
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
   if (message.role === 'user') {
     return <ChatMarkdown>{message.text}</ChatMarkdown>;
   }
   const k: ChatMessageKind = message.kind ?? 'legacy_assistant_turn';
+  if (k === 'raw_meta') {
+    return (
+      <div className="flex flex-col gap-2">
+        <AcpSessionMetaMessage cwd={cwd} message={message} />
+        {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
+      </div>
+    );
+  }
   if (k === 'legacy_assistant_turn') {
     return (
       <div className="flex w-full flex-col gap-3">
@@ -233,6 +376,19 @@ const modelSelectLabelFromPreset = (preset: AgentPreset | null): string =>
 const modeSelectLabelFromPreset = (preset: AgentPreset | null): string =>
   preset?.modeSelectLabel ?? 'Mode';
 
+const genericConfigOptionValueLabel = (
+  option: SessionConfigOption,
+  value: string | null | undefined,
+): string => option.values.find((candidate) => candidate.value === value)?.name ?? option.name;
+
+const genericConfigOptionValueInfo = (
+  option: SessionConfigOption,
+  value: string | null | undefined,
+): string | null => {
+  const selectedValue = option.values.find((candidate) => candidate.value === value);
+  return selectedValue?.description ?? option.description ?? null;
+};
+
 const orderModelOptions = ({
   favoriteModelIds,
   lastUsedModelId,
@@ -253,6 +409,32 @@ const orderModelOptions = ({
     }
     return left.name.localeCompare(right.name);
   });
+
+const modeOptionsWithSavedPreferences = ({
+  currentModeId,
+  lastUsedModeId,
+  options,
+}: {
+  readonly currentModeId: string | null;
+  readonly lastUsedModeId: string | null;
+  readonly options: readonly ModeOption[];
+}): readonly ModeOption[] => {
+  const missingIds = [lastUsedModeId, currentModeId].filter(
+    (modeId): modeId is string =>
+      modeId !== null &&
+      modeId.trim().length > 0 &&
+      !options.some((option) => option.id === modeId),
+  );
+  const uniqueMissingIds = [...new Set(missingIds)];
+  return [
+    ...uniqueMissingIds.map((modeId) => ({
+      id: modeId,
+      name: modeId,
+      description: 'Saved mode preference',
+    })),
+    ...options,
+  ];
+};
 
 const AcpSelectItemLabel: FC<{
   readonly children: string;
@@ -486,8 +668,9 @@ const DraftAgentModelCatalogLoader: FC<{
 const SlashCommandsLoader: FC<{
   readonly projectId: string;
   readonly presetId: string;
-  readonly onReady: (commands: readonly SlashCommand[]) => void;
-}> = ({ projectId, presetId, onReady }) => {
+  readonly scopeKey: string;
+  readonly onReady: (scopeKey: string, commands: readonly SlashCommand[]) => void;
+}> = ({ projectId, presetId, scopeKey, onReady }) => {
   const { data } = useSuspenseQuery({
     queryKey: agentSlashCommandsQueryKey(projectId, presetId),
     queryFn: () =>
@@ -499,8 +682,8 @@ const SlashCommandsLoader: FC<{
   });
 
   useEffect(() => {
-    onReady(data.commands);
-  }, [data.commands, onReady]);
+    onReady(scopeKey, data.commands);
+  }, [data.commands, onReady, scopeKey]);
 
   return null;
 };
@@ -564,6 +747,8 @@ export const ProjectChatPage: FC<{
   const [draftPresetId, setDraftPresetId] = useState('');
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftModeId, setDraftModeId] = useState<string | null>(null);
+  const [useDraftWorktree, setUseDraftWorktree] = useState(false);
+  const [draftWorktreeName, setDraftWorktreeName] = useState('');
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
   const promptReaderRef = useRef<() => string>(() => '');
@@ -621,7 +806,11 @@ export const ProjectChatPage: FC<{
 
   const onSlashCommandsReady = useCallback(
     (scopeKey: string, commands: readonly SlashCommand[]) => {
-      setSlashCommandsResult({ scopeKey, commands });
+      setSlashCommandsResult((current) =>
+        current?.scopeKey === scopeKey && current.commands === commands
+          ? current
+          : { scopeKey, commands },
+      );
     },
     [],
   );
@@ -698,6 +887,10 @@ export const ProjectChatPage: FC<{
     () => projectSettings.modelPreferences.filter((entry) => entry.presetId === activePresetId),
     [activePresetId, projectSettings.modelPreferences],
   );
+  const activePresetModePreferences = useMemo(
+    () => projectSettings.modePreferences.filter((entry) => entry.presetId === activePresetId),
+    [activePresetId, projectSettings.modePreferences],
+  );
   const selectedSessionModelPreferences = useMemo(
     () =>
       projectSettings.modelPreferences.filter(
@@ -731,9 +924,24 @@ export const ProjectChatPage: FC<{
         ?.modelId ?? null,
     [activePresetModelPreferences],
   );
+  const activePresetLastUsedModeId = useMemo(
+    () =>
+      activePresetModePreferences
+        .filter((entry) => entry.lastUsedAt !== null && entry.lastUsedAt !== undefined)
+        .sort((left, right) => (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? ''))[0]
+        ?.modeId ?? null,
+    [activePresetModePreferences],
+  );
 
   const draftCatalogScopeKey = `${projectId}\0${activePresetId}`;
   const preparedSessionScopeKey = `${projectId}\0${activePresetId}\0${project.workingDirectory}`;
+  const shouldUsePreparedDraftSession = shouldUsePreparedDraftSessionForWorktree({
+    shouldUseDraftSession,
+    useDraftWorktree,
+  });
+  const trimmedDraftWorktreeName = normalizeDraftWorktreeName(draftWorktreeName);
+  const draftWorktreeValidationError =
+    shouldUseDraftSession && useDraftWorktree ? draftWorktreeNameError(draftWorktreeName) : null;
 
   useEffect(() => {
     if (!shouldUseDraftSession) {
@@ -748,7 +956,7 @@ export const ProjectChatPage: FC<{
   }, [draftCatalogScopeKey, shouldUseDraftSession]);
 
   useEffect(() => {
-    if (!shouldUseDraftSession || activePresetId.length === 0) {
+    if (!shouldUsePreparedDraftSession || activePresetId.length === 0) {
       return;
     }
     if (preparedSessionIdsByScope[preparedSessionScopeKey] !== undefined) {
@@ -812,7 +1020,7 @@ export const ProjectChatPage: FC<{
     preparedSessionScopeKey,
     project.workingDirectory,
     projectId,
-    shouldUseDraftSession,
+    shouldUsePreparedDraftSession,
   ]);
 
   /** draft の候補は provider catalog table 由来だけを見る。既存 session DB からは借りない。 */
@@ -825,17 +1033,28 @@ export const ProjectChatPage: FC<{
     });
     return {
       availableModels,
-      availableModes: c?.availableModes ?? [],
+      availableModes: modeOptionsWithSavedPreferences({
+        currentModeId: c?.currentModeId ?? null,
+        lastUsedModeId: activePresetLastUsedModeId,
+        options: c?.availableModes ?? [],
+      }),
       currentModelId: c?.currentModelId ?? null,
       currentModeId: c?.currentModeId ?? null,
     };
-  }, [activePresetFavoriteModelIds, activePresetLastUsedModelId, probedModelCatalog]);
+  }, [
+    activePresetFavoriteModelIds,
+    activePresetLastUsedModeId,
+    activePresetLastUsedModelId,
+    probedModelCatalog,
+  ]);
 
   const draftModelSourceHasList = draftModelModeListSource.availableModels.length > 0;
   const draftModeSourceHasList = draftModelModeListSource.availableModes.length > 0;
   const isPreparingDraftProvider =
-    shouldUseDraftSession && preparingScopesByKey[preparedSessionScopeKey] === true;
-  const draftPrepareError = prepareErrorsByScope[preparedSessionScopeKey] ?? null;
+    shouldUsePreparedDraftSession && preparingScopesByKey[preparedSessionScopeKey] === true;
+  const draftPrepareError = shouldUsePreparedDraftSession
+    ? (prepareErrorsByScope[preparedSessionScopeKey] ?? null)
+    : null;
   const draftCatalogError = probedModelCatalog?.lastError ?? null;
   const draftModelSelectValue = draftModelSourceHasList
     ? (draftModelId ??
@@ -850,6 +1069,10 @@ export const ProjectChatPage: FC<{
     : undefined;
   const draftModeSelectValue = draftModeSourceHasList
     ? (draftModeId ??
+      (activePresetLastUsedModeId !== null &&
+      draftModelModeListSource.availableModes.some((mode) => mode.id === activePresetLastUsedModeId)
+        ? activePresetLastUsedModeId
+        : null) ??
       draftModelModeListSource.currentModeId ??
       draftModelModeListSource.availableModes[0]?.id)
     : undefined;
@@ -919,12 +1142,19 @@ export const ProjectChatPage: FC<{
   });
   const activeTranscriptKey =
     sessionId ?? draftSessionTranscriptKeyForGeneration(draftViewGeneration);
+  const activeTranscriptCwd = selectedSession?.cwd ?? project.workingDirectory;
 
   useLayoutEffect(() => {
     activeTranscriptKeyRef.current = activeTranscriptKey;
   }, [activeTranscriptKey]);
 
-  const transcript = transcripts[activeTranscriptKey] ?? [];
+  const transcript = useMemo(
+    () => transcripts[activeTranscriptKey] ?? [],
+    [activeTranscriptKey, transcripts],
+  );
+  const liveSlashCommands = useMemo(() => latestAvailableSlashCommands(transcript), [transcript]);
+  const effectiveSlashCommands = liveSlashCommands.length > 0 ? liveSlashCommands : slashCommands;
+  const latestUsage = useMemo(() => latestAcpUsageUpdate(transcript), [transcript]);
   const activePermissionRequests = permissionRequestsData.requests.filter(
     (request) => request.sessionId === activeTranscriptKey,
   );
@@ -1016,6 +1246,21 @@ export const ProjectChatPage: FC<{
     mutationFn: createSessionRequest,
   });
 
+  const createProjectWorktreeMutation = useMutation({
+    mutationFn: ({
+      name,
+      targetProjectId,
+    }: {
+      readonly targetProjectId: string;
+      readonly name: string;
+    }) =>
+      createProjectWorktreeRequest(targetProjectId, {
+        name,
+        branchName: `ra/${name}`,
+        baseRef: 'HEAD',
+      }),
+  });
+
   const updateSessionMutation = useMutation({
     mutationFn: ({
       sessionId: targetSessionId,
@@ -1026,6 +1271,18 @@ export const ProjectChatPage: FC<{
       readonly modelId?: string | null;
       readonly modeId?: string | null;
     }) => updateSessionRequest(targetSessionId, { modelId, modeId }),
+  });
+
+  const updateSessionConfigOptionMutation = useMutation({
+    mutationFn: ({
+      configId,
+      sessionId: targetSessionId,
+      value,
+    }: {
+      readonly sessionId: string;
+      readonly configId: string;
+      readonly value: string;
+    }) => updateSessionConfigOptionRequest(targetSessionId, { configId, value }),
   });
 
   const updateProjectModelPreferenceMutation = useMutation({
@@ -1045,8 +1302,21 @@ export const ProjectChatPage: FC<{
       }),
   });
 
+  const updateProjectModePreferenceMutation = useMutation({
+    mutationFn: ({ modeId, presetId }: { readonly presetId: string; readonly modeId: string }) =>
+      updateProjectModePreferenceRequest(projectId, {
+        presetId,
+        modeId,
+        markLastUsed: true,
+      }),
+  });
+
   const closeSessionMutation = useMutation({
     mutationFn: deleteSessionRequest,
+  });
+
+  const cancelSessionMutation = useMutation({
+    mutationFn: cancelSessionRequest,
   });
 
   const resolvePermissionMutation = useMutation({
@@ -1108,6 +1378,7 @@ export const ProjectChatPage: FC<{
   });
 
   const isAssistantRequestPending =
+    createProjectWorktreeMutation.isPending ||
     createSessionMutation.isPending ||
     sendPromptMutation.isPending ||
     sendPreparedPromptMutation.isPending;
@@ -1115,7 +1386,9 @@ export const ProjectChatPage: FC<{
     awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
   const isSending =
     isAwaitingActiveAssistantResponse ||
+    updateSessionConfigOptionMutation.isPending ||
     updateSessionMutation.isPending ||
+    cancelSessionMutation.isPending ||
     uploadAttachmentsMutation.isPending;
   const isEditorDisabled = isAwaitingActiveAssistantResponse;
   const isSelectedSessionRunning =
@@ -1211,12 +1484,31 @@ export const ProjectChatPage: FC<{
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
   const canSendPrompt = useCallback(
     (value: string) =>
-      buildPromptText(value, attachmentNames).length > 0 &&
-      !isSending &&
-      (!shouldUseDraftSession || activePresetId.length > 0),
-    [activePresetId, attachmentNames, isSending, shouldUseDraftSession],
+      canSendWithDraftWorktreeState({
+        activePresetId,
+        isSending,
+        promptText: buildPromptText(value, attachmentNames),
+        shouldUseDraftSession,
+        useDraftWorktree,
+        worktreeName: draftWorktreeName,
+      }),
+    [
+      activePresetId,
+      attachmentNames,
+      draftWorktreeName,
+      isSending,
+      shouldUseDraftSession,
+      useDraftWorktree,
+    ],
   );
-  const canSend = !isSending && (!shouldUseDraftSession || activePresetId.length > 0);
+  const canSend = canSendWithDraftWorktreeState({
+    activePresetId,
+    isSending,
+    promptText: 'ready',
+    shouldUseDraftSession,
+    useDraftWorktree,
+    worktreeName: draftWorktreeName,
+  });
 
   const addAwaitingAssistantTranscriptKeys = (keys: readonly string[]) => {
     setAwaitingAssistantTranscriptKeys((current) => [
@@ -1397,6 +1689,31 @@ export const ProjectChatPage: FC<{
     void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
   };
 
+  const handleMarkModeLastUsed = async ({
+    modeId,
+    presetId,
+  }: {
+    readonly presetId: string | null | undefined;
+    readonly modeId: string | null | undefined;
+  }) => {
+    if (
+      presetId === null ||
+      presetId === undefined ||
+      presetId.length === 0 ||
+      modeId === null ||
+      modeId === undefined ||
+      modeId.length === 0
+    ) {
+      return;
+    }
+
+    const response = await updateProjectModePreferenceMutation.mutateAsync({
+      presetId,
+      modeId,
+    });
+    queryClient.setQueryData(projectSettingsQueryKey(projectId), response);
+  };
+
   const handleUpdateSession = async ({
     modelId,
     modeId,
@@ -1414,6 +1731,10 @@ export const ProjectChatPage: FC<{
       }
       if (modeId !== undefined) {
         setPendingTuningModeId(modeId);
+        void handleMarkModeLastUsed({
+          presetId: selectedSession.presetId,
+          modeId,
+        });
       }
       return;
     }
@@ -1434,9 +1755,49 @@ export const ProjectChatPage: FC<{
       });
       upsertSessionInCache(response.session);
       void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-      if (modelId !== undefined) {
+      if (modelId !== undefined || modeId !== undefined) {
         void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
       }
+      if (modeId !== undefined) {
+        void handleMarkModeLastUsed({
+          presetId: response.session.presetId,
+          modeId: response.session.currentModeId ?? modeId,
+        });
+      }
+    } catch {
+      queryClient.setQueryData(sessionsQueryKey, previousSessions);
+    }
+  };
+
+  const handleUpdateSessionConfigOption = async ({
+    configId,
+    value,
+  }: {
+    readonly configId: string;
+    readonly value: string;
+  }) => {
+    if (selectedSession === null || !selectedSession.isActive) {
+      return;
+    }
+
+    const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+    const nextConfigOptions = selectedSession.configOptions.map((option) =>
+      option.id === configId ? { ...option, currentValue: value } : option,
+    );
+
+    upsertSessionInCache({
+      ...selectedSession,
+      configOptions: nextConfigOptions,
+    });
+
+    try {
+      const response = await updateSessionConfigOptionMutation.mutateAsync({
+        sessionId: selectedSession.sessionId,
+        configId,
+        value,
+      });
+      upsertSessionInCache(response.session);
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
     } catch {
       queryClient.setQueryData(sessionsQueryKey, previousSessions);
     }
@@ -1460,6 +1821,28 @@ export const ProjectChatPage: FC<{
     }
   };
 
+  const handleCancelSession = async (targetSessionId: string) => {
+    const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+    setSessionsData((sessions) =>
+      sessions.map((session) =>
+        session.sessionId === targetSessionId
+          ? { ...session, status: 'paused', isActive: true }
+          : session,
+      ),
+    );
+    removeAwaitingAssistantTranscriptKeys([targetSessionId, activeTranscriptKey]);
+
+    try {
+      const response = await cancelSessionMutation.mutateAsync(targetSessionId);
+      upsertSessionInCache(response.session);
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(targetSessionId) });
+    } catch {
+      queryClient.setQueryData(sessionsQueryKey, previousSessions);
+    }
+  };
+
   const handleResolvePermission = async (requestId: string, optionId: string | null) => {
     const response = await resolvePermissionMutation.mutateAsync({ requestId, optionId });
     queryClient.setQueryData(acpPermissionRequestsQueryKey, response);
@@ -1469,6 +1852,10 @@ export const ProjectChatPage: FC<{
   const handleSendPrompt = async (promptValue = promptReaderRef.current()) => {
     const nextPrompt = buildPromptText(promptValue, attachmentNames);
     if (nextPrompt.length === 0) {
+      return;
+    }
+    if (draftWorktreeValidationError !== null) {
+      toast.error(draftWorktreeValidationError);
       return;
     }
 
@@ -1507,7 +1894,16 @@ export const ProjectChatPage: FC<{
 
     try {
       if (activeSessionId === null) {
-        const preparedSessionId = preparedSessionIdsByScope[preparedSessionScopeKey];
+        const worktreeResponse = useDraftWorktree
+          ? await createProjectWorktreeMutation.mutateAsync({
+              targetProjectId: project.id,
+              name: trimmedDraftWorktreeName,
+            })
+          : null;
+        const sessionCwd = worktreeResponse?.worktree.path ?? project.workingDirectory;
+        const preparedSessionId = useDraftWorktree
+          ? undefined
+          : preparedSessionIdsByScope[preparedSessionScopeKey];
         const modelIdForCreate = draftModelSourceHasList
           ? (draftModelId ??
             (activePresetLastUsedModelId !== null &&
@@ -1522,6 +1918,12 @@ export const ProjectChatPage: FC<{
           : undefined;
         const modeIdForCreate = draftModeSourceHasList
           ? (draftModeId ??
+            (activePresetLastUsedModeId !== null &&
+            draftModelModeListSource.availableModes.some(
+              (mode) => mode.id === activePresetLastUsedModeId,
+            )
+              ? activePresetLastUsedModeId
+              : null) ??
             draftModelModeListSource.currentModeId ??
             draftModelModeListSource.availableModes[0]?.id ??
             undefined)
@@ -1573,7 +1975,7 @@ export const ProjectChatPage: FC<{
           presetId: draftSession.presetId,
           command: null,
           argsText: '',
-          cwd: project.workingDirectory,
+          cwd: sessionCwd,
           modelId: modelIdForCreate,
           modeId: modeIdForCreate,
         });
@@ -1778,11 +2180,10 @@ export const ProjectChatPage: FC<{
         <Suspense fallback={null}>
           <SlashCommandsLoader
             key={slashCommandScopeKey}
-            onReady={(commands) => {
-              onSlashCommandsReady(slashCommandScopeKey, commands);
-            }}
+            onReady={onSlashCommandsReady}
             presetId={slashCommandPresetId}
             projectId={projectId}
+            scopeKey={slashCommandScopeKey}
           />
         </Suspense>
       ) : null}
@@ -1900,11 +2301,11 @@ export const ProjectChatPage: FC<{
                           </div>
                           {isUser ? (
                             <div className="app-user-message w-full rounded-lg border px-3 py-3 text-foreground shadow-sm">
-                              <TranscriptMessageBody message={message} />
+                              <TranscriptMessageBody cwd={activeTranscriptCwd} message={message} />
                             </div>
                           ) : (
                             <div className="w-full min-w-0 text-card-foreground">
-                              <TranscriptMessageBody message={message} />
+                              <TranscriptMessageBody cwd={activeTranscriptCwd} message={message} />
                             </div>
                           )}
                         </div>
@@ -1964,6 +2365,26 @@ export const ProjectChatPage: FC<{
 
             <div className="bg-transparent px-1 pt-0 pb-0.5 md:px-2 md:pb-1">
               <div className="overflow-visible">
+                {latestUsage === null ? null : (
+                  <div className="mb-1 rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
+                      <span className="font-medium text-emerald-700 dark:text-emerald-300">
+                        Usage
+                      </span>
+                      <span>
+                        Context: {latestUsage.used.toLocaleString()} /{' '}
+                        {latestUsage.size.toLocaleString()}
+                      </span>
+                      <span>Used: {formatUsagePercent(latestUsage)}</span>
+                      <span>
+                        Cost:{' '}
+                        {latestUsage.cost === null || latestUsage.cost === undefined
+                          ? 'unknown'
+                          : `${latestUsage.cost.amount.toLocaleString()} ${latestUsage.cost.currency}`}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {attachedFiles.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
                     {attachedFiles.map((attachment) => (
@@ -1973,6 +2394,9 @@ export const ProjectChatPage: FC<{
                       >
                         <Paperclip className="size-3 shrink-0 text-muted-foreground" />
                         <span className="max-w-48 truncate">{attachment.name}</span>
+                        <span className="hidden text-muted-foreground sm:inline">
+                          {attachmentContentBlockLabel(attachment)}
+                        </span>
                         <button
                           aria-label={`Remove ${attachment.name}`}
                           className="-mr-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
@@ -1985,6 +2409,53 @@ export const ProjectChatPage: FC<{
                         </button>
                       </span>
                     ))}
+                  </div>
+                ) : null}
+
+                {shouldUseDraftSession ? (
+                  <div className="flex min-w-0 flex-wrap items-start gap-2 border-b bg-muted/10 px-3 py-2">
+                    <label
+                      className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm"
+                      htmlFor="draft-worktree-enabled"
+                    >
+                      <Checkbox
+                        checked={useDraftWorktree}
+                        id="draft-worktree-enabled"
+                        onCheckedChange={(checked) => {
+                          setUseDraftWorktree(checked === true);
+                        }}
+                      />
+                      <span className="whitespace-nowrap">Create worktree</span>
+                    </label>
+                    {useDraftWorktree ? (
+                      <div className="min-w-48 flex-1 sm:max-w-96">
+                        <Label className="sr-only" htmlFor="draft-worktree-name">
+                          Worktree name
+                        </Label>
+                        <Input
+                          aria-describedby={
+                            draftWorktreeValidationError !== null
+                              ? 'draft-worktree-name-error'
+                              : undefined
+                          }
+                          aria-invalid={draftWorktreeValidationError !== null}
+                          id="draft-worktree-name"
+                          onChange={(event) => {
+                            setDraftWorktreeName(event.target.value);
+                          }}
+                          placeholder="worktree name"
+                          value={draftWorktreeName}
+                        />
+                        {draftWorktreeValidationError !== null ? (
+                          <p
+                            className="mt-1 text-xs text-destructive"
+                            id="draft-worktree-name-error"
+                          >
+                            {draftWorktreeValidationError}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
 
@@ -2040,7 +2511,7 @@ export const ProjectChatPage: FC<{
                   }}
                   onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
-                  slashCommands={slashCommands}
+                  slashCommands={effectiveSlashCommands}
                 />
 
                 <div className="flex min-h-9 flex-col gap-1 bg-transparent px-1.5 pt-1 pb-0 sm:px-2">
@@ -2303,29 +2774,101 @@ export const ProjectChatPage: FC<{
                               </Select>
                             </FieldControl>
                           ) : null}
+                          {selectedSession.configOptions.map((option) => {
+                            const valueInfo = genericConfigOptionValueInfo(
+                              option,
+                              option.currentValue,
+                            );
+                            return (
+                              <FieldControl
+                                className="w-[7.25rem] shrink xl:w-52"
+                                htmlFor={`session-config-select-${option.id}`}
+                                key={option.id}
+                                label={option.name}
+                              >
+                                <Select
+                                  disabled={!selectedSession.isActive}
+                                  onValueChange={(value) => {
+                                    if (value !== null) {
+                                      void handleUpdateSessionConfigOption({
+                                        configId: option.id,
+                                        value,
+                                      });
+                                    }
+                                  }}
+                                  value={option.currentValue}
+                                >
+                                  <div className="flex items-center gap-1.5">
+                                    <SelectTrigger
+                                      className="min-w-0 flex-1"
+                                      id={`session-config-select-${option.id}`}
+                                    >
+                                      <SelectValue placeholder={option.name}>
+                                        {(value) =>
+                                          genericConfigOptionValueLabel(
+                                            option,
+                                            typeof value === 'string' ? value : null,
+                                          )
+                                        }
+                                      </SelectValue>
+                                    </SelectTrigger>
+                                    <AcpSelectValueInfo info={valueInfo} />
+                                  </div>
+                                  <SelectContent>
+                                    {option.values.map((candidate) => (
+                                      <SelectItem key={candidate.value} value={candidate.value}>
+                                        <AcpSelectItemLabel>{candidate.name}</AcpSelectItemLabel>
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </FieldControl>
+                            );
+                          })}
                         </>
                       ) : null}
                     </div>
 
-                    <Button
-                      aria-label={
-                        isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
-                      }
-                      className="shrink-0"
-                      disabled={!canSend}
-                      onClick={() => {
-                        void handleSendPrompt();
-                      }}
-                      size="icon"
-                      title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
-                      type="button"
-                    >
-                      {isSending ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Send className="size-4" />
-                      )}
-                    </Button>
+                    {isSelectedSessionRunning && sessionId !== null ? (
+                      <Button
+                        aria-label="Cancel running turn"
+                        className="shrink-0"
+                        disabled={cancelSessionMutation.isPending}
+                        onClick={() => {
+                          void handleCancelSession(sessionId);
+                        }}
+                        size="icon"
+                        title="Cancel"
+                        type="button"
+                        variant="destructive"
+                      >
+                        {cancelSessionMutation.isPending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Square className="size-4" />
+                        )}
+                      </Button>
+                    ) : (
+                      <Button
+                        aria-label={
+                          isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
+                        }
+                        className="shrink-0"
+                        disabled={!canSend}
+                        onClick={() => {
+                          void handleSendPrompt();
+                        }}
+                        size="icon"
+                        title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
+                        type="button"
+                      >
+                        {isSending ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Send className="size-4" />
+                        )}
+                      </Button>
+                    )}
                   </div>
 
                   {shouldUseDraftSession &&

@@ -20,9 +20,11 @@ import {
 } from '../../app/projects/$projectId/queries.ts';
 import { addSessionPausedAppNotification } from '../../pwa/notification-center.ts';
 import { showSessionPausedNotification } from '../../pwa/notifications.ts';
+import { playTaskCompletionSound } from '../../pwa/task-completion-sound.ts';
 import { dispatchAcpSseBrowserEvent } from './acp-sse-browser-event.ts';
 import { applySessionStreamDeltaToMessages } from './acp-sse-cache.pure.ts';
 import { fetchProjects, fetchSessions } from './acp.ts';
+import { acpSseUrl } from './client.ts';
 
 /** ACP のストリーミングで SSE が連打されるため、invalidate の間隔を空ける */
 const ACP_SSE_INVALIDATE_DEBOUNCE_MS = 300;
@@ -142,6 +144,7 @@ const notifyPausedSessions = async (
     toast.success('Agent paused', {
       description: sessionTitle.length > 0 ? sessionTitle : session.sessionId,
     });
+    void playTaskCompletionSound();
     void showSessionPausedNotification({
       projectId: session.projectId ?? 'unknown',
       projectName,
@@ -255,7 +258,7 @@ export const useAcpSseCacheSync = (): void => {
       }, ACP_SSE_INVALIDATE_DEBOUNCE_MS);
     };
 
-    const source = new EventSource('/api/acp/sse', { withCredentials: false });
+    const source = new EventSource(acpSseUrl(), { withCredentials: false });
     const onMessage = (ev: MessageEvent<string>) => {
       if (typeof ev.data !== 'string') {
         return;

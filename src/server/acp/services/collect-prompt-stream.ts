@@ -1,4 +1,4 @@
-import { streamText } from 'ai';
+import { streamText, type ModelMessage } from 'ai';
 
 import type { ChatMessage, ChatMessageKind, RawEvent } from '../../../shared/acp.ts';
 
@@ -76,9 +76,11 @@ export const collectPromptStream = async (input: {
     readonly tools: Parameters<typeof streamText>[0]['tools'];
   };
   readonly prompt: string;
+  readonly promptMessages?: readonly ModelMessage[];
   readonly sessionId: string;
   readonly now: () => string;
   readonly persistence: PromptStreamPersistence;
+  readonly abortSignal?: AbortSignal;
   readonly onTextDelta?: (input: {
     readonly sessionId: string;
     readonly message: ChatMessage;
@@ -90,12 +92,31 @@ export const collectPromptStream = async (input: {
     readonly delta: string;
   }) => void;
 }): Promise<CollectPromptStreamResult> => {
-  const { provider, prompt, sessionId, now, persistence, onTextDelta, onReasoningDelta } = input;
+  const {
+    provider,
+    prompt,
+    promptMessages,
+    sessionId,
+    now,
+    persistence,
+    abortSignal,
+    onTextDelta,
+    onReasoningDelta,
+  } = input;
+  const promptInput =
+    promptMessages === undefined
+      ? {
+          prompt,
+        }
+      : {
+          messages: [...promptMessages],
+        };
 
   const result = streamText({
+    abortSignal,
     includeRawChunks: true,
     model: provider.languageModel(),
-    prompt,
+    ...promptInput,
     tools: provider.tools,
   });
 
@@ -571,7 +592,10 @@ export const collectPromptStream = async (input: {
           text: t,
           rawEvents: [],
           streamPartId: null,
-          metadataJson: '{}',
+          metadataJson: stringifyForPersistence({
+            stopReason: 'cancelled',
+            reason: part.reason,
+          }),
           createdAt: now(),
           updatedAt: now(),
         });

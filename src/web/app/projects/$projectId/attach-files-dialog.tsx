@@ -16,6 +16,7 @@ import {
 } from '../../../components/ui/dialog.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
+import { attachmentContentBlockLabel } from './chat-state.pure.ts';
 
 const formatSize = (sizeInBytes: number): string => {
   if (sizeInBytes < 1024) {
@@ -87,6 +88,9 @@ export const AttachFilesDialog: FC<{
                     <p className="text-xs text-muted-foreground">
                       {attachment.mediaType} / {formatSize(attachment.sizeInBytes)}
                     </p>
+                    <p className="text-xs text-muted-foreground">
+                      {attachmentContentBlockLabel(attachment)}
+                    </p>
                   </div>
 
                   <Button
@@ -110,6 +114,9 @@ export const AttachFilesDialog: FC<{
               <Badge key={attachment.attachmentId} variant="secondary">
                 <Paperclip className="size-3" />
                 {attachment.name}
+                <span className="text-muted-foreground">
+                  {attachmentContentBlockLabel(attachment)}
+                </span>
               </Badge>
             ))}
           </div>

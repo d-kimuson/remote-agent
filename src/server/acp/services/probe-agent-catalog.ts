@@ -8,6 +8,8 @@ import {
   buildModeOptionsFromResponse,
 } from '../session-acp-response.pure.ts';
 import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from '../session-catalog.pure.ts';
+import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
+import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { resolveCommandPath } from './command-path.ts';
 
 export type AgentModelCatalog = {
@@ -37,11 +39,19 @@ export const probeAgentModelCatalog = async (options: {
     );
   }
 
+  const launch = buildAgentLaunchCommand({
+    providerCommand: resolvedCommandPath,
+    providerArgs: preset.args,
+    cwd: options.cwd,
+    env: buildAgentProcessEnv(),
+  });
+
   const provider = createACPProvider({
-    command: resolvedCommandPath,
-    args: [...preset.args],
+    command: launch.command,
+    args: [...launch.args],
+    env: launch.env,
     session: {
-      cwd: options.cwd,
+      cwd: launch.cwd,
       mcpServers: [],
     },
     persistSession: false,

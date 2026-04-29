@@ -1,4 +1,4 @@
-import type { AgentPreset, SessionSummary } from '../../../../shared/acp.ts';
+import type { AgentPreset, SessionSummary, UploadedAttachment } from '../../../../shared/acp.ts';
 import type { ChatMessage, TranscriptMap } from './types.ts';
 
 export const draftSessionTranscriptKey = 'draft-session';
@@ -141,6 +141,9 @@ export const buildPromptText = (prompt: string, attachedFiles: readonly string[]
 
   return `${trimmedPrompt}${attachmentBlock}`;
 };
+
+export const attachmentContentBlockLabel = (attachment: UploadedAttachment): string =>
+  attachment.mediaType.startsWith('image/') ? 'Image + path fallback' : 'Path fallback';
 
 export const appendTranscriptMessage = ({
   message,

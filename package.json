@@ -1,6 +1,6 @@
 {
   "name": "@kimuson/remote-agent",
-  "version": "0.0.1-beta.1",
+  "version": "0.0.1",
   "private": false,
   "description": "A CLI that serves a web UI for interacting with ACP-compatible agents",
   "bin": {
@@ -17,6 +17,7 @@
     "access": "public"
   },
   "scripts": {
+    "audit:publish": "pnpm audit --audit-level low",
     "build": "run-s build:server build:web build:openapi",
     "build:openapi": "node --experimental-strip-types src/scripts/write-openapi.ts dist/openapi.json",
     "build:server": "tsdown",
@@ -27,6 +28,7 @@
     "dev:proxy": "node --experimental-strip-types src/scripts/ensure-portless-proxy.ts",
     "dev:server": "RA_DIR=./data/.ra-dir RA_RUNTIME=dev portless --name 'remote-agent-server' --force node --watch src/server/main.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get remote-agent-server) portless --name 'remote-agent-web' --force vite",
+    "start": "portless --name 'remote-agent' node ./dist/cli.mjs",
     "debug:acp": "node --experimental-strip-types src/scripts/debug-acp.ts",
     "fix": "run-p fix:*",
     "fix:oxfmt": "oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern",
@@ -45,14 +47,19 @@
     "test": "vitest run",
     "typecheck": "tsgo -p . --noEmit"
   },
-  "devDependencies": {
+  "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.30.0",
+    "@zed-industries/codex-acp": "0.11.1",
+    "pi-acp": "0.0.26"
+  },
+  "devDependencies": {
     "@agentclientprotocol/sdk": "0.14.1",
     "@base-ui/react": "1.4.1",
     "@fontsource-variable/geist": "5.2.8",
     "@hono/node-server": "2.0.0",
     "@hono/standard-validator": "0.2.2",
     "@mcpc-tech/acp-ai-provider": "0.3.2",
+    "@react-native-async-storage/async-storage": "3.0.2",
     "@tailwindcss/vite": "4.2.4",
     "@tanstack/react-query": "5.99.2",
     "@tanstack/react-router": "1.168.23",
@@ -66,7 +73,6 @@
     "@valibot/to-json-schema": "1.6.0",
     "@vitejs/plugin-react": "6.0.1",
     "@vitest/browser-playwright": "4.1.5",
-    "@zed-industries/codex-acp": "0.11.1",
     "ai": "6.0.168",
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
@@ -82,13 +88,13 @@
     "oxfmt": "0.46.0",
     "oxlint": "1.61.0",
     "oxlint-tsgolint": "0.21.1",
-    "pi-acp": "0.0.26",
     "playwright": "1.59.1",
     "portless": "0.10.3",
     "react": "19.2.5",
     "react-dom": "19.2.5",
     "react-hook-form": "7.73.1",
     "react-markdown": "10.1.0",
+    "react-native": "0.85.2",
     "remark-gfm": "4.0.1",
     "shadcn": "4.4.0",
     "sonner": "2.0.7",

@@ -17,6 +17,7 @@ import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdRouteImport } from './routes/projects/$projectId'
 import { Route as ProjectsProjectIdIndexRouteImport } from './routes/projects/$projectId/index'
 import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects/$projectId/sessions'
+import { Route as ProjectsProjectIdRoutinesRouteImport } from './routes/projects/$projectId/routines'
 
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
@@ -59,6 +60,12 @@ const ProjectsProjectIdSessionsRoute =
     path: '/sessions',
     getParentRoute: () => ProjectsProjectIdRoute,
   } as any)
+const ProjectsProjectIdRoutinesRoute =
+  ProjectsProjectIdRoutinesRouteImport.update({
+    id: '/routines',
+    path: '/routines',
+    getParentRoute: () => ProjectsProjectIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -67,6 +74,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
 }
@@ -75,6 +83,7 @@ export interface FileRoutesByTo {
   '/debug': typeof DebugRoute
   '/settings': typeof SettingsRoute
   '/projects': typeof ProjectsIndexRoute
+  '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRoute
   '/projects/$projectId': typeof ProjectsProjectIdIndexRoute
 }
@@ -86,6 +95,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
+  '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRoute
   '/projects/$projectId/': typeof ProjectsProjectIdIndexRoute
 }
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/$projectId'
     | '/projects/'
+    | '/projects/$projectId/routines'
     | '/projects/$projectId/sessions'
     | '/projects/$projectId/'
   fileRoutesByTo: FileRoutesByTo
@@ -106,6 +117,7 @@ export interface FileRouteTypes {
     | '/debug'
     | '/settings'
     | '/projects'
+    | '/projects/$projectId/routines'
     | '/projects/$projectId/sessions'
     | '/projects/$projectId'
   id:
@@ -116,6 +128,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/projects/$projectId'
     | '/projects/'
+    | '/projects/$projectId/routines'
     | '/projects/$projectId/sessions'
     | '/projects/$projectId/'
   fileRoutesById: FileRoutesById
@@ -185,15 +198,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ProjectsProjectIdSessionsRouteImport
       parentRoute: typeof ProjectsProjectIdRoute
     }
+    '/projects/$projectId/routines': {
+      id: '/projects/$projectId/routines'
+      path: '/routines'
+      fullPath: '/projects/$projectId/routines'
+      preLoaderRoute: typeof ProjectsProjectIdRoutinesRouteImport
+      parentRoute: typeof ProjectsProjectIdRoute
+    }
   }
 }
 
 interface ProjectsProjectIdRouteChildren {
+  ProjectsProjectIdRoutinesRoute: typeof ProjectsProjectIdRoutinesRoute
   ProjectsProjectIdSessionsRoute: typeof ProjectsProjectIdSessionsRoute
   ProjectsProjectIdIndexRoute: typeof ProjectsProjectIdIndexRoute
 }
 
 const ProjectsProjectIdRouteChildren: ProjectsProjectIdRouteChildren = {
+  ProjectsProjectIdRoutinesRoute: ProjectsProjectIdRoutinesRoute,
   ProjectsProjectIdSessionsRoute: ProjectsProjectIdSessionsRoute,
   ProjectsProjectIdIndexRoute: ProjectsProjectIdIndexRoute,
 }

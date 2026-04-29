@@ -2,8 +2,10 @@ import { Link } from '@tanstack/react-router';
 import { FolderKanban, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
 import {
   createContext,
+  useCallback,
   useContext,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -104,13 +106,14 @@ const AppMenuBody: FC<{
 
 export const AppMenuPortal: FC<PropsWithChildren> = ({ children }) => {
   const context = useContext(AppMenuContext);
+  const setHasCustomContent = context?.setHasCustomContent;
 
   useLayoutEffect(() => {
-    context?.setHasCustomContent(true);
+    setHasCustomContent?.(true);
     return () => {
-      context?.setHasCustomContent(false);
+      setHasCustomContent?.(false);
     };
-  }, [context]);
+  }, [setHasCustomContent]);
 
   if (context === null) {
     return null;
@@ -149,13 +152,13 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
     width: `${desktopMenuWidth}px`,
   } satisfies CSSProperties;
 
-  const closeMobileMenu = () => {
+  const closeMobileMenu = useCallback(() => {
     setMobileOpen(false);
-  };
-  const openMenu = () => {
+  }, []);
+  const openMenu = useCallback(() => {
     setDesktopExpanded(true);
     setMobileOpen(true);
-  };
+  }, []);
   const handleResizePointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -179,16 +182,19 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
     }
   };
 
+  const contextValue = useMemo(
+    () => ({
+      desktopTarget,
+      mobileTarget,
+      setHasCustomContent,
+      closeMobileMenu,
+      openMenu,
+    }),
+    [closeMobileMenu, desktopTarget, mobileTarget, openMenu],
+  );
+
   return (
-    <AppMenuContext.Provider
-      value={{
-        desktopTarget,
-        mobileTarget,
-        setHasCustomContent,
-        closeMobileMenu,
-        openMenu,
-      }}
-    >
+    <AppMenuContext.Provider value={contextValue}>
       <div className="app-shell flex min-h-screen">
         {desktopExpanded ? (
           <aside

@@ -7,6 +7,7 @@ import {
   buildDraftSession,
   buildPromptText,
   buildSessionEntries,
+  attachmentContentBlockLabel,
   defaultPresetId,
   draftSessionTranscriptKeyForGeneration,
   moveTranscript,
@@ -52,6 +53,7 @@ const session = {
   currentModelId: null,
   availableModes: [],
   availableModels: [],
+  configOptions: [],
 } satisfies SessionSummary;
 
 describe('chat-state.pure', () => {
@@ -131,6 +133,25 @@ describe('chat-state.pure', () => {
       'hello\n\nAttached files:\n- a.ts\n- b.ts',
     );
     expect(buildPromptText('   ', ['a.ts'])).toBe('');
+  });
+
+  test('attachmentContentBlockLabel reflects adapter delivery capability', () => {
+    expect(
+      attachmentContentBlockLabel({
+        attachmentId: 'image',
+        mediaType: 'image/png',
+        name: 'screen.png',
+        sizeInBytes: 12,
+      }),
+    ).toBe('Image + path fallback');
+    expect(
+      attachmentContentBlockLabel({
+        attachmentId: 'text',
+        mediaType: 'text/plain',
+        name: 'notes.txt',
+        sizeInBytes: 12,
+      }),
+    ).toBe('Path fallback');
   });
 
   test('appendTranscriptMessage and moveTranscript preserve message order', () => {

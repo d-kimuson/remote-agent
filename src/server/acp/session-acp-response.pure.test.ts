@@ -3,6 +3,7 @@ import type { NewSessionResponse } from '@agentclientprotocol/sdk';
 import { describe, expect, test } from 'vitest';
 
 import {
+  buildGenericConfigOptionsFromResponse,
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
 } from './session-acp-response.pure';
@@ -73,5 +74,93 @@ describe('buildModeOptionsFromResponse', () => {
       { id: 'plan', name: 'Plan', description: null },
     ]);
     expect(out.currentModeId).toBe('plan');
+  });
+});
+
+describe('buildGenericConfigOptionsFromResponse', () => {
+  test('maps select config options except model and mode options', () => {
+    const r: Pick<NewSessionResponse, 'configOptions'> = {
+      configOptions: [
+        {
+          type: 'select' as const,
+          id: 'model',
+          name: 'Model',
+          category: 'model' as const,
+          currentValue: 'gpt-5',
+          options: [{ value: 'gpt-5', name: 'GPT-5' }],
+        },
+        {
+          type: 'select' as const,
+          id: 'mode',
+          name: 'Mode',
+          category: 'mode' as const,
+          currentValue: 'plan',
+          options: [{ value: 'plan', name: 'Plan' }],
+        },
+        {
+          type: 'select' as const,
+          id: 'verbosity',
+          name: 'Verbosity',
+          category: 'response' as const,
+          description: 'Response detail',
+          currentValue: 'medium',
+          options: [
+            { value: 'low', name: 'Low', description: 'Short answers' },
+            { value: 'medium', name: 'Medium' },
+          ],
+        },
+      ],
+    };
+    const out = buildGenericConfigOptionsFromResponse(r);
+    expect(out).toEqual([
+      {
+        id: 'verbosity',
+        name: 'Verbosity',
+        category: 'response',
+        description: 'Response detail',
+        currentValue: 'medium',
+        values: [
+          { value: 'low', name: 'Low', description: 'Short answers' },
+          { value: 'medium', name: 'Medium', description: null },
+        ],
+      },
+    ]);
+  });
+
+  test('flattens grouped select config options', () => {
+    const r: Pick<NewSessionResponse, 'configOptions'> = {
+      configOptions: [
+        {
+          type: 'select' as const,
+          id: 'reasoning-effort',
+          name: 'Reasoning',
+          currentValue: 'high',
+          options: [
+            {
+              group: 'effort',
+              name: 'Effort',
+              options: [
+                { value: 'medium', name: 'Medium' },
+                { value: 'high', name: 'High' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const out = buildGenericConfigOptionsFromResponse(r);
+    expect(out).toEqual([
+      {
+        id: 'reasoning-effort',
+        name: 'Reasoning',
+        category: null,
+        description: null,
+        currentValue: 'high',
+        values: [
+          { value: 'medium', name: 'Medium', description: null },
+          { value: 'high', name: 'High', description: null },
+        ],
+      },
+    ]);
   });
 });

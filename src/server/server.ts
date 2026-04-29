@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 
 import { createHonoApp } from './app.ts';
+import { runDueRoutines } from './routines/routine-runner.ts';
 
 type ServerOptions = {
   port?: number;
@@ -21,9 +22,15 @@ export const startServer = (options?: ServerOptions) => {
     },
   );
 
+  const routineInterval = setInterval(() => {
+    void runDueRoutines();
+  }, 30_000);
+  void runDueRoutines();
+
   let isRunning = true;
   const cleanUp = () => {
     if (isRunning) {
+      clearInterval(routineInterval);
       server.close();
       isRunning = false;
     }

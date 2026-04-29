@@ -1,8 +1,14 @@
-import type { NewSessionResponse } from '@agentclientprotocol/sdk';
+import type {
+  NewSessionResponse,
+  SessionNotification,
+  SetSessionConfigOptionResponse,
+} from '@agentclientprotocol/sdk';
+import type { ModelMessage, UserModelMessage } from 'ai';
 import type { DatabaseSync } from 'node:sqlite';
 
 import { createACPProvider, type ACPProvider } from '@mcpc-tech/acp-ai-provider';
 import { and, eq } from 'drizzle-orm';
+import { readFile } from 'node:fs/promises';
 import { array, parse, string } from 'valibot';
 
 import {
@@ -11,6 +17,7 @@ import {
   modeOptionSchema,
   modelOptionSchema,
   rawEventSchema,
+  sessionConfigOptionSchema,
   sessionOriginSchema,
   sessionSummarySchema,
   type AgentPreset,
@@ -23,6 +30,7 @@ import {
   type SendMessageRequest,
   type SessionSummary,
   type SessionStatus,
+  type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
 } from '../../../shared/acp.ts';
 import { resolveAttachments } from '../../attachments/store.ts';
@@ -33,8 +41,13 @@ import {
 } from '../../db/schema.ts';
 import { type AppDatabase, getDefaultDatabase } from '../../db/sqlite.ts';
 import { agentPresets } from '../presets.ts';
-import { buildPromptWithAttachments } from '../prompt-attachments.pure.ts';
 import {
+  acpAiProviderAttachmentCapabilities,
+  buildAttachmentPromptPlan,
+  type AttachmentPromptPlan,
+} from '../prompt-attachments.pure.ts';
+import {
+  buildGenericConfigOptionsFromResponse,
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
 } from '../session-acp-response.pure.ts';
@@ -45,6 +58,7 @@ import {
   preferNonEmptyModelCatalog,
 } from '../session-catalog.pure.ts';
 import { installAcpProviderToolResultPatch } from './acp-provider-tool-result-patch.ts';
+import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { importProviderSessionMessages } from './codex-session-log.ts';
 import {
@@ -64,6 +78,24 @@ type SessionProvider = Pick<
   'cleanup' | 'initSession' | 'languageModel' | 'setMode' | 'setModel' | 'tools'
 >;
 
+type PermissionRequestClient = {
+  readonly setPermissionRequestHandler: (handler: typeof requestUserPermission) => void;
+};
+
+type SessionUpdateHandler = (params: SessionNotification) => void;
+
+type SessionUpdateClient = {
+  setSessionUpdateHandler: (handler: SessionUpdateHandler) => void;
+};
+
+type SessionConfigOptionClient = {
+  readonly setSessionConfigOption: (input: {
+    readonly sessionId: string;
+    readonly configId: string;
+    readonly value: string;
+  }) => Promise<SetSessionConfigOptionResponse>;
+};
+
 /**
  * `acp-ai-provider` の `startSession` は、未接続のツール用 MCP を後から付与すると
  * `if (this.sessionId && toolsAdded) { this.connection.newSession(...) }` で
@@ -80,24 +112,156 @@ const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSes
   return response;
 };
 
+const hasSetPermissionRequestHandler = (value: unknown): value is PermissionRequestClient => {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  return typeof Reflect.get(value, 'setPermissionRequestHandler') === 'function';
+};
+
+const resolvePermissionRequestClient = (
+  provider: SessionProvider,
+): PermissionRequestClient | null => {
+  const directClient: unknown = Reflect.get(provider, 'client');
+  if (hasSetPermissionRequestHandler(directClient)) {
+    return directClient;
+  }
+
+  const model: unknown = Reflect.get(provider, 'model');
+  if (model === undefined) {
+    return null;
+  }
+  const modelClient: unknown =
+    model !== null && typeof model === 'object' ? Reflect.get(model, 'client') : undefined;
+  if (hasSetPermissionRequestHandler(modelClient)) {
+    return modelClient;
+  }
+
+  throw new Error('ACP provider does not support permission request handling');
+};
+
 const installProviderPermissionHandler = (provider: SessionProvider): void => {
-  const client: unknown = Reflect.get(provider, 'client');
-  if (client === undefined) {
+  const client = resolvePermissionRequestClient(provider);
+  if (client === null) {
     return;
   }
-  if (client === null || typeof client !== 'object') {
-    throw new Error('ACP provider client is not available for permission handling');
+  client.setPermissionRequestHandler(requestUserPermission);
+};
+
+const attachmentPromptMessagesFromPlan = async (
+  plan: AttachmentPromptPlan,
+): Promise<readonly ModelMessage[] | undefined> => {
+  const imageDeliveries = plan.deliveries.filter((delivery) => delivery.kind === 'image');
+  if (imageDeliveries.length === 0) {
+    return undefined;
   }
 
-  const setPermissionRequestHandler: unknown = Reflect.get(client, 'setPermissionRequestHandler');
-  if (typeof setPermissionRequestHandler !== 'function') {
-    throw new Error('ACP provider does not support permission request handling');
+  const content: UserModelMessage['content'] = [
+    {
+      type: 'text',
+      text: plan.promptText,
+    },
+  ];
+
+  for (const delivery of imageDeliveries) {
+    content.push({
+      type: 'file',
+      data: await readFile(delivery.storedPath),
+      filename: delivery.name,
+      mediaType: delivery.mediaType,
+    });
   }
 
-  Reflect.apply(setPermissionRequestHandler, client, [requestUserPermission]);
+  return [
+    {
+      role: 'user',
+      content,
+    },
+  ];
+};
+
+const hasSetSessionUpdateHandler = (value: unknown): value is SessionUpdateClient => {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  return typeof Reflect.get(value, 'setSessionUpdateHandler') === 'function';
+};
+
+const resolveSessionUpdateClient = (provider: SessionProvider): SessionUpdateClient | null => {
+  const directClient: unknown = Reflect.get(provider, 'client');
+  if (hasSetSessionUpdateHandler(directClient)) {
+    return directClient;
+  }
+
+  const model: unknown = Reflect.get(provider, 'model');
+  if (model === undefined) {
+    return null;
+  }
+  const modelClient: unknown =
+    model !== null && typeof model === 'object' ? Reflect.get(model, 'client') : undefined;
+  return hasSetSessionUpdateHandler(modelClient) ? modelClient : null;
+};
+
+const installProviderSessionUpdateTap = (
+  provider: SessionProvider,
+  onSessionUpdate: (params: SessionNotification) => Promise<void>,
+): void => {
+  const client = resolveSessionUpdateClient(provider);
+  if (client === null) {
+    return;
+  }
+
+  const originalSetSessionUpdateHandler = client.setSessionUpdateHandler.bind(client);
+  client.setSessionUpdateHandler = (handler) => {
+    originalSetSessionUpdateHandler((params) => {
+      void onSessionUpdate(params);
+      handler(params);
+    });
+  };
+};
+
+const hasSetSessionConfigOption = (value: unknown): value is SessionConfigOptionClient => {
+  if (value === null || typeof value !== 'object') {
+    return false;
+  }
+  return typeof Reflect.get(value, 'setSessionConfigOption') === 'function';
+};
+
+const providerModelObject = (provider: SessionProvider): object | null => {
+  const model: unknown = Reflect.get(provider, 'model');
+  return model !== null && typeof model === 'object' ? model : null;
+};
+
+const providerSessionId = (provider: SessionProvider): string | null => {
+  const model = providerModelObject(provider);
+  const fromModel: unknown = model === null ? null : Reflect.get(model, 'sessionId');
+  if (typeof fromModel === 'string' && fromModel.length > 0) {
+    return fromModel;
+  }
+
+  const getSessionId: unknown = Reflect.get(provider, 'getSessionId');
+  if (typeof getSessionId !== 'function') {
+    return null;
+  }
+  const value: unknown = Reflect.apply(getSessionId, provider, []);
+  return typeof value === 'string' && value.length > 0 ? value : null;
+};
+
+const resolveSessionConfigOptionClient = (
+  provider: SessionProvider,
+): SessionConfigOptionClient | null => {
+  const directConnection: unknown = Reflect.get(provider, 'connection');
+  if (hasSetSessionConfigOption(directConnection)) {
+    return directConnection;
+  }
+
+  const model = providerModelObject(provider);
+  const modelConnection: unknown = model === null ? null : Reflect.get(model, 'connection');
+  return hasSetSessionConfigOption(modelConnection) ? modelConnection : null;
 };
 
 type SessionEntry = {
+  activePromptControllers: Set<AbortController>;
   provider: SessionProvider;
   runningPromptCount: number;
   session: SessionSummary;
@@ -109,12 +273,14 @@ type SessionStoreDependencies = {
     readonly command: string;
     readonly args: readonly string[];
     readonly cwd: string;
+    readonly env?: Readonly<Record<string, string>>;
     readonly existingSessionId?: string;
   }) => SessionProvider;
   /** 省略時は `collectPromptStream` で全パーツを永続化。テスト用に差し替え可。 */
   readonly promptCollector?: (
     provider: SessionProvider,
     prompt: string,
+    options: { readonly abortSignal: AbortSignal },
   ) => Promise<{
     readonly text: string;
     readonly rawEvents: readonly RawEvent[];
@@ -157,6 +323,7 @@ const createSessionSummary = ({
 }): SessionSummary => {
   const modelInfo = buildModelOptionsFromResponse(response);
   const modeInfo = buildModeOptionsFromResponse(response);
+  const configOptions = buildGenericConfigOptionsFromResponse(response);
   const currentModelId = modelInfo.currentModelId;
   const currentModeId = modeInfo.currentModeId;
 
@@ -178,6 +345,7 @@ const createSessionSummary = ({
     currentModelId,
     availableModes: enrichModeOptionsIfEmpty(modeInfo.options, currentModeId),
     availableModels: enrichModelOptionsIfEmpty(modelInfo.options, currentModelId),
+    configOptions,
   });
 };
 
@@ -254,6 +422,7 @@ const mapStoredSession = (
       parse(array(modelOptionSchema), JSON.parse(record.availableModelsJson)),
       record.currentModelId,
     ),
+    configOptions: parse(array(sessionConfigOptionSchema), JSON.parse(record.configOptionsJson)),
   });
 };
 
@@ -265,13 +434,41 @@ const providerCatalogKey = ({
   readonly cwd: string;
 }): string => `${presetId}\0${cwd}`;
 
+const resolveAcpSessionCancel = (
+  provider: SessionProvider,
+  sessionId: string,
+): (() => Promise<void>) | null => {
+  provider.languageModel();
+  const modelValue: unknown = Reflect.get(provider, 'model');
+  if (modelValue === null || typeof modelValue !== 'object') {
+    return null;
+  }
+  const connectionValue: unknown = Reflect.get(modelValue, 'connection');
+  if (connectionValue === null || typeof connectionValue !== 'object') {
+    return null;
+  }
+  const cancelValue: unknown = Reflect.get(connectionValue, 'cancel');
+  if (typeof cancelValue !== 'function') {
+    return null;
+  }
+  return async () => {
+    await Reflect.apply(cancelValue, connectionValue, [{ sessionId }]);
+  };
+};
+
+const isAbortLikeError = (error: unknown): boolean =>
+  error instanceof Error &&
+  (error.name === 'AbortError' ||
+    error.message.toLowerCase().includes('abort') ||
+    error.message.toLowerCase().includes('cancel'));
+
 export const createSessionStore = ({
   database = getDefaultDatabase(),
-  createProvider = ({ command, args, cwd, existingSessionId }) =>
+  createProvider = ({ command, args, cwd, env, existingSessionId }) =>
     createACPProvider({
       command,
       args: [...args],
-      env: buildAgentProcessEnv(),
+      env: env ?? buildAgentProcessEnv(),
       existingSessionId,
       session: {
         cwd,
@@ -314,6 +511,7 @@ export const createSessionStore = ({
         currentModelId: session.currentModelId,
         availableModesJson: JSON.stringify(session.availableModes),
         availableModelsJson: JSON.stringify(session.availableModels),
+        configOptionsJson: JSON.stringify(session.configOptions),
       })
       .onConflictDoUpdate({
         target: sessionsTable.sessionId,
@@ -331,6 +529,7 @@ export const createSessionStore = ({
           currentModelId: session.currentModelId,
           availableModesJson: JSON.stringify(session.availableModes),
           availableModelsJson: JSON.stringify(session.availableModels),
+          configOptionsJson: JSON.stringify(session.configOptions),
         },
       });
     emitSessionUpdated(session);
@@ -535,6 +734,110 @@ export const createSessionStore = ({
     };
   };
 
+  const sessionUpdateText = (notification: SessionNotification): string => {
+    const { update } = notification;
+    if (update.sessionUpdate === 'available_commands_update') {
+      return update.availableCommands.map((command) => `/${command.name}`).join(', ');
+    }
+    if (update.sessionUpdate === 'usage_update') {
+      const percent =
+        update.size === 0 ? 0 : Math.round((Math.max(0, update.used) / update.size) * 100);
+      return `context ${String(update.used)}/${String(update.size)} tokens (${String(percent)}%)`;
+    }
+    if (update.sessionUpdate === 'session_info_update') {
+      return JSON.stringify({
+        title: update.title,
+        updatedAt: update.updatedAt,
+      });
+    }
+    if (update.sessionUpdate === 'tool_call' || update.sessionUpdate === 'tool_call_update') {
+      return JSON.stringify({
+        toolCallId: update.toolCallId,
+        title: update.title,
+        kind: update.kind,
+        status: update.status,
+        locations: update.locations,
+      });
+    }
+    return JSON.stringify(update);
+  };
+
+  const persistSessionUpdateMessage = async (notification: SessionNotification): Promise<void> => {
+    const updateType = notification.update.sessionUpdate;
+    if (
+      updateType !== 'session_info_update' &&
+      updateType !== 'usage_update' &&
+      updateType !== 'available_commands_update' &&
+      updateType !== 'tool_call' &&
+      updateType !== 'tool_call_update'
+    ) {
+      return;
+    }
+
+    const rawText = JSON.stringify(notification.update);
+    await persistMessage({
+      sessionId: notification.sessionId,
+      message: buildMessage({
+        role: 'assistant',
+        text: sessionUpdateText(notification),
+        rawEvents: [
+          {
+            type: 'streamPart',
+            partType: updateType,
+            text: sessionUpdateText(notification),
+            rawText,
+          },
+        ],
+        kind: 'raw_meta',
+        metadataJson: JSON.stringify({ acpSessionUpdate: notification.update }),
+      }),
+    });
+  };
+
+  const handleObservedSessionUpdate = async (
+    expectedSessionId: string,
+    notification: SessionNotification,
+  ): Promise<void> => {
+    if (notification.sessionId !== expectedSessionId) {
+      return;
+    }
+
+    if (notification.update.sessionUpdate === 'session_info_update') {
+      const entry = runtimeSessions.get(expectedSessionId);
+      if (entry !== undefined) {
+        entry.session = parse(sessionSummarySchema, {
+          ...entry.session,
+          title: Object.hasOwn(notification.update, 'title')
+            ? notification.update.title
+            : entry.session.title,
+          updatedAt: Object.hasOwn(notification.update, 'updatedAt')
+            ? notification.update.updatedAt
+            : entry.session.updatedAt,
+          status: sessionStatusFromEntry(entry),
+          isActive: true,
+        });
+        await persistSession(entry.session);
+      }
+    }
+
+    if (notification.update.sessionUpdate === 'config_option_update') {
+      const entry = runtimeSessions.get(expectedSessionId);
+      if (entry !== undefined) {
+        entry.session = parse(sessionSummarySchema, {
+          ...entry.session,
+          configOptions: buildGenericConfigOptionsFromResponse({
+            configOptions: notification.update.configOptions,
+          }),
+          status: sessionStatusFromEntry(entry),
+          isActive: true,
+        });
+        await persistSession(entry.session);
+      }
+    }
+
+    await persistSessionUpdateMessage(notification);
+  };
+
   const toChatMessageFromStreamRow = (row: PromptStreamInsertRow): ChatMessage => ({
     id: row.id,
     role: row.role,
@@ -598,13 +901,22 @@ export const createSessionStore = ({
       );
     }
 
-    const provider = createProvider({
-      command: resolvedCommandPath,
-      args,
+    const launch = buildAgentLaunchCommand({
+      providerCommand: resolvedCommandPath,
+      providerArgs: args,
       cwd,
+      env: buildAgentProcessEnv(),
     });
-
+    const provider = createProvider({
+      command: launch.command,
+      args: launch.args,
+      cwd: launch.cwd,
+      env: launch.env,
+    });
     const response = await initAcpProviderSession(provider);
+    installProviderSessionUpdateTap(provider, (notification) =>
+      handleObservedSessionUpdate(response.sessionId, notification),
+    );
     const createdAt = new Date().toISOString();
     let session = createSessionSummary({
       origin: 'new',
@@ -648,6 +960,7 @@ export const createSessionStore = ({
     }
 
     runtimeSessions.set(session.sessionId, {
+      activePromptControllers: new Set(),
       provider,
       runningPromptCount: 0,
       session,
@@ -696,13 +1009,23 @@ export const createSessionStore = ({
       );
     }
 
-    const provider = createProvider({
-      command: resolvedCommandPath,
-      args,
+    const launch = buildAgentLaunchCommand({
+      providerCommand: resolvedCommandPath,
+      providerArgs: args,
       cwd,
+      env: buildAgentProcessEnv(),
+    });
+    const provider = createProvider({
+      command: launch.command,
+      args: launch.args,
+      cwd: launch.cwd,
+      env: launch.env,
       existingSessionId: sessionId,
     });
     const response = await initAcpProviderSession(provider);
+    installProviderSessionUpdateTap(provider, (notification) =>
+      handleObservedSessionUpdate(response.sessionId, notification),
+    );
     const createdAt = existingRow?.createdAt ?? new Date().toISOString();
     const origin =
       existingRow !== undefined ? parse(sessionOriginSchema, existingRow.origin) : 'loaded';
@@ -756,6 +1079,7 @@ export const createSessionStore = ({
     });
 
     runtimeSessions.set(restoredSession.sessionId, {
+      activePromptControllers: new Set(),
       provider,
       runningPromptCount: 0,
       session: restoredSession,
@@ -837,6 +1161,7 @@ export const createSessionStore = ({
         preferNonEmptyModelCatalog([...availableModels], storedSession?.availableModels ?? []),
         effectiveCurrentModelId,
       ),
+      configOptions: storedSession?.configOptions ?? [],
     });
 
     await persistSession(importedSession);
@@ -951,23 +1276,100 @@ export const createSessionStore = ({
     return session;
   };
 
+  const updateSessionConfigOption = async (
+    sessionId: string,
+    request: UpdateSessionConfigOptionRequest,
+  ): Promise<SessionSummary> => {
+    const entry = getSessionEntry(sessionId);
+    const client = resolveSessionConfigOptionClient(entry.provider);
+    const providerSessionIdValue = providerSessionId(entry.provider) ?? sessionId;
+
+    if (client === null) {
+      throw new Error(
+        'ACP provider adapter does not expose session/set_config_option for this session.',
+      );
+    }
+
+    const response = await client.setSessionConfigOption({
+      sessionId: providerSessionIdValue,
+      configId: request.configId,
+      value: request.value,
+    });
+    const configOptions = buildGenericConfigOptionsFromResponse({
+      configOptions: response.configOptions,
+    });
+
+    const session = parse(sessionSummarySchema, {
+      ...entry.session,
+      isActive: true,
+      status: sessionStatusFromEntry(entry),
+      updatedAt: new Date().toISOString(),
+      configOptions,
+    });
+    entry.session = session;
+    await persistSession(session);
+
+    return session;
+  };
+
   const sendPrompt = async (
     sessionId: string,
     request: SendMessageRequest,
   ): Promise<MessageResponse> => {
     const entry = await ensureSessionEntry(sessionId);
     const attachments = resolveAttachments(request.attachmentIds ?? []);
-    const effectivePrompt = buildPromptWithAttachments({
+    const attachmentPromptPlan = buildAttachmentPromptPlan({
       attachments,
+      capabilities: acpAiProviderAttachmentCapabilities,
       prompt: request.prompt,
     });
+    const effectivePrompt = attachmentPromptPlan.promptText;
+    const promptMessages = await attachmentPromptMessagesFromPlan(attachmentPromptPlan);
+    const attachmentMetadataJson =
+      attachmentPromptPlan.deliveries.length === 0
+        ? '{}'
+        : JSON.stringify({
+            attachments: attachmentPromptPlan.deliveries,
+            contentBlockAdapter: {
+              embeddedContext: acpAiProviderAttachmentCapabilities.embeddedContext,
+              image: acpAiProviderAttachmentCapabilities.image,
+              resourceLink: acpAiProviderAttachmentCapabilities.resourceLink,
+            },
+          });
 
-    if (request.modeId !== null && request.modeId !== undefined && request.modeId.length > 0) {
-      await entry.provider.setMode(request.modeId);
+    await persistSession(entry.session);
+    await persistMessage({
+      sessionId,
+      message: buildMessage({
+        role: 'user',
+        text: effectivePrompt,
+        rawEvents: [],
+        kind: 'user',
+        metadataJson: attachmentMetadataJson,
+      }),
+    });
+
+    try {
+      if (request.modeId !== null && request.modeId !== undefined && request.modeId.length > 0) {
+        await entry.provider.setMode(request.modeId);
+      }
+      if (request.modelId !== null && request.modelId !== undefined && request.modelId.length > 0) {
+        await entry.provider.setModel(request.modelId);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'failed to apply session settings';
+      await persistMessage({
+        sessionId,
+        message: buildMessage({
+          role: 'assistant',
+          text: `Error: ${message}`,
+          rawEvents: [],
+          kind: 'legacy_assistant_turn',
+        }),
+      });
+      throw error;
     }
-    if (request.modelId !== null && request.modelId !== undefined && request.modelId.length > 0) {
-      await entry.provider.setModel(request.modelId);
-    }
+
     if (request.modelId !== undefined || request.modeId !== undefined) {
       entry.session = parse(sessionSummarySchema, {
         ...entry.session,
@@ -980,22 +1382,20 @@ export const createSessionStore = ({
       await persistSession(entry.session);
     }
 
-    await persistSession(entry.session);
-    await persistMessage({
-      sessionId,
-      message: buildMessage({ role: 'user', text: effectivePrompt, rawEvents: [], kind: 'user' }),
-    });
+    const abortController = new AbortController();
 
     const collectPromptResponse = async (): Promise<
       Pick<MessageResponse, 'assistantSegmentMessages' | 'rawEvents' | 'text'>
     > => {
       if (promptCollector === undefined) {
         const streamed = await collectPromptStream({
+          abortSignal: abortController.signal,
           provider: {
             languageModel: () => entry.provider.languageModel(),
             tools: entry.provider.tools ?? {},
           },
           prompt: effectivePrompt,
+          promptMessages,
           sessionId,
           now: () => new Date().toISOString(),
           persistence: streamPersistence,
@@ -1040,7 +1440,9 @@ export const createSessionStore = ({
         };
       }
 
-      const result = await promptCollector(entry.provider, effectivePrompt);
+      const result = await promptCollector(entry.provider, effectivePrompt, {
+        abortSignal: abortController.signal,
+      });
       if (result.alreadyPersisted) {
         return {
           text: result.text,
@@ -1071,6 +1473,7 @@ export const createSessionStore = ({
       };
     };
 
+    entry.activePromptControllers.add(abortController);
     entry.runningPromptCount += 1;
     setSessionStatus(entry, sessionStatusFromEntry(entry));
     emitSessionUpdated(entry.session);
@@ -1080,6 +1483,49 @@ export const createSessionStore = ({
     try {
       result = await collectPromptResponse();
     } catch (error) {
+      if (abortController.signal.aborted || isAbortLikeError(error)) {
+        await persistMessage({
+          sessionId,
+          message: buildMessage({
+            role: 'assistant',
+            text: 'Cancelled',
+            rawEvents: [
+              {
+                type: 'streamPart',
+                partType: 'abort',
+                text: 'Cancelled',
+                rawText: 'Cancelled',
+              },
+            ],
+            kind: 'abort',
+            metadataJson: JSON.stringify({
+              stopReason: 'cancelled',
+              reason:
+                abortController.signal.reason === undefined
+                  ? null
+                  : String(abortController.signal.reason),
+            }),
+          }),
+        });
+        result = {
+          text: '',
+          rawEvents: [
+            {
+              type: 'streamPart',
+              partType: 'abort',
+              text: 'Cancelled',
+              rawText: 'Cancelled',
+            },
+          ],
+          assistantSegmentMessages: [],
+        };
+        return {
+          session: entry.session,
+          text: result.text,
+          rawEvents: result.rawEvents,
+          assistantSegmentMessages: result.assistantSegmentMessages,
+        };
+      }
       const message = error instanceof Error ? error.message : 'failed to collect prompt result';
       await persistMessage({
         sessionId,
@@ -1092,6 +1538,7 @@ export const createSessionStore = ({
       });
       throw error;
     } finally {
+      entry.activePromptControllers.delete(abortController);
       entry.runningPromptCount = Math.max(0, entry.runningPromptCount - 1);
       setSessionStatus(entry, sessionStatusFromEntry(entry));
       emitSessionUpdated(entry.session);
@@ -1107,6 +1554,32 @@ export const createSessionStore = ({
       rawEvents: result.rawEvents,
       assistantSegmentMessages: result.assistantSegmentMessages,
     };
+  };
+
+  const cancelSession = async (sessionId: string): Promise<SessionSummary> => {
+    const entry = getSessionEntry(sessionId);
+    const hadRunningPrompt = entry.runningPromptCount > 0 || entry.activePromptControllers.size > 0;
+
+    cancelPermissionRequestsForSession(sessionId);
+
+    const notifyAcpCancel = resolveAcpSessionCancel(entry.provider, sessionId);
+    const notifyAcpCancelPromise =
+      notifyAcpCancel === null ? Promise.resolve() : notifyAcpCancel().catch(() => undefined);
+    void notifyAcpCancelPromise;
+
+    for (const controller of entry.activePromptControllers) {
+      controller.abort('cancelled');
+    }
+    entry.activePromptControllers.clear();
+    entry.runningPromptCount = 0;
+    setSessionStatus(entry, sessionStatusFromEntry(entry));
+    await persistSession(entry.session);
+
+    return parse(sessionSummarySchema, {
+      ...entry.session,
+      status: hadRunningPrompt ? 'paused' : entry.session.status,
+      isActive: true,
+    });
   };
 
   const removeSession = async (sessionId: string): Promise<boolean> => {
@@ -1139,7 +1612,9 @@ export const createSessionStore = ({
     loadSession,
     importSession,
     updateSession,
+    updateSessionConfigOption,
     sendPrompt,
+    cancelSession,
     removeSession,
   };
 };
@@ -1221,11 +1696,22 @@ export const updateSession = async (
   return getSessionStore().updateSession(sessionId, request);
 };
 
+export const updateSessionConfigOption = async (
+  sessionId: string,
+  request: UpdateSessionConfigOptionRequest,
+): Promise<SessionSummary> => {
+  return getSessionStore().updateSessionConfigOption(sessionId, request);
+};
+
 export const sendPrompt = async (
   sessionId: string,
   request: SendMessageRequest,
 ): Promise<MessageResponse> => {
   return getSessionStore().sendPrompt(sessionId, request);
+};
+
+export const cancelSession = async (sessionId: string): Promise<SessionSummary> => {
+  return getSessionStore().cancelSession(sessionId);
 };
 
 export const removeSession = async (sessionId: string): Promise<boolean> => {

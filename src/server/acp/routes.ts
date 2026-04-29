@@ -10,6 +10,7 @@ import {
   agentSlashCommandsQuerySchema,
   agentSlashCommandsResponseSchema,
   checkAgentProviderRequestSchema,
+  cancelSessionResponseSchema,
   createSessionRequestSchema,
   discoverResumableSessionsRequestSchema,
   loadSessionRequestSchema,
@@ -23,6 +24,7 @@ import {
   sessionResponseSchema,
   sessionsResponseSchema,
   updateAgentProviderRequestSchema,
+  updateSessionConfigOptionRequestSchema,
   updateSessionRequestSchema,
   type CreateSessionRequest,
   type DiscoverResumableSessionsRequest,
@@ -32,6 +34,7 @@ import { errorResponseSchema, jsonResponse, validationErrorHook } from '../hono-
 import {
   getProject,
   getProjectSettings,
+  updateProjectModePreference,
   updateProjectModelPreference,
 } from '../projects/project-store.ts';
 import { parseArgsText } from './args.pure.ts';
@@ -53,11 +56,13 @@ import { probeAgentSlashCommands } from './services/probe-agent-slash-commands.t
 import {
   createPreparedSession,
   createSession,
+  cancelSession,
   importSession,
   listSessionMessages,
   listSessions,
   removeSession,
   sendPrompt,
+  updateSessionConfigOption,
   updateSession,
 } from './services/session-store.ts';
 import { subscribeAcpSse } from './services/sse-broadcast.ts';
@@ -165,6 +170,37 @@ const resolveInitialModelId = async ({
   return preferences.find((entry) => entry.isFavorite)?.modelId ?? null;
 };
 
+const resolveInitialModeId = async ({
+  modeId,
+  presetId,
+  projectId,
+}: {
+  readonly projectId: string | null | undefined;
+  readonly presetId: string;
+  readonly modeId: string | null | undefined;
+}): Promise<string | null> => {
+  const requested = nonEmpty(modeId);
+  if (requested !== null) {
+    return requested;
+  }
+  if (projectId === null || projectId === undefined) {
+    return null;
+  }
+
+  const settings = await getProjectSettings(projectId);
+  return (
+    settings.modePreferences
+      .filter(
+        (entry) =>
+          entry.presetId === presetId &&
+          entry.lastUsedAt !== null &&
+          entry.lastUsedAt !== undefined,
+      )
+      .sort((left, right) => (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? ''))[0]
+      ?.modeId ?? null
+  );
+};
+
 const markProjectModelUsed = async (session: SessionSummary): Promise<void> => {
   const projectId = nonEmpty(session.projectId);
   const presetId = nonEmpty(session.presetId);
@@ -178,6 +214,26 @@ const markProjectModelUsed = async (session: SessionSummary): Promise<void> => {
     modelId,
     markLastUsed: true,
   });
+};
+
+const markProjectModeUsed = async (session: SessionSummary): Promise<void> => {
+  const projectId = nonEmpty(session.projectId);
+  const presetId = nonEmpty(session.presetId);
+  const modeId = nonEmpty(session.currentModeId);
+  if (projectId === null || presetId === null || modeId === null) {
+    return;
+  }
+
+  await updateProjectModePreference(projectId, {
+    presetId,
+    modeId,
+    markLastUsed: true,
+  });
+};
+
+const markProjectSessionPreferencesUsed = async (session: SessionSummary): Promise<void> => {
+  await markProjectModelUsed(session);
+  await markProjectModeUsed(session);
 };
 
 const resolvePreset = (presetId: string | null | undefined) => {
@@ -446,6 +502,11 @@ export const acpRoutes = new Hono()
           presetId: preset.id,
           modelId: request.modelId ?? null,
         });
+        const initialModeId = await resolveInitialModeId({
+          projectId: context.project?.id ?? null,
+          presetId: preset.id,
+          modeId: request.modeId ?? null,
+        });
         const prepareId = crypto.randomUUID();
         const sessionPromise = createPreparedSession({
           projectId: context.project?.id ?? null,
@@ -454,10 +515,10 @@ export const acpRoutes = new Hono()
           args: preset.args,
           cwd: context.cwd,
           initialModelId,
-          initialModeId: request.modeId ?? null,
+          initialModeId,
         }).then(async (session) => {
           await cacheCatalogFromSession(session);
-          await markProjectModelUsed(session);
+          await markProjectSessionPreferencesUsed(session);
           return session;
         });
         preparedSessions.set(prepareId, sessionPromise);
@@ -512,6 +573,7 @@ export const acpRoutes = new Hono()
         const response = parse(
           resumableSessionsResponseSchema,
           await discoverResumableSessions({
+            presetId: resolved.preset.id,
             command: resolved.command,
             args: resolved.args,
             cwd: context.cwd,
@@ -563,6 +625,11 @@ export const acpRoutes = new Hono()
           presetId: preset.id,
           modelId: request.modelId ?? null,
         });
+        const initialModeId = await resolveInitialModeId({
+          projectId: context.project?.id ?? null,
+          presetId: preset.id,
+          modeId: request.modeId ?? null,
+        });
         const session = await createSession({
           projectId: context.project?.id ?? null,
           preset,
@@ -570,10 +637,10 @@ export const acpRoutes = new Hono()
           args: resolved.args,
           cwd: context.cwd,
           initialModelId,
-          initialModeId: request.modeId ?? null,
+          initialModeId,
         });
         await cacheCatalogFromSession(session);
-        await markProjectModelUsed(session);
+        await markProjectSessionPreferencesUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
@@ -621,11 +688,34 @@ export const acpRoutes = new Hono()
           currentModeId: catalog?.currentModeId ?? null,
           currentModelId: catalog?.currentModelId ?? null,
         });
-        await markProjectModelUsed(session);
+        await markProjectSessionPreferencesUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response, 201);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to load session';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    '/sessions/:sessionId/cancel',
+    describeRoute({
+      summary: 'Cancel running ACP session turn',
+      responses: {
+        200: jsonResponse('Cancelled ACP session', cancelSessionResponseSchema),
+        400: jsonResponse('ACP session cancel error', errorResponseSchema),
+      },
+    }),
+    async (c) => {
+      try {
+        const session = await cancelSession(c.req.param('sessionId'));
+        const response = parse(cancelSessionResponseSchema, {
+          session,
+          cancelled: true,
+        });
+        return c.json(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to cancel session';
         return c.json({ error: message }, 400);
       }
     },
@@ -649,7 +739,7 @@ export const acpRoutes = new Hono()
         const session = await sessionPromise;
         const request = c.req.valid('json');
         const response = parse(messageResponseSchema, await sendPrompt(session.sessionId, request));
-        await markProjectModelUsed(response.session);
+        await markProjectSessionPreferencesUsed(response.session);
         return c.json(response);
       } catch (error) {
         const message =
@@ -673,11 +763,34 @@ export const acpRoutes = new Hono()
         const request = c.req.valid('json');
         const sessionId = c.req.param('sessionId');
         const session = await updateSession(sessionId, request);
-        await markProjectModelUsed(session);
+        await markProjectSessionPreferencesUsed(session);
         const response = parse(sessionResponseSchema, { session });
         return c.json(response);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to update session';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .patch(
+    '/sessions/:sessionId/config-options',
+    describeRoute({
+      summary: 'Update ACP session generic config option',
+      responses: {
+        200: jsonResponse('Updated ACP session', sessionResponseSchema),
+        400: jsonResponse('ACP session config option update error', errorResponseSchema),
+      },
+    }),
+    vValidator('json', updateSessionConfigOptionRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const request = c.req.valid('json');
+        const session = await updateSessionConfigOption(c.req.param('sessionId'), request);
+        const response = parse(sessionResponseSchema, { session });
+        return c.json(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to update session config option';
         return c.json({ error: message }, 400);
       }
     },
@@ -713,7 +826,7 @@ export const acpRoutes = new Hono()
         const request = c.req.valid('json');
         const sessionId = c.req.param('sessionId');
         const response = parse(messageResponseSchema, await sendPrompt(sessionId, request));
-        await markProjectModelUsed(response.session);
+        await markProjectSessionPreferencesUsed(response.session);
         return c.json(response);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to send prompt';

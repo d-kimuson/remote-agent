@@ -172,7 +172,47 @@ const ensureRuntimeSchemaCompatibility = (client: DatabaseSync): void => {
       value text NOT NULL,
       updated_at text NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS routines (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      enabled text NOT NULL,
+      kind text NOT NULL,
+      config_json text NOT NULL,
+      send_config_json text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      last_run_at text,
+      next_run_at text,
+      last_error text
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_routines_enabled_next_run_at
+      ON routines (enabled, next_run_at);
+    CREATE INDEX IF NOT EXISTS idx_routines_updated_at
+      ON routines (updated_at);
+
+    CREATE TABLE IF NOT EXISTS project_mode_preferences (
+      project_id text NOT NULL REFERENCES projects(id)
+        ON DELETE cascade
+        ON UPDATE cascade,
+      preset_id text NOT NULL,
+      mode_id text NOT NULL,
+      last_used_at text,
+      updated_at text NOT NULL,
+      PRIMARY KEY (project_id, preset_id, mode_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_project_mode_preferences_project_preset
+      ON project_mode_preferences (project_id, preset_id);
+    CREATE INDEX IF NOT EXISTS idx_project_mode_preferences_last_used
+      ON project_mode_preferences (last_used_at);
+
   `);
+
+  if (tableExists(client, 'sessions') && !columnExists(client, 'sessions', 'config_options_json')) {
+    client.exec("ALTER TABLE sessions ADD COLUMN config_options_json text NOT NULL DEFAULT '[]';");
+  }
 };
 
 export const createDatabase = (storagePath: string) => {

@@ -11,6 +11,7 @@ import { filesystemRoutes } from './filesystem/routes.ts';
 import { jsonResponse } from './hono-utils.ts';
 import { getProjectsFilePath } from './projects/project-store.ts';
 import { projectRoutes } from './projects/routes.ts';
+import { routineRoutes } from './routines/routes.ts';
 
 export const routes = new Hono()
   .get(
@@ -32,6 +33,7 @@ export const routes = new Hono()
   .route('/attachments', attachmentRoutes)
   .route('/filesystem', filesystemRoutes)
   .route('/projects', projectRoutes)
+  .route('/routines', routineRoutes)
   .route('/setup', appSetupRoutes)
   .route('/acp', acpRoutes);
 

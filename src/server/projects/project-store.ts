@@ -9,11 +9,17 @@ import {
   projectsResponseSchema,
   type CreateProjectRequest,
   type Project,
+  type ProjectModePreference,
   type ProjectModelPreference,
   type ProjectSettings,
+  type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
 } from '../../shared/acp.ts';
-import { projectModelPreferencesTable, projectsTable } from '../db/schema.ts';
+import {
+  projectModePreferencesTable,
+  projectModelPreferencesTable,
+  projectsTable,
+} from '../db/schema.ts';
 import { type AppDatabase, getDefaultDatabase } from '../db/sqlite.ts';
 import { envService } from '../env.ts';
 
@@ -74,6 +80,15 @@ const mapProjectModelPreferenceRecord = (
   presetId: record.presetId,
   modelId: record.modelId,
   isFavorite: record.isFavorite === 'true',
+  lastUsedAt: record.lastUsedAt,
+  updatedAt: record.updatedAt,
+});
+
+const mapProjectModePreferenceRecord = (
+  record: typeof projectModePreferencesTable.$inferSelect,
+): ProjectModePreference => ({
+  presetId: record.presetId,
+  modeId: record.modeId,
   lastUsedAt: record.lastUsedAt,
   updatedAt: record.updatedAt,
 });
@@ -147,17 +162,29 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
 
   const getProjectSettings = async (projectId: string): Promise<ProjectSettings> => {
     await getProject(projectId);
-    const records = await database.db
+    const modelRecords = await database.db
       .select()
       .from(projectModelPreferencesTable)
       .where(eq(projectModelPreferencesTable.projectId, projectId));
+    const modeRecords = await database.db
+      .select()
+      .from(projectModePreferencesTable)
+      .where(eq(projectModePreferencesTable.projectId, projectId));
 
-    const modelPreferences = records.map(mapProjectModelPreferenceRecord).sort((left, right) => {
+    const modelPreferences = modelRecords
+      .map(mapProjectModelPreferenceRecord)
+      .sort((left, right) => {
+        if (left.presetId !== right.presetId) {
+          return left.presetId.localeCompare(right.presetId);
+        }
+        if (left.isFavorite !== right.isFavorite) {
+          return left.isFavorite ? -1 : 1;
+        }
+        return (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? '');
+      });
+    const modePreferences = modeRecords.map(mapProjectModePreferenceRecord).sort((left, right) => {
       if (left.presetId !== right.presetId) {
         return left.presetId.localeCompare(right.presetId);
-      }
-      if (left.isFavorite !== right.isFavorite) {
-        return left.isFavorite ? -1 : 1;
       }
       return (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? '');
     });
@@ -165,6 +192,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     return parse(projectSettingsSchema, {
       projectId,
       modelPreferences,
+      modePreferences,
     });
   };
 
@@ -234,6 +262,60 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     return getProjectSettings(projectId);
   };
 
+  const updateProjectModePreference = async (
+    projectId: string,
+    request: UpdateProjectModePreferenceRequest,
+  ): Promise<ProjectSettings> => {
+    await getProject(projectId);
+    const now = new Date().toISOString();
+    const [existing] = await database.db
+      .select()
+      .from(projectModePreferencesTable)
+      .where(
+        and(
+          eq(projectModePreferencesTable.projectId, projectId),
+          eq(projectModePreferencesTable.presetId, request.presetId),
+          eq(projectModePreferencesTable.modeId, request.modeId),
+        ),
+      )
+      .limit(1);
+
+    if (request.markLastUsed === true) {
+      await database.db
+        .update(projectModePreferencesTable)
+        .set({ lastUsedAt: null, updatedAt: now })
+        .where(
+          and(
+            eq(projectModePreferencesTable.projectId, projectId),
+            eq(projectModePreferencesTable.presetId, request.presetId),
+          ),
+        );
+    }
+
+    await database.db
+      .insert(projectModePreferencesTable)
+      .values({
+        projectId,
+        presetId: request.presetId,
+        modeId: request.modeId,
+        lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [
+          projectModePreferencesTable.projectId,
+          projectModePreferencesTable.presetId,
+          projectModePreferencesTable.modeId,
+        ],
+        set: {
+          lastUsedAt: request.markLastUsed === true ? now : (existing?.lastUsedAt ?? null),
+          updatedAt: now,
+        },
+      });
+
+    return getProjectSettings(projectId);
+  };
+
   return {
     storagePath: database.storagePath,
     listProjects,
@@ -241,6 +323,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     createProject,
     getProjectSettings,
     updateProjectModelPreference,
+    updateProjectModePreference,
   };
 };
 
@@ -276,4 +359,11 @@ export const updateProjectModelPreference = async (
   request: UpdateProjectModelPreferenceRequest,
 ): Promise<ProjectSettings> => {
   return getProjectStore().updateProjectModelPreference(projectId, request);
+};
+
+export const updateProjectModePreference = async (
+  projectId: string,
+  request: UpdateProjectModePreferenceRequest,
+): Promise<ProjectSettings> => {
+  return getProjectStore().updateProjectModePreference(projectId, request);
 };

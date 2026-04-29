@@ -16,6 +16,7 @@ import {
   inspectResumeCapabilities,
   mapResumableSessionCandidates,
 } from '../session-resume.pure.ts';
+import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { requestUserPermission } from './permission-request-store.ts';
 
@@ -23,6 +24,7 @@ type AgentCommand = {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
+  readonly presetId: string;
 };
 
 type AgentConnection = {
@@ -86,9 +88,16 @@ const createAgentConnection = async ({
   args,
   cwd,
 }: AgentCommand): Promise<AgentConnection> => {
-  const agentProcess = spawn(command, [...args], {
+  const launch = buildAgentLaunchCommand({
+    providerCommand: command,
+    providerArgs: args,
     cwd,
     env: buildAgentProcessEnv(),
+  });
+
+  const agentProcess = spawn(launch.command, [...launch.args], {
+    cwd: launch.cwd,
+    env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });

@@ -42,6 +42,25 @@ export const modelOptionSchema = object({
 
 export type ModelOption = InferOutput<typeof modelOptionSchema>;
 
+export const sessionConfigOptionValueSchema = object({
+  value: pipe(string(), trim()),
+  name: pipe(string(), trim()),
+  description: nullable(optional(pipe(string(), trim()))),
+});
+
+export type SessionConfigOptionValue = InferOutput<typeof sessionConfigOptionValueSchema>;
+
+export const sessionConfigOptionSchema = object({
+  id: pipe(string(), trim()),
+  name: pipe(string(), trim()),
+  category: nullable(optional(pipe(string(), trim()))),
+  description: nullable(optional(pipe(string(), trim()))),
+  currentValue: pipe(string(), trim()),
+  values: array(sessionConfigOptionValueSchema),
+});
+
+export type SessionConfigOption = InferOutput<typeof sessionConfigOptionSchema>;
+
 export const sessionOriginSchema = union([literal('new'), literal('loaded')]);
 
 export type SessionOrigin = InferOutput<typeof sessionOriginSchema>;
@@ -72,6 +91,7 @@ export const sessionSummarySchema = object({
   currentModelId: nullable(optional(pipe(string(), trim()))),
   availableModes: array(modeOptionSchema),
   availableModels: array(modelOptionSchema),
+  configOptions: array(sessionConfigOptionSchema),
 });
 
 export type SessionSummary = InferOutput<typeof sessionSummarySchema>;
@@ -233,6 +253,14 @@ export const createProjectRequestSchema = object({
 
 export type CreateProjectRequest = InferOutput<typeof createProjectRequestSchema>;
 
+export const createProjectWorktreeRequestSchema = object({
+  name: pipe(string(), trim()),
+  branchName: optional(pipe(string(), trim())),
+  baseRef: optional(pipe(string(), trim())),
+});
+
+export type CreateProjectWorktreeRequest = InferOutput<typeof createProjectWorktreeRequestSchema>;
+
 export const projectResponseSchema = object({
   project: projectSchema,
 });
@@ -245,6 +273,23 @@ export const projectsResponseSchema = object({
 
 export type ProjectsResponse = InferOutput<typeof projectsResponseSchema>;
 
+export const projectWorktreeSchema = object({
+  projectId: pipe(string(), trim()),
+  name: pipe(string(), trim()),
+  path: pipe(string(), trim()),
+  branchName: pipe(string(), trim()),
+  baseRef: pipe(string(), trim()),
+  createdAt: pipe(string(), trim()),
+});
+
+export type ProjectWorktree = InferOutput<typeof projectWorktreeSchema>;
+
+export const projectWorktreeResponseSchema = object({
+  worktree: projectWorktreeSchema,
+});
+
+export type ProjectWorktreeResponse = InferOutput<typeof projectWorktreeResponseSchema>;
+
 export const projectModelPreferenceSchema = object({
   presetId: pipe(string(), trim()),
   modelId: pipe(string(), trim()),
@@ -255,9 +300,19 @@ export const projectModelPreferenceSchema = object({
 
 export type ProjectModelPreference = InferOutput<typeof projectModelPreferenceSchema>;
 
+export const projectModePreferenceSchema = object({
+  presetId: pipe(string(), trim()),
+  modeId: pipe(string(), trim()),
+  lastUsedAt: nullable(optional(pipe(string(), trim()))),
+  updatedAt: pipe(string(), trim()),
+});
+
+export type ProjectModePreference = InferOutput<typeof projectModePreferenceSchema>;
+
 export const projectSettingsSchema = object({
   projectId: pipe(string(), trim()),
   modelPreferences: array(projectModelPreferenceSchema),
+  modePreferences: array(projectModePreferenceSchema),
 });
 
 export type ProjectSettings = InferOutput<typeof projectSettingsSchema>;
@@ -279,6 +334,16 @@ export type UpdateProjectModelPreferenceRequest = InferOutput<
   typeof updateProjectModelPreferenceRequestSchema
 >;
 
+export const updateProjectModePreferenceRequestSchema = object({
+  presetId: pipe(string(), trim()),
+  modeId: pipe(string(), trim()),
+  markLastUsed: optional(boolean()),
+});
+
+export type UpdateProjectModePreferenceRequest = InferOutput<
+  typeof updateProjectModePreferenceRequestSchema
+>;
+
 export const createSessionRequestSchema = object({
   projectId: nullable(optional(pipe(string(), trim()))),
   presetId: nullable(optional(pipe(string(), trim()))),
@@ -297,6 +362,15 @@ export const updateSessionRequestSchema = object({
 });
 
 export type UpdateSessionRequest = InferOutput<typeof updateSessionRequestSchema>;
+
+export const updateSessionConfigOptionRequestSchema = object({
+  configId: pipe(string(), trim()),
+  value: pipe(string(), trim()),
+});
+
+export type UpdateSessionConfigOptionRequest = InferOutput<
+  typeof updateSessionConfigOptionRequestSchema
+>;
 
 export const discoverResumableSessionsRequestSchema = object({
   projectId: nullable(optional(pipe(string(), trim()))),
@@ -489,11 +563,112 @@ export const sendMessageRequestSchema = object({
 
 export type SendMessageRequest = InferOutput<typeof sendMessageRequestSchema>;
 
+export const routineSendConfigSchema = object({
+  projectId: nullable(optional(pipe(string(), trim()))),
+  presetId: pipe(string(), trim()),
+  cwd: nullable(optional(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
+  prompt: pipe(string(), trim()),
+});
+
+export type RoutineSendConfig = InferOutput<typeof routineSendConfigSchema>;
+
+export const cronRoutineConfigSchema = object({
+  cronExpression: pipe(string(), trim()),
+});
+
+export type CronRoutineConfig = InferOutput<typeof cronRoutineConfigSchema>;
+
+export const scheduledRoutineConfigSchema = object({
+  runAt: pipe(string(), trim()),
+});
+
+export type ScheduledRoutineConfig = InferOutput<typeof scheduledRoutineConfigSchema>;
+
+export const routineConfigSchema = union([cronRoutineConfigSchema, scheduledRoutineConfigSchema]);
+
+export type RoutineConfig = InferOutput<typeof routineConfigSchema>;
+
+export const routineKindSchema = union([literal('cron'), literal('scheduled')]);
+
+export type RoutineKind = InferOutput<typeof routineKindSchema>;
+
+export const routineSchema = union([
+  object({
+    id: pipe(string(), trim()),
+    name: pipe(string(), trim()),
+    enabled: boolean(),
+    kind: literal('cron'),
+    config: cronRoutineConfigSchema,
+    sendConfig: routineSendConfigSchema,
+    createdAt: pipe(string(), trim()),
+    updatedAt: pipe(string(), trim()),
+    lastRunAt: nullable(optional(pipe(string(), trim()))),
+    nextRunAt: nullable(optional(pipe(string(), trim()))),
+    lastError: nullable(optional(string())),
+  }),
+  object({
+    id: pipe(string(), trim()),
+    name: pipe(string(), trim()),
+    enabled: boolean(),
+    kind: literal('scheduled'),
+    config: scheduledRoutineConfigSchema,
+    sendConfig: routineSendConfigSchema,
+    createdAt: pipe(string(), trim()),
+    updatedAt: pipe(string(), trim()),
+    lastRunAt: nullable(optional(pipe(string(), trim()))),
+    nextRunAt: nullable(optional(pipe(string(), trim()))),
+    lastError: nullable(optional(string())),
+  }),
+]);
+
+export type Routine = InferOutput<typeof routineSchema>;
+
+export const routinesResponseSchema = object({
+  routines: array(routineSchema),
+});
+
+export type RoutinesResponse = InferOutput<typeof routinesResponseSchema>;
+
+export const routineResponseSchema = object({
+  routine: routineSchema,
+});
+
+export type RoutineResponse = InferOutput<typeof routineResponseSchema>;
+
+export const createRoutineRequestSchema = object({
+  name: pipe(string(), trim()),
+  enabled: optional(boolean()),
+  kind: routineKindSchema,
+  config: routineConfigSchema,
+  sendConfig: routineSendConfigSchema,
+});
+
+export type CreateRoutineRequest = InferOutput<typeof createRoutineRequestSchema>;
+
+export const updateRoutineRequestSchema = object({
+  name: optional(pipe(string(), trim())),
+  enabled: optional(boolean()),
+  kind: optional(routineKindSchema),
+  config: optional(routineConfigSchema),
+  sendConfig: optional(routineSendConfigSchema),
+});
+
+export type UpdateRoutineRequest = InferOutput<typeof updateRoutineRequestSchema>;
+
 export const sessionResponseSchema = object({
   session: sessionSummarySchema,
 });
 
 export type SessionResponse = InferOutput<typeof sessionResponseSchema>;
+
+export const cancelSessionResponseSchema = object({
+  session: sessionSummarySchema,
+  cancelled: boolean(),
+});
+
+export type CancelSessionResponse = InferOutput<typeof cancelSessionResponseSchema>;
 
 export const sessionsResponseSchema = object({
   sessions: array(sessionSummarySchema),

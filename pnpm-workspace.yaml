@@ -1,5 +1,9 @@
 catalogMode: manual
 engineStrict: true
-saveExact: true
 
 minimumReleaseAge: 7200
+overrides:
+  serialize-javascript@<7.0.5: '>=7.0.5'
+  uuid@<14.0.0: '>=14.0.0'
+  yaml@>=2.0.0 <2.8.3: '>=2.8.3'
+saveExact: true

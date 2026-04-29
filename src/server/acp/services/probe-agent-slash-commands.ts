@@ -12,6 +12,7 @@ import { Readable, Writable } from 'node:stream';
 import type { SlashCommand } from '../../../shared/acp.ts';
 
 import { agentPresets } from '../presets.ts';
+import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { resolveCommandPath } from './command-path.ts';
 
@@ -87,9 +88,16 @@ export const probeAgentSlashCommands = async (options: {
     );
   }
 
-  const agentProcess = spawn(resolvedCommandPath, [...preset.args], {
+  const launch = buildAgentLaunchCommand({
+    providerCommand: resolvedCommandPath,
+    providerArgs: preset.args,
     cwd: options.cwd,
     env: buildAgentProcessEnv(),
+  });
+
+  const agentProcess = spawn(launch.command, [...launch.args], {
+    cwd: launch.cwd,
+    env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
@@ -137,7 +145,7 @@ export const probeAgentSlashCommands = async (options: {
       },
     });
     await connection.newSession({
-      cwd: options.cwd,
+      cwd: launch.cwd,
       mcpServers: [],
     });
     await wait(COMMAND_UPDATE_WAIT_MS);

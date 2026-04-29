@@ -1,7 +1,19 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { useEffect, useState, type FC } from 'react';
+import { Pencil, Plus, Trash2, Volume2 } from 'lucide-react';
+import { Suspense, useCallback, useEffect, useRef, useState, type FC } from 'react';
 
-import type { AgentProvidersResponse } from '../../../shared/acp.ts';
+import type {
+  AgentProvidersResponse,
+  AgentPreset,
+  CreateRoutineRequest,
+  ModeOption,
+  ModelOption,
+  Project,
+  Routine,
+  RoutineKind,
+  RoutinesResponse,
+  UpdateRoutineRequest,
+} from '../../../shared/acp.ts';
 
 import { Badge } from '../../components/ui/badge.tsx';
 import { Button } from '../../components/ui/button.tsx';
@@ -13,6 +25,15 @@ import {
   CardTitle,
 } from '../../components/ui/card.tsx';
 import { Checkbox } from '../../components/ui/checkbox.tsx';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../../components/ui/dialog.tsx';
+import { Input } from '../../components/ui/input.tsx';
 import { Label } from '../../components/ui/label.tsx';
 import {
   Select,
@@ -23,8 +44,14 @@ import {
 } from '../../components/ui/select.tsx';
 import {
   checkAgentProviderRequest,
+  createRoutineRequest,
+  deleteRoutineRequest,
+  fetchAgentModelCatalog,
   fetchAgentProviders,
+  fetchAgentSlashCommands,
+  fetchRoutines,
   updateAgentProviderRequest,
+  updateRoutineRequest,
 } from '../../lib/api/acp.ts';
 import { parseThemePreference, type ThemePreference } from '../../lib/theme.pure.ts';
 import { useTheme } from '../../lib/theme.tsx';
@@ -33,7 +60,102 @@ import {
   requestNotificationPermission,
   showNotificationPreview,
 } from '../../pwa/notifications.ts';
-import { agentProvidersQueryKey } from '../projects/$projectId/queries.ts';
+import {
+  parseTaskCompletionSoundPreference,
+  taskCompletionSoundOptions,
+  type TaskCompletionSoundPreference,
+} from '../../pwa/task-completion-sound.pure.ts';
+import {
+  persistTaskCompletionSoundPreference,
+  playTaskCompletionSound,
+  readTaskCompletionSoundPreference,
+} from '../../pwa/task-completion-sound.ts';
+import {
+  agentModelCatalogQueryKey,
+  agentProvidersQueryKey,
+  agentSlashCommandsQueryKey,
+} from '../projects/$projectId/queries.ts';
+import { RichPromptEditor } from '../projects/$projectId/rich-prompt-editor.tsx';
+import { routinesQueryKey } from './queries.ts';
+
+const optionalFieldValue = (value: string): string | null => {
+  const trimmed = value.trim();
+  return trimmed.length === 0 ? null : trimmed;
+};
+
+const formatOptionalDateTime = (value: string | null | undefined): string => {
+  if (value === null || value === undefined || value.length === 0) {
+    return 'Never';
+  }
+  return value;
+};
+
+const dateTimeLocalValueFrom = (value: string): string => {
+  if (!value.includes('T')) {
+    return value;
+  }
+  return value.slice(0, 16);
+};
+
+type RoutineFormState = {
+  readonly name: string;
+  readonly enabled: boolean;
+  readonly kind: RoutineKind;
+  readonly cronExpression: string;
+  readonly runAt: string;
+  readonly presetId: string;
+  readonly modelId: string;
+  readonly modeId: string;
+  readonly prompt: string;
+};
+
+const blankRoutineFormState = (presetId: string): RoutineFormState => ({
+  name: '',
+  enabled: true,
+  kind: 'cron',
+  cronExpression: '0 9 * * *',
+  runAt: '',
+  presetId,
+  modelId: '',
+  modeId: '',
+  prompt: '',
+});
+
+const routineFormStateFromRoutine = (routine: Routine): RoutineFormState => ({
+  name: routine.name,
+  enabled: routine.enabled,
+  kind: routine.kind,
+  cronExpression: routine.kind === 'cron' ? routine.config.cronExpression : '0 9 * * *',
+  runAt: routine.kind === 'scheduled' ? dateTimeLocalValueFrom(routine.config.runAt) : '',
+  presetId: routine.sendConfig.presetId,
+  modelId: routine.sendConfig.modelId ?? '',
+  modeId: routine.sendConfig.modeId ?? '',
+  prompt: routine.sendConfig.prompt,
+});
+
+const routineRequestFromFormState = ({
+  project,
+  state,
+}: {
+  readonly project: Project;
+  readonly state: RoutineFormState;
+}): CreateRoutineRequest => ({
+  name: state.name.trim(),
+  enabled: state.enabled,
+  kind: state.kind,
+  config:
+    state.kind === 'cron'
+      ? { cronExpression: state.cronExpression.trim() }
+      : { runAt: state.runAt.trim() },
+  sendConfig: {
+    projectId: project.id,
+    presetId: state.presetId,
+    cwd: project.workingDirectory,
+    modelId: optionalFieldValue(state.modelId),
+    modeId: optionalFieldValue(state.modeId),
+    prompt: state.prompt.trim(),
+  },
+});
 
 const themePreferenceChoices = [
   {
@@ -56,6 +178,626 @@ const themePreferenceChoices = [
   readonly label: string;
   readonly description: string;
 }[];
+
+const routineDefaultSelectValue = '__remote_agent_default__';
+
+const routineSelectValueFromOptional = (value: string): string =>
+  value.trim().length === 0 ? routineDefaultSelectValue : value;
+
+const routineOptionalValueFromSelect = (value: string): string =>
+  value === routineDefaultSelectValue ? '' : value;
+
+const routineModelOptionsWithCurrent = ({
+  currentId,
+  options,
+}: {
+  readonly currentId: string;
+  readonly options: readonly ModelOption[];
+}): readonly ModelOption[] => {
+  const trimmed = currentId.trim();
+  if (trimmed.length === 0 || options.some((option) => option.id === trimmed)) {
+    return options;
+  }
+  return [{ id: trimmed, name: trimmed, description: 'Saved custom value' }, ...options];
+};
+
+const routineModeOptionsWithCurrent = ({
+  currentId,
+  options,
+}: {
+  readonly currentId: string;
+  readonly options: readonly ModeOption[];
+}): readonly ModeOption[] => {
+  const trimmed = currentId.trim();
+  if (trimmed.length === 0 || options.some((option) => option.id === trimmed)) {
+    return options;
+  }
+  return [{ id: trimmed, name: trimmed, description: 'Saved custom value' }, ...options];
+};
+
+const routineOptionLabel = (option: ModelOption | ModeOption): string =>
+  option.name === option.id ? option.name : `${option.name} (${option.id})`;
+
+const RoutinePromptField: FC<{
+  readonly disabled: boolean;
+  readonly onPromptReady: (readValue: () => string) => void;
+  readonly presetId: string;
+  readonly projectId: string;
+  readonly prompt: string;
+}> = ({ disabled, onPromptReady, presetId, projectId, prompt }) => {
+  const [externalValue, setExternalValue] = useState({ revision: 0, value: prompt });
+  const { data: slashCommandData } = useSuspenseQuery({
+    queryKey: agentSlashCommandsQueryKey(projectId, presetId),
+    queryFn: () => fetchAgentSlashCommands({ projectId, presetId }),
+  });
+
+  useEffect(() => {
+    setExternalValue((current) => ({
+      revision: current.revision + 1,
+      value: prompt,
+    }));
+  }, [prompt, presetId]);
+
+  return (
+    <RichPromptEditor
+      className="min-h-28"
+      disabled={disabled}
+      externalValue={externalValue}
+      onSubmit={() => undefined}
+      onValueReaderReady={onPromptReady}
+      placeholder="Send to the agent when this routine runs."
+      slashCommands={slashCommandData.commands}
+    />
+  );
+};
+
+const RoutineModelModeFields: FC<{
+  readonly formState: RoutineFormState;
+  readonly projectId: string;
+  readonly setFormState: (update: (current: RoutineFormState) => RoutineFormState) => void;
+}> = ({ formState, projectId, setFormState }) => {
+  const { data: catalog } = useSuspenseQuery({
+    queryKey: agentModelCatalogQueryKey(projectId, formState.presetId),
+    queryFn: () => fetchAgentModelCatalog({ projectId, presetId: formState.presetId }),
+  });
+  const modelOptions = routineModelOptionsWithCurrent({
+    currentId: formState.modelId,
+    options: catalog.availableModels,
+  });
+  const modeOptions = routineModeOptionsWithCurrent({
+    currentId: formState.modeId,
+    options: catalog.availableModes,
+  });
+
+  return (
+    <div className="grid gap-3 md:grid-cols-2">
+      <div className="space-y-2">
+        <Label htmlFor="routine-model">Model</Label>
+        <Select
+          onValueChange={(value) => {
+            if (value === null) {
+              return;
+            }
+            setFormState((current) => ({
+              ...current,
+              modelId: routineOptionalValueFromSelect(value),
+            }));
+          }}
+          value={routineSelectValueFromOptional(formState.modelId)}
+        >
+          <SelectTrigger className="w-full" id="routine-model">
+            <SelectValue placeholder={modelOptions.length === 0 ? 'No model choices' : 'Default'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
+            {modelOptions.map((model) => (
+              <SelectItem key={model.id} value={model.id}>
+                {routineOptionLabel(model)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="routine-mode">Mode</Label>
+        <Select
+          onValueChange={(value) => {
+            if (value === null) {
+              return;
+            }
+            setFormState((current) => ({
+              ...current,
+              modeId: routineOptionalValueFromSelect(value),
+            }));
+          }}
+          value={routineSelectValueFromOptional(formState.modeId)}
+        >
+          <SelectTrigger className="w-full" id="routine-mode">
+            <SelectValue placeholder={modeOptions.length === 0 ? 'No mode choices' : 'Default'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
+            {modeOptions.map((mode) => (
+              <SelectItem key={mode.id} value={mode.id}>
+                {routineOptionLabel(mode)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+    </div>
+  );
+};
+
+const RoutineDialogBody: FC<{
+  readonly formError: string | null;
+  readonly formState: RoutineFormState;
+  readonly isMutating: boolean;
+  readonly mode: 'create' | 'edit';
+  readonly onCancel: () => void;
+  readonly onSubmit: (prompt: string) => void;
+  readonly project: Project;
+  readonly selectableProviders: readonly AgentPreset[];
+  readonly setFormState: (update: (current: RoutineFormState) => RoutineFormState) => void;
+}> = ({
+  formError,
+  formState,
+  isMutating,
+  mode,
+  onCancel,
+  onSubmit,
+  project,
+  selectableProviders,
+  setFormState,
+}) => {
+  const promptReaderRef = useRef<(() => string) | null>(null);
+  const handlePromptReady = useCallback((readValue: () => string) => {
+    promptReaderRef.current = readValue;
+  }, []);
+  const canSubmit =
+    formState.name.trim().length > 0 &&
+    formState.presetId.trim().length > 0 &&
+    (formState.kind === 'cron'
+      ? formState.cronExpression.trim().length > 0
+      : formState.runAt.trim().length > 0);
+
+  return (
+    <>
+      <div className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="routine-name">Name</Label>
+            <Input
+              id="routine-name"
+              onChange={(event) => {
+                setFormState((current) => ({ ...current, name: event.target.value }));
+              }}
+              placeholder="Daily summary"
+              value={formState.name}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="routine-kind">Kind</Label>
+            <Select
+              onValueChange={(kind) => {
+                if (kind === 'cron' || kind === 'scheduled') {
+                  setFormState((current) => ({ ...current, kind }));
+                }
+              }}
+              value={formState.kind}
+            >
+              <SelectTrigger className="w-full" id="routine-kind">
+                <SelectValue placeholder="Kind" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cron">cron</SelectItem>
+                <SelectItem value="scheduled">scheduled</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {formState.kind === 'cron' ? (
+            <div className="space-y-2">
+              <Label htmlFor="routine-cron">Cron expression</Label>
+              <Input
+                id="routine-cron"
+                onChange={(event) => {
+                  setFormState((current) => ({
+                    ...current,
+                    cronExpression: event.target.value,
+                  }));
+                }}
+                placeholder="0 9 * * *"
+                value={formState.cronExpression}
+              />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Label htmlFor="routine-run-at">Run at</Label>
+              <Input
+                id="routine-run-at"
+                onChange={(event) => {
+                  setFormState((current) => ({ ...current, runAt: event.target.value }));
+                }}
+                type="datetime-local"
+                value={formState.runAt}
+              />
+            </div>
+          )}
+          <div className="flex items-center justify-between gap-3 self-end rounded-md border px-3 py-2">
+            <span className="text-sm font-medium">Enabled</span>
+            <RoutineEnabledToggle
+              checked={formState.enabled}
+              disabled={isMutating}
+              onCheckedChange={(enabled) => {
+                setFormState((current) => ({ ...current, enabled }));
+              }}
+            />
+          </div>
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-2">
+            <Label htmlFor="routine-provider">Provider</Label>
+            <Select
+              onValueChange={(presetId) => {
+                if (presetId === null) {
+                  return;
+                }
+                setFormState((current) => ({
+                  ...current,
+                  modelId: current.presetId === presetId ? current.modelId : '',
+                  modeId: current.presetId === presetId ? current.modeId : '',
+                  presetId,
+                }));
+              }}
+              value={formState.presetId}
+            >
+              <SelectTrigger className="w-full" id="routine-provider">
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {selectableProviders.length === 0 ? (
+                  <SelectItem value={formState.presetId}>{formState.presetId}</SelectItem>
+                ) : null}
+                {selectableProviders.map((preset) => (
+                  <SelectItem key={preset.id} value={preset.id}>
+                    {preset.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Project path</Label>
+            <p className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
+              {project.workingDirectory}
+            </p>
+          </div>
+        </div>
+
+        <Suspense fallback={<p className="text-sm text-muted-foreground">Loading choices...</p>}>
+          <RoutineModelModeFields
+            formState={formState}
+            projectId={project.id}
+            setFormState={setFormState}
+          />
+        </Suspense>
+
+        <div className="space-y-2">
+          <Label>Prompt</Label>
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading commands...</p>}>
+            <RoutinePromptField
+              disabled={isMutating}
+              onPromptReady={handlePromptReady}
+              presetId={formState.presetId}
+              projectId={project.id}
+              prompt={formState.prompt}
+            />
+          </Suspense>
+        </div>
+
+        {formError === null ? null : <p className="text-sm text-destructive">{formError}</p>}
+      </div>
+      <DialogFooter>
+        <Button disabled={isMutating} onClick={onCancel} type="button" variant="outline">
+          Cancel
+        </Button>
+        <Button
+          disabled={!canSubmit || isMutating}
+          onClick={() => {
+            onSubmit(promptReaderRef.current?.() ?? formState.prompt);
+          }}
+          type="button"
+        >
+          {mode === 'create' ? <Plus className="size-4" /> : <Pencil className="size-4" />}
+          {mode === 'create' ? 'Create' : 'Update'}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+};
+
+const RoutineEnabledToggle: FC<{
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  readonly onCheckedChange: (checked: boolean) => void;
+}> = ({ checked, disabled, onCheckedChange }) => (
+  <button
+    aria-checked={checked}
+    aria-label={checked ? 'Disable routine' : 'Enable routine'}
+    className={[
+      'inline-flex h-8 min-w-16 items-center gap-2 rounded-full border px-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+      checked
+        ? 'border-primary bg-primary text-primary-foreground'
+        : 'border-border bg-muted text-muted-foreground',
+    ].join(' ')}
+    disabled={disabled}
+    onClick={() => {
+      onCheckedChange(!checked);
+    }}
+    role="switch"
+    type="button"
+  >
+    <span
+      className={[
+        'size-6 rounded-full bg-background shadow-sm transition-transform',
+        checked ? 'translate-x-8' : 'translate-x-0',
+      ].join(' ')}
+    />
+    <span className="sr-only">{checked ? 'Enabled' : 'Disabled'}</span>
+  </button>
+);
+
+export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ project }) => {
+  const queryClient = useQueryClient();
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
+  const [formState, setFormState] = useState<RoutineFormState>(blankRoutineFormState('codex'));
+  const [formError, setFormError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const { data: routineData } = useSuspenseQuery({
+    queryKey: routinesQueryKey,
+    queryFn: fetchRoutines,
+  });
+  const { data: providerData } = useSuspenseQuery({
+    queryKey: agentProvidersQueryKey,
+    queryFn: fetchAgentProviders,
+  });
+  const createRoutineMutation = useMutation({
+    mutationFn: createRoutineRequest,
+    onSuccess: (data) => {
+      queryClient.setQueryData<RoutinesResponse>(routinesQueryKey, data);
+    },
+  });
+  const updateRoutineMutation = useMutation({
+    mutationFn: ({
+      request,
+      routineId,
+    }: {
+      readonly routineId: string;
+      readonly request: UpdateRoutineRequest;
+    }) => updateRoutineRequest(routineId, request),
+    onSuccess: (data) => {
+      queryClient.setQueryData<RoutinesResponse>(routinesQueryKey, data);
+    },
+  });
+  const deleteRoutineMutation = useMutation({
+    mutationFn: deleteRoutineRequest,
+    onSuccess: (data) => {
+      queryClient.setQueryData<RoutinesResponse>(routinesQueryKey, data);
+    },
+  });
+  const selectableProviders =
+    providerData?.providers.filter((entry) => entry.enabled).map((entry) => entry.preset) ?? [];
+  const projectRoutines = routineData.routines.filter(
+    (routine) => routine.sendConfig.projectId === project.id,
+  );
+  const isMutating =
+    createRoutineMutation.isPending ||
+    updateRoutineMutation.isPending ||
+    deleteRoutineMutation.isPending;
+  const handleSubmit = async (prompt: string) => {
+    const nextFormState = { ...formState, prompt };
+    const canSubmit =
+      nextFormState.name.trim().length > 0 &&
+      nextFormState.presetId.trim().length > 0 &&
+      nextFormState.prompt.trim().length > 0 &&
+      (nextFormState.kind === 'cron'
+        ? nextFormState.cronExpression.trim().length > 0
+        : nextFormState.runAt.trim().length > 0);
+
+    if (!canSubmit) {
+      setFormError('Name, schedule, provider, and prompt are required.');
+      return;
+    }
+
+    setFormError(null);
+    try {
+      const request = routineRequestFromFormState({ project, state: nextFormState });
+      if (editingRoutineId === null) {
+        await createRoutineMutation.mutateAsync(request);
+      } else {
+        await updateRoutineMutation.mutateAsync({ routineId: editingRoutineId, request });
+      }
+      setEditingRoutineId(null);
+      setFormState(blankRoutineFormState(nextFormState.presetId));
+      setDialogOpen(false);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Routine request failed.');
+    }
+  };
+
+  const handleCreateRoutine = () => {
+    const fallbackPresetId = selectableProviders[0]?.id ?? formState.presetId;
+    setEditingRoutineId(null);
+    setFormError(null);
+    setFormState(blankRoutineFormState(fallbackPresetId));
+    setDialogOpen(true);
+  };
+
+  const handleEditRoutine = (routine: Routine) => {
+    setEditingRoutineId(routine.id);
+    setFormError(null);
+    setFormState(routineFormStateFromRoutine(routine));
+    setDialogOpen(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingRoutineId(null);
+    setFormError(null);
+    setFormState(blankRoutineFormState(formState.presetId));
+    setDialogOpen(false);
+  };
+
+  const handleToggleRoutine = async (routine: Routine, enabled: boolean) => {
+    setFormError(null);
+    try {
+      await updateRoutineMutation.mutateAsync({
+        routineId: routine.id,
+        request: { enabled },
+      });
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Routine update failed.');
+    }
+  };
+
+  const handleDeleteRoutine = async (routineId: string) => {
+    setFormError(null);
+    try {
+      await deleteRoutineMutation.mutateAsync(routineId);
+      if (editingRoutineId === routineId) {
+        handleCancelEdit();
+      }
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Routine delete failed.');
+    }
+  };
+
+  return (
+    <Card className="app-panel">
+      <CardHeader>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <CardTitle>Routines</CardTitle>
+            <CardDescription>
+              {project.name} で実行する定期実行と予約送信の routine を管理します。
+            </CardDescription>
+          </div>
+          <Button onClick={handleCreateRoutine} type="button">
+            <Plus className="size-4" />
+            New routine
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-3">
+          {projectRoutines.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No routines yet.</p>
+          ) : null}
+          {projectRoutines.map((routine) => (
+            <div
+              className="space-y-3 rounded-lg border border-border/70 px-3 py-3"
+              key={routine.id}
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-medium">{routine.name}</p>
+                    <Badge variant={routine.enabled ? 'default' : 'outline'}>
+                      {routine.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                    <Badge variant="secondary">{routine.kind}</Badge>
+                  </div>
+                  <p className="break-all font-mono text-xs text-muted-foreground">
+                    {routine.kind === 'cron' ? routine.config.cronExpression : routine.config.runAt}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Next: {formatOptionalDateTime(routine.nextRunAt)} · Last:{' '}
+                    {formatOptionalDateTime(routine.lastRunAt)}
+                  </p>
+                  {routine.lastError === null || routine.lastError === undefined ? null : (
+                    <p className="text-xs text-destructive">{routine.lastError}</p>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <RoutineEnabledToggle
+                    checked={routine.enabled}
+                    disabled={isMutating}
+                    onCheckedChange={(enabled) => {
+                      void handleToggleRoutine(routine, enabled);
+                    }}
+                  />
+                  <Button
+                    aria-label="Edit routine"
+                    disabled={isMutating}
+                    onClick={() => {
+                      handleEditRoutine(routine);
+                    }}
+                    size="icon"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    aria-label="Delete routine"
+                    disabled={isMutating}
+                    onClick={() => {
+                      void handleDeleteRoutine(routine.id);
+                    }}
+                    size="icon"
+                    type="button"
+                    variant="outline"
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </div>
+              <p className="line-clamp-2 text-sm text-muted-foreground">
+                {routine.sendConfig.prompt}
+              </p>
+            </div>
+          ))}
+        </div>
+        <Dialog
+          onOpenChange={(open) => {
+            if (!open) {
+              handleCancelEdit();
+              return;
+            }
+            setDialogOpen(true);
+          }}
+          open={dialogOpen}
+        >
+          <DialogContent className="sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {editingRoutineId === null ? 'New routine' : 'Edit routine'}
+              </DialogTitle>
+              <DialogDescription>
+                cron または scheduled を選び、送信先 provider と prompt を設定します。
+              </DialogDescription>
+            </DialogHeader>
+            {dialogOpen ? (
+              <RoutineDialogBody
+                formError={formError}
+                formState={formState}
+                isMutating={isMutating}
+                mode={editingRoutineId === null ? 'create' : 'edit'}
+                onCancel={handleCancelEdit}
+                onSubmit={(prompt) => {
+                  void handleSubmit(prompt);
+                }}
+                project={project}
+                selectableProviders={selectableProviders}
+                setFormState={setFormState}
+              />
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  );
+};
 
 export const ProviderSettingsPanel: FC = () => {
   const queryClient = useQueryClient();
@@ -128,50 +870,58 @@ export const ProviderSettingsPanel: FC = () => {
         <CardDescription>プロジェクトで利用する ACP provider を選択します。</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        {providerData.providers.map((entry) => (
-          <label
-            className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/70 px-3 py-3"
-            htmlFor={`provider-${entry.preset.id}`}
-            key={entry.preset.id}
-          >
-            <Checkbox
-              checked={entry.enabled}
-              disabled={updateProviderMutation.isPending || checkProviderMutation.isPending}
-              id={`provider-${entry.preset.id}`}
-              onCheckedChange={(checked) => {
-                void handleProviderToggle({
-                  presetId: entry.preset.id,
-                  enabled: checked === true,
-                });
-              }}
-            />
-            <span className="min-w-0 flex-1 space-y-1">
-              <span className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">{entry.preset.label}</span>
-                <Badge variant={entry.enabled ? 'default' : 'outline'}>
-                  {entry.enabled ? 'Enabled' : 'Disabled'}
-                </Badge>
-              </span>
-              <span className="block text-sm text-muted-foreground">
-                {entry.preset.description}
-              </span>
-              <span className="block break-all font-mono text-xs text-muted-foreground">
-                {entry.preset.command} {entry.preset.args.join(' ')}
-              </span>
-              {providerCheckState[entry.preset.id] === undefined ? null : (
-                <span
-                  className={
-                    providerCheckState[entry.preset.id]?.status === 'error'
-                      ? 'block text-xs text-destructive'
-                      : 'block text-xs text-muted-foreground'
-                  }
-                >
-                  {providerCheckState[entry.preset.id]?.message}
+        {providerData.providers.map((entry) => {
+          return (
+            <div
+              className="flex items-start gap-3 rounded-lg border border-border/70 px-3 py-3"
+              key={entry.preset.id}
+            >
+              <Checkbox
+                checked={entry.enabled}
+                disabled={updateProviderMutation.isPending || checkProviderMutation.isPending}
+                id={`provider-${entry.preset.id}`}
+                onCheckedChange={(checked) => {
+                  void handleProviderToggle({
+                    presetId: entry.preset.id,
+                    enabled: checked === true,
+                  });
+                }}
+              />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <label
+                    className="min-w-0 cursor-pointer space-y-1"
+                    htmlFor={`provider-${entry.preset.id}`}
+                  >
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium">{entry.preset.label}</span>
+                      <Badge variant={entry.enabled ? 'default' : 'outline'}>
+                        {entry.enabled ? 'Enabled' : 'Disabled'}
+                      </Badge>
+                    </span>
+                    <span className="block text-sm text-muted-foreground">
+                      {entry.preset.description}
+                    </span>
+                  </label>
+                </div>
+                <span className="block break-all font-mono text-xs text-muted-foreground">
+                  {entry.preset.command} {entry.preset.args.join(' ')}
                 </span>
-              )}
-            </span>
-          </label>
-        ))}
+                {providerCheckState[entry.preset.id] === undefined ? null : (
+                  <span
+                    className={
+                      providerCheckState[entry.preset.id]?.status === 'error'
+                        ? 'block text-xs text-destructive'
+                        : 'block text-xs text-muted-foreground'
+                    }
+                  >
+                    {providerCheckState[entry.preset.id]?.message}
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );
@@ -221,6 +971,9 @@ export const AppearanceSettingsPanel: FC = () => {
 export const NotificationsSettingsPanel: FC = () => {
   const [notificationPermission, setNotificationPermission] = useState(
     getNotificationPermissionState,
+  );
+  const [taskCompletionSoundPreference, setTaskCompletionSoundPreference] = useState(
+    readTaskCompletionSoundPreference,
   );
   const [notificationError, setNotificationError] = useState<string | null>(null);
 
@@ -272,6 +1025,23 @@ export const NotificationsSettingsPanel: FC = () => {
     setNotificationError(null);
   };
 
+  const handleTaskCompletionSoundChange = (nextPreference: TaskCompletionSoundPreference) => {
+    setTaskCompletionSoundPreference(nextPreference);
+    persistTaskCompletionSoundPreference(nextPreference);
+    setNotificationError(null);
+  };
+
+  const handlePreviewTaskCompletionSound = async () => {
+    const didPlaySound = await playTaskCompletionSound();
+
+    if (!didPlaySound) {
+      setNotificationError('音を再生できませんでした。ブラウザの音声再生設定を確認してください。');
+      return;
+    }
+
+    setNotificationError(null);
+  };
+
   return (
     <Card className="app-panel">
       <CardHeader>
@@ -281,6 +1051,42 @@ export const NotificationsSettingsPanel: FC = () => {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
+        <div className="grid gap-3 rounded-lg border border-border/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
+          <div className="min-w-0 space-y-1">
+            <Label htmlFor="task-completion-sound">Completion sound</Label>
+            <p className="text-sm text-muted-foreground">
+              エージェントのタスク/応答が完了したときに音を鳴らします。
+            </p>
+          </div>
+          <Select
+            onValueChange={(value) => {
+              handleTaskCompletionSoundChange(parseTaskCompletionSoundPreference(value));
+            }}
+            value={taskCompletionSoundPreference}
+          >
+            <SelectTrigger className="w-full" id="task-completion-sound">
+              <SelectValue placeholder="Completion sound" />
+            </SelectTrigger>
+            <SelectContent>
+              {taskCompletionSoundOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button
+            disabled={taskCompletionSoundPreference === 'none'}
+            onClick={() => {
+              void handlePreviewTaskCompletionSound();
+            }}
+            type="button"
+            variant="outline"
+          >
+            <Volume2 className="size-4" />
+            Test sound
+          </Button>
+        </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{notificationPermission}</Badge>
           <Button

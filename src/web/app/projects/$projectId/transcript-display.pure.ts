@@ -9,6 +9,7 @@ const HIDDEN_MESSAGE_KINDS: ReadonlySet<ChatMessageKind> = new Set([
   'stream_finish',
   'step_start',
   'step_finish',
+  'raw_meta',
 ]);
 
 export const filterDisplayableRawEvents = (events: readonly RawEvent[]): readonly RawEvent[] => {

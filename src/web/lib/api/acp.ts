@@ -7,7 +7,9 @@ import {
   acpPermissionRequestsResponseSchema,
   appSetupStateResponseSchema,
   appInfoSchema,
+  cancelSessionResponseSchema,
   checkAgentProviderRequestSchema,
+  createProjectWorktreeRequestSchema,
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
   filesystemTreeResponseSchema,
@@ -16,8 +18,10 @@ import {
   prepareAgentSessionResponseSchema,
   projectResponseSchema,
   projectSettingsResponseSchema,
+  projectWorktreeResponseSchema,
   projectsResponseSchema,
   resumableSessionsResponseSchema,
+  routinesResponseSchema,
   sessionMessagesResponseSchema,
   sessionResponseSchema,
   sessionsResponseSchema,
@@ -28,8 +32,11 @@ import {
   type AcpPermissionRequestsResponse,
   type AppSetupStateResponse,
   type AppInfo,
+  type CancelSessionResponse,
   type CheckAgentProviderRequest,
   type CreateProjectRequest,
+  type CreateProjectWorktreeRequest,
+  type CreateRoutineRequest,
   type CreateSessionRequest,
   type DirectoryListingResponse,
   type DiscoverResumableSessionsRequest,
@@ -40,16 +47,21 @@ import {
   type PrepareAgentSessionResponse,
   type ProjectResponse,
   type ProjectSettingsResponse,
+  type ProjectWorktreeResponse,
   type ProjectsResponse,
   type ResumableSessionsResponse,
+  type RoutinesResponse,
   type ResolveAcpPermissionRequest,
   type SessionMessagesResponse,
   type SessionResponse,
   type SessionsResponse,
   type UploadAttachmentsResponse,
+  type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
   type UpdateAgentProviderRequest,
+  type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
+  type UpdateRoutineRequest,
 } from '../../../shared/acp.ts';
 import { apiFetch, honoClient } from './client.ts';
 
@@ -110,11 +122,38 @@ export const updateProjectModelPreferenceRequest = async (
   return parse(projectSettingsResponseSchema, await response.json());
 };
 
+export const updateProjectModePreferenceRequest = async (
+  projectId: string,
+  request: UpdateProjectModePreferenceRequest,
+): Promise<ProjectSettingsResponse> => {
+  const response = await apiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/mode-preferences`,
+    {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  );
+  return parse(projectSettingsResponseSchema, await response.json());
+};
+
 export const createProjectRequest = async (
   request: CreateProjectRequest,
 ): Promise<ProjectResponse> => {
   const response = await honoClient.projects.$post({ json: request });
   return parse(projectResponseSchema, await response.json());
+};
+
+export const createProjectWorktreeRequest = async (
+  projectId: string,
+  request: CreateProjectWorktreeRequest,
+): Promise<ProjectWorktreeResponse> => {
+  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/worktrees`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parse(createProjectWorktreeRequestSchema, request)),
+  });
+  return parse(projectWorktreeResponseSchema, await response.json());
 };
 
 export const uploadAttachmentsRequest = async (
@@ -271,6 +310,21 @@ export const updateSessionRequest = async (
   return parse(sessionResponseSchema, await response.json());
 };
 
+export const updateSessionConfigOptionRequest = async (
+  sessionId: string,
+  request: UpdateSessionConfigOptionRequest,
+): Promise<SessionResponse> => {
+  const response = await apiFetch(
+    `/api/acp/sessions/${encodeURIComponent(sessionId)}/config-options`,
+    {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(request),
+    },
+  );
+  return parse(sessionResponseSchema, await response.json());
+};
+
 export const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesResponse> => {
   const response = await honoClient.acp.sessions[':sessionId'].messages.$get({
     param: { sessionId },
@@ -322,4 +376,46 @@ export const sendPreparedPromptRequest = async (
 
 export const deleteSessionRequest = async (sessionId: string): Promise<void> => {
   await honoClient.acp.sessions[':sessionId'].$delete({ param: { sessionId } });
+};
+
+export const cancelSessionRequest = async (sessionId: string): Promise<CancelSessionResponse> => {
+  const response = await apiFetch(`/api/acp/sessions/${encodeURIComponent(sessionId)}/cancel`, {
+    method: 'POST',
+  });
+  return parse(cancelSessionResponseSchema, await response.json());
+};
+
+export const fetchRoutines = async (): Promise<RoutinesResponse> => {
+  const response = await apiFetch('/api/routines', { method: 'GET' });
+  return parse(routinesResponseSchema, await response.json());
+};
+
+export const createRoutineRequest = async (
+  request: CreateRoutineRequest,
+): Promise<RoutinesResponse> => {
+  const response = await apiFetch('/api/routines', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return parse(routinesResponseSchema, await response.json());
+};
+
+export const updateRoutineRequest = async (
+  routineId: string,
+  request: UpdateRoutineRequest,
+): Promise<RoutinesResponse> => {
+  const response = await apiFetch(`/api/routines/${encodeURIComponent(routineId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  });
+  return parse(routinesResponseSchema, await response.json());
+};
+
+export const deleteRoutineRequest = async (routineId: string): Promise<RoutinesResponse> => {
+  const response = await apiFetch(`/api/routines/${encodeURIComponent(routineId)}`, {
+    method: 'DELETE',
+  });
+  return parse(routinesResponseSchema, await response.json());
 };

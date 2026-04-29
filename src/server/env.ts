@@ -12,6 +12,16 @@ const envSchema = v.object({
     v.optional(v.string(), path.resolve(homedir(), '.ra')),
     v.transform((value) => path.resolve(value)),
   ),
+  RA_API_KEY: v.optional(v.pipe(v.string(), v.trim())),
+  RA_ALLOWED_IPS: v.pipe(
+    v.optional(v.string(), ''),
+    v.transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ),
 });
 
 export type Env = v.InferOutput<typeof envSchema>;
@@ -23,6 +33,9 @@ export const envService = (() => {
     env ??= v.parse(envSchema, process.env);
     return env[key];
   };
+  const resetEnvForTesting = (): void => {
+    env = undefined;
+  };
 
-  return { getEnv } as const;
+  return { getEnv, resetEnvForTesting } as const;
 })();

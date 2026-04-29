@@ -2,12 +2,15 @@ import type {
   ModelInfo,
   NewSessionResponse,
   SessionConfigOption,
-  SessionConfigSelectGroup,
   SessionConfigSelectOption,
   SessionConfigSelectOptions,
 } from '@agentclientprotocol/sdk';
 
-import type { ModeOption, ModelOption } from '../../shared/acp.ts';
+import type {
+  ModeOption,
+  ModelOption,
+  SessionConfigOption as RemoteAgentSessionConfigOption,
+} from '../../shared/acp.ts';
 
 const normalizeModelOptionId = (value: string): string => {
   const t = value.trim();
@@ -15,49 +18,17 @@ const normalizeModelOptionId = (value: string): string => {
 };
 
 export const mapModelInfoToModelOption = (model: ModelInfo): ModelOption => {
-  const anyModel = model as { modelId?: string; id?: string };
-  const id = model.modelId ?? anyModel.id ?? '';
   return {
-    id: normalizeModelOptionId(String(id)),
+    id: normalizeModelOptionId(model.modelId),
     name: String(model.name),
     description: model.description ?? null,
   };
 };
 
-const isConfigSelectOption = (o: unknown): o is SessionConfigSelectOption => {
-  if (o === null || typeof o !== 'object' || !('value' in o) || !('name' in o)) {
-    return false;
-  }
-  const t = o as { value: unknown; name: unknown };
-  return typeof t.value === 'string' && typeof t.name === 'string';
-};
-
-const isConfigSelectGroup = (g: unknown): g is SessionConfigSelectGroup => {
-  if (g === null || typeof g !== 'object' || !('options' in g)) {
-    return false;
-  }
-  const t = (g as { options: unknown }).options;
-  return Array.isArray(t) && t.length > 0 && isConfigSelectOption(t[0] as unknown);
-};
-
 const flattenConfigSelectOptions = (
   raw: SessionConfigSelectOptions,
 ): readonly SessionConfigSelectOption[] => {
-  if (raw.length === 0) {
-    return [];
-  }
-  const first = raw[0] as unknown;
-  if (isConfigSelectOption(first)) {
-    return (raw as readonly unknown[]).filter((x: unknown): x is SessionConfigSelectOption =>
-      isConfigSelectOption(x),
-    );
-  }
-  if (isConfigSelectGroup(first)) {
-    return (raw as readonly unknown[]).flatMap((g: unknown) =>
-      isConfigSelectGroup(g) ? g.options : [],
-    );
-  }
-  return [];
+  return raw.flatMap((item) => ('group' in item ? item.options : [item]));
 };
 
 const isModelConfigOption = (c: SessionConfigOption): boolean => {
@@ -82,6 +53,9 @@ const isModeConfigOption = (c: SessionConfigOption): boolean => {
   return id === 'mode';
 };
 
+const isGenericConfigOption = (c: SessionConfigOption): boolean =>
+  !isModelConfigOption(c) && !isModeConfigOption(c);
+
 const readConfigSelects = (
   configOptions: NewSessionResponse['configOptions'] | null | undefined,
   pick: (c: SessionConfigOption) => boolean,
@@ -89,9 +63,7 @@ const readConfigSelects = (
   if (configOptions === null || configOptions === undefined) {
     return { options: [], currentId: null };
   }
-  const selects: SessionConfigOption[] = (configOptions as readonly SessionConfigOption[]).filter(
-    (c): c is SessionConfigOption => c.type === 'select' && pick(c),
-  );
+  const selects = configOptions.filter((c) => c.type === 'select' && pick(c));
   if (selects.length === 0) {
     return { options: [], currentId: null };
   }
@@ -181,4 +153,30 @@ export const buildModeOptionsFromResponse = (
     })),
     currentModeId: st?.currentModeId ?? null,
   };
+};
+
+export const buildGenericConfigOptionsFromResponse = (
+  response: Pick<NewSessionResponse, 'configOptions'>,
+): readonly RemoteAgentSessionConfigOption[] => {
+  const configOptions = response.configOptions;
+  if (configOptions === null || configOptions === undefined) {
+    return [];
+  }
+
+  return configOptions
+    .filter((option) => option.type === 'select')
+    .filter(isGenericConfigOption)
+    .map((option) => ({
+      id: option.id,
+      name: option.name,
+      category: option.category ?? null,
+      description: option.description ?? null,
+      currentValue: option.currentValue,
+      values: flattenConfigSelectOptions(option.options).map((value) => ({
+        value: value.value,
+        name: value.name,
+        description: value.description ?? null,
+      })),
+    }))
+    .filter((option) => option.values.length > 0);
 };

@@ -117,4 +117,46 @@ describe('createProjectStore', () => {
       settings.modelPreferences.find((entry) => entry.modelId === 'gpt-5-codex-mini')?.lastUsedAt,
     ).toEqual(expect.any(String));
   });
+
+  test('stores last-used mode preferences per project and preset', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
+    const projectDirectory = await mkdtemp(path.join(sandboxDirectory, 'workspace-'));
+
+    const database = createDatabase(path.join(sandboxDirectory, 'remote-agent.sqlite'));
+    disposableClients.push(database.client);
+
+    const store = createProjectStore(database);
+    const project = await store.createProject({
+      name: 'Workspace Modes',
+      workingDirectory: projectDirectory,
+    });
+
+    await store.updateProjectModePreference(project.id, {
+      presetId: 'codex',
+      modeId: 'read-only',
+      markLastUsed: true,
+    });
+    const settings = await store.updateProjectModePreference(project.id, {
+      presetId: 'codex',
+      modeId: 'full-access',
+      markLastUsed: true,
+    });
+
+    expect(settings.modePreferences).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          presetId: 'codex',
+          modeId: 'read-only',
+          lastUsedAt: null,
+        }),
+        expect.objectContaining({
+          presetId: 'codex',
+          modeId: 'full-access',
+        }),
+      ]),
+    );
+    expect(
+      settings.modePreferences.find((entry) => entry.modeId === 'full-access')?.lastUsedAt,
+    ).toEqual(expect.any(String));
+  });
 });

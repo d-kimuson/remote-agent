@@ -1,3 +1,4 @@
+import type { SessionNotification } from '@agentclientprotocol/sdk';
 import type { ACPProvider } from '@mcpc-tech/acp-ai-provider';
 
 import { mkdtemp } from 'node:fs/promises';
@@ -172,6 +173,121 @@ describe('createSessionStore', () => {
         currentModelId: 'gpt-5-codex-mini',
         status: 'inactive',
         isActive: false,
+      }),
+    ]);
+  });
+
+  test('updates generic session config options through the ACP connection and persists them', async () => {
+    const database = createDatabase(':memory:');
+    disposableClients.push(database.client);
+
+    const observedRequests: {
+      readonly sessionId: string;
+      readonly configId: string;
+      readonly value: string;
+    }[] = [];
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => {
+        const provider = {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: 'session-config',
+              modes: { currentModeId: '', availableModes: [] },
+              models: { currentModelId: '', availableModels: [] },
+              configOptions: [
+                {
+                  type: 'select' as const,
+                  id: 'verbosity',
+                  name: 'Verbosity',
+                  currentValue: 'medium',
+                  options: [
+                    { value: 'low', name: 'Low' },
+                    { value: 'medium', name: 'Medium' },
+                    { value: 'high', name: 'High' },
+                  ],
+                },
+              ],
+            }),
+          languageModel: stubLanguageModel,
+          model: {
+            client: {
+              setPermissionRequestHandler: () => {},
+            },
+            connection: {
+              setSessionConfigOption: (input: {
+                readonly sessionId: string;
+                readonly configId: string;
+                readonly value: string;
+              }) => {
+                observedRequests.push(input);
+                return Promise.resolve({
+                  configOptions: [
+                    {
+                      type: 'select' as const,
+                      id: 'verbosity',
+                      name: 'Verbosity',
+                      currentValue: input.value,
+                      options: [
+                        { value: 'low', name: 'Low' },
+                        { value: 'medium', name: 'Medium' },
+                        { value: 'high', name: 'High' },
+                      ],
+                    },
+                  ],
+                });
+              },
+            },
+            sessionId: 'provider-session-config',
+          },
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+        return provider;
+      },
+    });
+
+    const created = await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    expect(created.configOptions).toEqual([
+      expect.objectContaining({
+        id: 'verbosity',
+        currentValue: 'medium',
+      }),
+    ]);
+
+    const updated = await store.updateSessionConfigOption('session-config', {
+      configId: 'verbosity',
+      value: 'high',
+    });
+
+    expect(observedRequests).toEqual([
+      {
+        sessionId: 'provider-session-config',
+        configId: 'verbosity',
+        value: 'high',
+      },
+    ]);
+    expect(updated.configOptions).toEqual([
+      expect.objectContaining({
+        id: 'verbosity',
+        currentValue: 'high',
+      }),
+    ]);
+    expect((await store.listSessions())[0]?.configOptions).toEqual([
+      expect.objectContaining({
+        id: 'verbosity',
+        currentValue: 'high',
       }),
     ]);
   });
@@ -367,6 +483,62 @@ describe('createSessionStore', () => {
     expect(messages).toHaveLength(2);
     expect(messages[0]).toMatchObject({ role: 'user', text: 'ping' });
     expect(messages[1]).toMatchObject({ role: 'assistant', text: 'Error: model exploded' });
+  });
+
+  test('persists user and assistant error when session tuning fails before collection', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
+
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-tuning-err',
+            modes: {
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: () => Promise.reject(new Error('mode unavailable')),
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: 'unreachable',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: sandboxDirectory,
+    });
+
+    await expect(
+      store.sendPrompt('session-tuning-err', { prompt: 'ping', modeId: 'strict' }),
+    ).rejects.toThrow('mode unavailable');
+
+    const messages = await store.listMessages('session-tuning-err');
+    expect(messages).toHaveLength(2);
+    expect(messages[0]).toMatchObject({ role: 'user', text: 'ping' });
+    expect(messages[1]).toMatchObject({ role: 'assistant', text: 'Error: mode unavailable' });
   });
 
   test('loads an existing session into an active provider and persists it as loaded', async () => {
@@ -982,5 +1154,184 @@ describe('createSessionStore', () => {
         text: 'prior turn',
       }),
     ]);
+  });
+
+  test('observes ACP session updates through the provider client handler', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const databasePath = path.join(sandboxDirectory, 'remote-agent.sqlite');
+    const database = createDatabase(databasePath);
+    disposableClients.push(database.client);
+
+    const installedHandlers: ((params: SessionNotification) => void)[] = [];
+    const client = {
+      setSessionUpdateHandler: (handler: (params: SessionNotification) => void) => {
+        installedHandlers.push(handler);
+      },
+    };
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        client,
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-updates',
+            modes: {
+              currentModeId: 'balanced',
+              availableModes: [{ id: 'balanced', name: 'Balanced' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: sandboxDirectory,
+    });
+
+    client.setSessionUpdateHandler(() => {});
+    const installedHandler = installedHandlers[0];
+    if (installedHandler === undefined) {
+      throw new Error('expected wrapped session update handler');
+    }
+
+    installedHandler({
+      sessionId: 'session-updates',
+      update: {
+        sessionUpdate: 'session_info_update',
+        title: 'Agent named this session',
+        updatedAt: '2026-04-29T00:00:00.000Z',
+      },
+    });
+    installedHandler({
+      sessionId: 'session-updates',
+      update: { sessionUpdate: 'usage_update', used: 1200, size: 4000 },
+    });
+    installedHandler({
+      sessionId: 'session-updates',
+      update: {
+        sessionUpdate: 'available_commands_update',
+        availableCommands: [{ name: 'review', description: 'Review current changes' }],
+      },
+    });
+    installedHandler({
+      sessionId: 'session-updates',
+      update: {
+        sessionUpdate: 'tool_call_update',
+        toolCallId: 'tool-1',
+        title: 'Edit file',
+        kind: 'edit',
+        status: 'in_progress',
+        locations: [{ path: 'src/app.ts', line: 12 }],
+      },
+    });
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, 0);
+    });
+
+    expect((await store.listSessions())[0]).toMatchObject({
+      sessionId: 'session-updates',
+      title: 'Agent named this session',
+      updatedAt: '2026-04-29T00:00:00.000Z',
+    });
+    const messages = await store.listMessages('session-updates');
+    expect(messages.map((message) => message.kind)).toContain('raw_meta');
+    expect(messages.map((message) => message.text)).toEqual(
+      expect.arrayContaining([
+        'context 1200/4000 tokens (30%)',
+        '/review',
+        JSON.stringify({
+          toolCallId: 'tool-1',
+          title: 'Edit file',
+          kind: 'edit',
+          status: 'in_progress',
+          locations: [{ path: 'src/app.ts', line: 12 }],
+        }),
+      ]),
+    );
+  });
+
+  test('cancels a running prompt and persists an abort message', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-sessions-'));
+    const database = createDatabase(':memory:');
+    disposableClients.push(database.client);
+
+    const observedAbortSignals: AbortSignal[] = [];
+    let releasePrompt: (() => void) | null = null;
+    const promptStarted = new Promise<void>((resolve) => {
+      releasePrompt = resolve;
+    });
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-cancel',
+            modes: { currentModeId: '', availableModes: [] },
+            models: { currentModelId: '', availableModels: [] },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: async (_provider, _prompt, options) => {
+        observedAbortSignals.push(options.abortSignal);
+        releasePrompt?.();
+        await new Promise<void>((resolve) => {
+          options.abortSignal.addEventListener('abort', () => {
+            resolve();
+          });
+        });
+        throw new DOMException('cancelled', 'AbortError');
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: sandboxDirectory,
+    });
+
+    const promptPromise = store.sendPrompt('session-cancel', {
+      prompt: 'long running prompt',
+      attachmentIds: [],
+    });
+    await promptStarted;
+
+    const cancelledSession = await store.cancelSession('session-cancel');
+    const response = await promptPromise;
+    const messages = await store.listMessages('session-cancel');
+
+    expect(observedAbortSignals[0]?.aborted).toBe(true);
+    expect(cancelledSession.status).toBe('paused');
+    expect(response.session.status).toBe('paused');
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: 'abort',
+          text: 'Cancelled',
+        }),
+      ]),
+    );
   });
 });
