@@ -18,6 +18,7 @@ const codexPreset: AgentPreset = {
   description: 'test preset',
   command: 'npx',
   args: ['-y', '@zed-industries/codex-acp'],
+  authMethodId: 'chatgpt',
 };
 
 const stubLanguageModel: ACPProvider['languageModel'] = (): ReturnType<
@@ -213,6 +214,51 @@ describe('createSessionStore', () => {
     });
 
     expect(observedAuthMethodId).toBe('chatgpt');
+  });
+
+  test('passes preset authMethodId to ACP provider creation for pi sessions', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    let observedAuthMethodId: string | undefined = undefined;
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/pi-acp'),
+      createProvider: ({ authMethodId }) => {
+        observedAuthMethodId = authMethodId;
+        return {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: 'session-auth-method-pi',
+              modes: { currentModeId: '', availableModes: [] },
+              models: { currentModelId: '', availableModels: [] },
+            }),
+          languageModel: stubLanguageModel,
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: {
+        id: 'pi-coding-agent',
+        label: 'pi-coding-agent',
+        description: 'test preset',
+        command: 'pi-acp',
+        args: [],
+        authMethodId: 'pi_terminal_login',
+      },
+      command: 'pi-acp',
+      args: [],
+      cwd: process.cwd(),
+    });
+
+    expect(observedAuthMethodId).toBe('pi_terminal_login');
   });
 
   test('updates generic session config options through the ACP connection and persists them', async () => {

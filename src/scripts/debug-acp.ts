@@ -23,7 +23,6 @@ import { streamText } from 'ai';
 import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { resolveAuthMethodIdForPresetId } from '../server/acp/preset-auth-method-id.pure.ts';
 import { agentPresets } from '../server/acp/presets.ts';
 import { resolveCommandPath } from '../server/acp/services/command-path.ts';
 
@@ -102,7 +101,7 @@ const createProviderLikeBff = (options: {
   createACPProvider({
     command: options.command,
     args: [...options.args],
-    authMethodId: resolveAuthMethodIdForPresetId(preset.id),
+    authMethodId: preset.authMethodId,
     existingSessionId: options.existingSessionId,
     session: {
       cwd: options.cwd,

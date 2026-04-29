@@ -40,7 +40,6 @@ import {
   sessionsTable,
 } from '../../db/schema.ts';
 import { type AppDatabase, getDefaultDatabase } from '../../db/sqlite.ts';
-import { resolveAuthMethodIdForPresetId } from '../preset-auth-method-id.pure.ts';
 import { agentPresets } from '../presets.ts';
 import {
   acpAiProviderAttachmentCapabilities,
@@ -913,7 +912,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
-      authMethodId: resolveAuthMethodIdForPresetId(preset?.id),
+      authMethodId: preset?.authMethodId,
       cwd: launch.cwd,
       env: launch.env,
     });
@@ -1022,7 +1021,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
-      authMethodId: resolveAuthMethodIdForPresetId(preset.id),
+      authMethodId: preset.authMethodId,
       cwd: launch.cwd,
       env: launch.env,
       existingSessionId: sessionId,

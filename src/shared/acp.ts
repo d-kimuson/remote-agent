@@ -20,6 +20,7 @@ export const agentPresetSchema = object({
   description: pipe(string(), trim()),
   command: pipe(string(), trim()),
   args: array(pipe(string(), trim())),
+  authMethodId: optional(pipe(string(), trim())),
   modelSelectLabel: optional(pipe(string(), trim())),
   modeSelectLabel: optional(pipe(string(), trim())),
 });
