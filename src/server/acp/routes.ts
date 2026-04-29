@@ -89,7 +89,7 @@ const findPreset = (presetId: string | null | undefined) => {
 const resolveAgentCommand = async (
   request: CreateSessionRequest,
 ): Promise<{
-  readonly presetId: string | null;
+  readonly preset: Awaited<ReturnType<typeof resolveProviderPreset>>;
   readonly command: string;
   readonly args: readonly string[];
 }> => {
@@ -101,7 +101,7 @@ const resolveAgentCommand = async (
   }
 
   return {
-    presetId: preset.id,
+    preset,
     command: preset.command,
     args: parsedArgs.length > 0 ? parsedArgs : preset.args,
   };
@@ -685,23 +685,19 @@ export const acpRoutes = new Hono()
           projectId: request.projectId,
           cwd: request.cwd,
         });
-        const preset = findPreset(resolved.presetId);
-        if (preset === null) {
-          throw new Error(`Unknown ACP provider preset: ${resolved.presetId ?? 'codex'}`);
-        }
         const initialModelId = await resolveInitialModelId({
           projectId: context.project?.id ?? null,
-          presetId: preset.id,
+          presetId: resolved.preset.id,
           modelId: request.modelId ?? null,
         });
         const initialModeId = await resolveInitialModeId({
           projectId: context.project?.id ?? null,
-          presetId: preset.id,
+          presetId: resolved.preset.id,
           modeId: request.modeId ?? null,
         });
         const session = await createSession({
           projectId: context.project?.id ?? null,
-          preset,
+          preset: resolved.preset,
           command: resolved.command,
           args: resolved.args,
           cwd: context.cwd,

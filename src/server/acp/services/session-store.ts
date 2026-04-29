@@ -46,6 +46,7 @@ import {
   buildAttachmentPromptPlan,
   type AttachmentPromptPlan,
 } from '../prompt-attachments.pure.ts';
+import { resolveProviderAuthMethodId } from '../provider-auth-method.pure.ts';
 import {
   buildGenericConfigOptionsFromResponse,
   buildModelOptionsFromResponse,
@@ -912,7 +913,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
-      authMethodId: preset?.authMethodId,
+      authMethodId: resolveProviderAuthMethodId(preset),
       cwd: launch.cwd,
       env: launch.env,
     });
@@ -1021,7 +1022,7 @@ export const createSessionStore = ({
     const provider = createProvider({
       command: launch.command,
       args: launch.args,
-      authMethodId: preset.authMethodId,
+      authMethodId: resolveProviderAuthMethodId(preset),
       cwd: launch.cwd,
       env: launch.env,
       existingSessionId: sessionId,

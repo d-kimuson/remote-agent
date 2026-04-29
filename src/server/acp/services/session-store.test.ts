@@ -261,6 +261,51 @@ describe('createSessionStore', () => {
     expect(observedAuthMethodId).toBe('pi_terminal_login');
   });
 
+  test('infers authMethodId for Codex-compatible Custom Provider sessions', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    let observedAuthMethodId: string | undefined = undefined;
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex-acp'),
+      createProvider: ({ authMethodId }) => {
+        observedAuthMethodId = authMethodId;
+        return {
+          cleanup: () => {},
+          initSession: () =>
+            Promise.resolve({
+              sessionId: 'session-custom-auth-method',
+              modes: { currentModeId: '', availableModes: [] },
+              models: { currentModelId: '', availableModels: [] },
+            }),
+          languageModel: stubLanguageModel,
+          setMode: async () => {},
+          setModel: async () => {},
+          tools: {},
+        };
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: {
+        id: 'custom:codex',
+        label: 'Custom Codex',
+        description: 'test custom preset',
+        command: 'codex-acp',
+        args: [],
+        authMethodId: undefined,
+      },
+      command: 'codex-acp',
+      args: [],
+      cwd: process.cwd(),
+    });
+
+    expect(observedAuthMethodId).toBe('chatgpt');
+  });
+
   test('updates generic session config options through the ACP connection and persists them', async () => {
     const database = createDatabase(':memory:');
     disposableClients.push(database.client);

@@ -24,6 +24,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 import { agentPresets } from '../server/acp/presets.ts';
+import { resolveProviderAuthMethodId } from '../server/acp/provider-auth-method.pure.ts';
 import { resolveCommandPath } from '../server/acp/services/command-path.ts';
 
 const log = (step: string, detail?: Readonly<Record<string, unknown>>) => {
@@ -101,7 +102,7 @@ const createProviderLikeBff = (options: {
   createACPProvider({
     command: options.command,
     args: [...options.args],
-    authMethodId: preset.authMethodId,
+    authMethodId: resolveProviderAuthMethodId(preset),
     existingSessionId: options.existingSessionId,
     session: {
       cwd: options.cwd,
