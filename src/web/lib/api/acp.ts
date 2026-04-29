@@ -9,6 +9,7 @@ import {
   appInfoSchema,
   cancelSessionResponseSchema,
   checkAgentProviderRequestSchema,
+  createCustomAgentProviderRequestSchema,
   createProjectWorktreeRequestSchema,
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
@@ -36,6 +37,7 @@ import {
   type CheckAgentProviderRequest,
   type CreateProjectRequest,
   type CreateProjectWorktreeRequest,
+  type CreateCustomAgentProviderRequest,
   type CreateRoutineRequest,
   type CreateSessionRequest,
   type DirectoryListingResponse,
@@ -59,9 +61,11 @@ import {
   type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
   type UpdateAgentProviderRequest,
+  type UpdateCustomAgentProviderRequest,
   type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
   type UpdateRoutineRequest,
+  updateCustomAgentProviderRequestSchema,
 } from '../../../shared/acp.ts';
 import { apiFetch, honoClient } from './client.ts';
 
@@ -217,6 +221,38 @@ export const updateAgentProviderRequest = async (
   const response = await honoClient.acp.providers[':presetId'].$patch({
     param: { presetId },
     json: request,
+  });
+  return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const createCustomAgentProviderRequest = async (
+  request: CreateCustomAgentProviderRequest,
+): Promise<AgentProvidersResponse> => {
+  const response = await apiFetch('/api/acp/providers/custom', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parse(createCustomAgentProviderRequestSchema, request)),
+  });
+  return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const deleteCustomAgentProviderRequest = async (
+  providerId: string,
+): Promise<AgentProvidersResponse> => {
+  const response = await apiFetch(`/api/acp/providers/custom/${encodeURIComponent(providerId)}`, {
+    method: 'DELETE',
+  });
+  return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const updateCustomAgentProviderRequest = async (
+  providerId: string,
+  request: UpdateCustomAgentProviderRequest,
+): Promise<AgentProvidersResponse> => {
+  const response = await apiFetch(`/api/acp/providers/custom/${encodeURIComponent(providerId)}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parse(updateCustomAgentProviderRequestSchema, request)),
   });
   return parse(agentProvidersResponseSchema, await response.json());
 };

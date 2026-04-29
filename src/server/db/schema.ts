@@ -56,6 +56,22 @@ export const enabledAgentProvidersTable = sqliteTable(
   (table) => [index('idx_enabled_agent_providers_updated_at').on(table.updatedAt)],
 );
 
+export const customAgentProvidersTable = sqliteTable(
+  'custom_agent_providers',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    command: text('command').notNull(),
+    argsJson: text('args_json').notNull(),
+    createdAt: text('created_at').notNull(),
+    updatedAt: text('updated_at').notNull(),
+  },
+  (table) => [
+    uniqueIndex('idx_custom_agent_providers_name').on(table.name),
+    index('idx_custom_agent_providers_updated_at').on(table.updatedAt),
+  ],
+);
+
 export const agentProviderCatalogsTable = sqliteTable(
   'agent_provider_catalogs',
   {

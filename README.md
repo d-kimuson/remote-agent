@@ -86,8 +86,8 @@ started again when you send a message or explicitly load a supported provider se
 
 ## Provider Support
 
-`remote-agent` uses Provider presets. Custom ACP commands are currently disabled in the API, so the
-selected provider must match one of the built-in presets.
+`remote-agent` uses built-in Provider presets and user-defined Custom Providers. A Custom Provider
+stores a name and the stdio command used to start that ACP-compatible agent.
 
 | Provider           | Preset ID         | Command used by remote-agent | Model selector    | Mode selector | Load existing sessions | Import local logs                |
 | ------------------ | ----------------- | ---------------------------- | ----------------- | ------------- | ---------------------- | -------------------------------- |
@@ -96,6 +96,8 @@ selected provider must match one of the built-in presets.
 | GitHub Copilot CLI | `copilot-cli`     | `copilot --acp --stdio`      | Model             | Mode          | No                     | No                               |
 | pi-coding-agent    | `pi-coding-agent` | `pi-acp`                     | Provider / Model  | Thinking      | Yes                    | Yes, from `~/.pi/agent/sessions` |
 | Cursor CLI         | `cursor-cli`      | `agent acp`                  | Model / Reasoning | Mode          | No                     | No                               |
+| OpenCode           | `opencode`        | `opencode acp`               | Model             | Mode          | No                     | No                               |
+| Custom Provider    | generated         | User-configured              | Model             | Mode          | No                     | No                               |
 
 ### What "Model" and "Mode" Mean
 
@@ -113,6 +115,9 @@ provider values opaque and sends the selected IDs back to the provider unchanged
   levels, so `/` in the model ID must not be interpreted as an effort separator.
 - Cursor CLI uses `agent acp`. Some model IDs include bracketed attributes such as context,
   reasoning, and fast mode. `remote-agent` treats those as provider-owned IDs.
+- OpenCode uses `opencode acp`. Custom Providers use the same generic ACP handling but each entry
+  stores its own name and command, for example name `hoge-agent` with command
+  `npx hoge-agent --acp`.
 
 Model and mode catalogs are refreshed by starting an ephemeral ACP session and reading the
 provider's `initSession` response. If a provider does not return models or modes directly,
@@ -127,8 +132,8 @@ The UI can discover and load existing sessions only for providers that are enabl
 - Claude Code
 - pi-coding-agent
 
-Copilot CLI and Cursor CLI can start new sessions, but existing-session discovery/loading is not
-enabled for them in the current implementation.
+Copilot CLI, Cursor CLI, OpenCode, and Custom Providers can start new sessions, but
+existing-session discovery/loading is not enabled for them in the current implementation.
 
 ## Provider Installation Notes
 
@@ -141,12 +146,18 @@ npm install -g @agentclientprotocol/claude-agent-acp
 npm install -g pi-acp
 ```
 
-For Copilot CLI and Cursor CLI, install their official CLIs and make sure these commands work:
+For Copilot CLI, Cursor CLI, and OpenCode, install their official CLIs and make sure these commands work:
 
 ```bash
 copilot --acp --stdio
 agent acp
+opencode acp
 ```
+
+For Custom Providers, add one entry per agent command from Settings. Enter a display name such as
+`hoge-agent` and a stdio ACP command such as `npx hoge-agent --acp`. If you need another agent,
+choose one from the ACP agent list at https://agentclientprotocol.com/get-started/agents or
+implement an ACP-compatible agent server.
 
 `remote-agent` passes a narrow environment allowlist to agent processes, including provider
 credential variables such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,

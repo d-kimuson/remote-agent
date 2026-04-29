@@ -72,7 +72,9 @@ export const ProvidersScreen: FC<{
             ) : null}
             <BodyText muted>{provider.enabled ? 'Enabled' : 'Disabled'}</BodyText>
             <RowButton
-              disabled={updateProviderMutation.isPending}
+              disabled={
+                updateProviderMutation.isPending || provider.preset.id.startsWith('custom:')
+              }
               label={provider.enabled ? 'Disable provider' : 'Enable provider'}
               onPress={() => {
                 updateProviderMutation.mutate({

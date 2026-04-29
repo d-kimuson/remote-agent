@@ -401,6 +401,17 @@ export const agentModelCatalogResponseSchema = object({
 
 export type AgentModelCatalogResponse = InferOutput<typeof agentModelCatalogResponseSchema>;
 
+export const agentProviderCatalogSummarySchema = object({
+  availableModelCount: number(),
+  availableModeCount: number(),
+  currentModelId: nullable(optional(pipe(string(), trim()))),
+  currentModeId: nullable(optional(pipe(string(), trim()))),
+  lastError: nullable(optional(string())),
+  refreshedAt: nullable(optional(pipe(string(), trim()))),
+});
+
+export type AgentProviderCatalogSummary = InferOutput<typeof agentProviderCatalogSummarySchema>;
+
 export const slashCommandSchema = object({
   name: pipe(string(), trim()),
   description: pipe(string(), trim()),
@@ -428,6 +439,7 @@ export const agentProviderStatusSchema = object({
   enabled: boolean(),
   enabledAt: nullable(optional(pipe(string(), trim()))),
   updatedAt: nullable(optional(pipe(string(), trim()))),
+  catalogSummary: optional(nullable(agentProviderCatalogSummarySchema)),
 });
 
 export type AgentProviderStatus = InferOutput<typeof agentProviderStatusSchema>;
@@ -437,6 +449,24 @@ export const agentProvidersResponseSchema = object({
 });
 
 export type AgentProvidersResponse = InferOutput<typeof agentProvidersResponseSchema>;
+
+export const createCustomAgentProviderRequestSchema = object({
+  name: pipe(string(), trim()),
+  commandText: pipe(string(), trim()),
+});
+
+export type CreateCustomAgentProviderRequest = InferOutput<
+  typeof createCustomAgentProviderRequestSchema
+>;
+
+export const updateCustomAgentProviderRequestSchema = object({
+  name: pipe(string(), trim()),
+  commandText: pipe(string(), trim()),
+});
+
+export type UpdateCustomAgentProviderRequest = InferOutput<
+  typeof updateCustomAgentProviderRequestSchema
+>;
 
 export const appSetupStateSchema = object({
   initialSetupCompleted: boolean(),

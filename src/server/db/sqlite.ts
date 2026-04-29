@@ -208,6 +208,20 @@ const ensureRuntimeSchemaCompatibility = (client: DatabaseSync): void => {
     CREATE INDEX IF NOT EXISTS idx_project_mode_preferences_last_used
       ON project_mode_preferences (last_used_at);
 
+    CREATE TABLE IF NOT EXISTS custom_agent_providers (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      command text NOT NULL,
+      args_json text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_custom_agent_providers_name
+      ON custom_agent_providers (name);
+    CREATE INDEX IF NOT EXISTS idx_custom_agent_providers_updated_at
+      ON custom_agent_providers (updated_at);
+
   `);
 
   if (tableExists(client, 'sessions') && !columnExists(client, 'sessions', 'config_options_json')) {

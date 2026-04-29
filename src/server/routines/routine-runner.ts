@@ -1,6 +1,6 @@
 import type { AgentPreset, Routine } from '../../shared/acp.ts';
 
-import { agentPresets } from '../acp/presets.ts';
+import { resolveProviderPreset } from '../acp/repositories/provider-catalog-store.ts';
 import { createSession, sendPrompt } from '../acp/services/session-store.ts';
 import {
   getProject,
@@ -19,14 +19,7 @@ type RoutineRunnerDependencies = {
   readonly getProjectSettingsById?: typeof getProjectSettings;
   readonly markProjectModeUsed?: typeof updateProjectModePreference;
   readonly markProjectModelUsed?: typeof updateProjectModelPreference;
-};
-
-const findPreset = (presetId: string): AgentPreset => {
-  const preset = agentPresets.find((entry) => entry.id === presetId);
-  if (preset === undefined) {
-    throw new Error(`Unknown ACP provider preset: ${presetId}`);
-  }
-  return preset;
+  readonly resolveAgentPreset?: (presetId: string) => Promise<AgentPreset>;
 };
 
 const nonEmpty = (value: string | null | undefined): string | null =>
@@ -146,10 +139,11 @@ export const createRoutineRunner = ({
   getProjectSettingsById = getProjectSettings,
   markProjectModeUsed = updateProjectModePreference,
   markProjectModelUsed = updateProjectModelPreference,
+  resolveAgentPreset = (presetId) => resolveProviderPreset({ presetId }),
   sendAgentPrompt = sendPrompt,
 }: RoutineRunnerDependencies = {}) => {
   const runRoutine = async (routine: Routine): Promise<void> => {
-    const preset = findPreset(routine.sendConfig.presetId);
+    const preset = await resolveAgentPreset(routine.sendConfig.presetId);
     const project =
       routine.sendConfig.projectId === null || routine.sendConfig.projectId === undefined
         ? null

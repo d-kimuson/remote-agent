@@ -1,6 +1,18 @@
+import { array, object, optional, parse, string, unknown } from 'valibot';
 import { describe, expect, test } from 'vitest';
 
 import { honoApp } from '../app.ts';
+
+const providerListTestResponseSchema = object({
+  providers: array(
+    object({
+      preset: object({
+        id: string(),
+      }),
+      catalogSummary: optional(unknown()),
+    }),
+  ),
+});
 
 describe('acpRoutes', () => {
   test('exposes supported agent presets in app info', async () => {
@@ -36,6 +48,11 @@ describe('acpRoutes', () => {
           label: 'Cursor CLI',
           command: 'agent',
         },
+        {
+          id: 'opencode',
+          label: 'OpenCode',
+          command: 'opencode',
+        },
       ],
     });
   });
@@ -61,6 +78,15 @@ describe('acpRoutes', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('text/event-stream');
+  });
+
+  test('lists provider state with catalog summary field', async () => {
+    const response = await honoApp.request('/api/acp/providers');
+    const payload = parse(providerListTestResponseSchema, await response.json());
+
+    expect(response.status).toBe(200);
+    expect(payload.providers.some((provider) => provider.preset.id === 'codex')).toBe(true);
+    expect(payload.providers.every((provider) => 'catalogSummary' in provider)).toBe(true);
   });
 
   test('rejects session creation requests for unknown presets', async () => {

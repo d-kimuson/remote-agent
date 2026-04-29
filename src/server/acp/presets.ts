@@ -51,4 +51,14 @@ export const agentPresets = [
     modelSelectLabel: 'Model / Reasoning',
     modeSelectLabel: 'Mode',
   },
+  {
+    id: 'opencode',
+    label: 'OpenCode',
+    description: 'OpenCode ACP server.',
+    command: 'opencode',
+    args: ['acp'],
+    authMethodId: undefined,
+    modelSelectLabel: 'Model',
+    modeSelectLabel: 'Mode',
+  },
 ] as const satisfies readonly AgentPreset[];

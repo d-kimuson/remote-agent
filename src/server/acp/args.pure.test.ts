@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { parseArgsText } from './args.pure';
+import { parseArgsText, parseCommandLine } from './args.pure';
 
 describe('parseArgsText', () => {
   test('splits newline separated arguments', () => {
@@ -13,5 +13,37 @@ describe('parseArgsText', () => {
 
   test('returns an empty list for undefined', () => {
     expect(parseArgsText(undefined)).toEqual([]);
+  });
+});
+
+describe('parseCommandLine', () => {
+  test('splits command and arguments', () => {
+    expect(parseCommandLine('opencode acp --cwd /tmp/project')).toEqual({
+      ok: true,
+      command: 'opencode',
+      args: ['acp', '--cwd', '/tmp/project'],
+    });
+  });
+
+  test('keeps quoted arguments together', () => {
+    expect(parseCommandLine('custom-agent --label "hello world"')).toEqual({
+      ok: true,
+      command: 'custom-agent',
+      args: ['--label', 'hello world'],
+    });
+  });
+
+  test('returns an error for blank input', () => {
+    expect(parseCommandLine('  ')).toEqual({
+      ok: false,
+      error: 'Command is required.',
+    });
+  });
+
+  test('returns an error for unterminated quotes', () => {
+    expect(parseCommandLine('custom-agent "oops')).toEqual({
+      ok: false,
+      error: 'Command has an unterminated quote.',
+    });
   });
 });

@@ -2,7 +2,7 @@ import { createACPProvider } from '@mcpc-tech/acp-ai-provider';
 
 import type { ModeOption, ModelOption } from '../../../shared/acp.ts';
 
-import { agentPresets } from '../presets.ts';
+import { resolveProviderPreset } from '../repositories/provider-catalog-store.ts';
 import {
   buildModelOptionsFromResponse,
   buildModeOptionsFromResponse,
@@ -27,10 +27,7 @@ export const probeAgentModelCatalog = async (options: {
   readonly cwd: string;
   readonly presetId: string;
 }): Promise<AgentModelCatalog> => {
-  const preset = agentPresets.find((p) => p.id === options.presetId) ?? agentPresets[0];
-  if (preset === undefined) {
-    throw new Error('agentPresets must not be empty');
-  }
+  const preset = await resolveProviderPreset({ presetId: options.presetId });
 
   const resolvedCommandPath = await resolveCommandPath(preset.command);
   if (resolvedCommandPath === null) {

@@ -11,7 +11,7 @@ import { Readable, Writable } from 'node:stream';
 
 import type { SlashCommand } from '../../../shared/acp.ts';
 
-import { agentPresets } from '../presets.ts';
+import { resolveProviderPreset } from '../repositories/provider-catalog-store.ts';
 import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { resolveCommandPath } from './command-path.ts';
@@ -76,10 +76,7 @@ export const probeAgentSlashCommands = async (options: {
   readonly cwd: string;
   readonly presetId: string;
 }): Promise<readonly SlashCommand[]> => {
-  const preset = agentPresets.find((p) => p.id === options.presetId) ?? agentPresets[0];
-  if (preset === undefined) {
-    throw new Error('agentPresets must not be empty');
-  }
+  const preset = await resolveProviderPreset({ presetId: options.presetId });
 
   const resolvedCommandPath = await resolveCommandPath(preset.command);
   if (resolvedCommandPath === null) {

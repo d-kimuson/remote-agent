@@ -21,4 +21,16 @@ describe('agentPresets', () => {
       ]),
     );
   });
+
+  test('includes OpenCode preset', () => {
+    expect(agentPresets).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'opencode',
+          command: 'opencode',
+          args: ['acp'],
+        }),
+      ]),
+    );
+  });
 });

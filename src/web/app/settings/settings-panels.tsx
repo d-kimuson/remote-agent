@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { Pencil, Plus, Trash2, Volume2 } from 'lucide-react';
+import { Loader2, Pencil, Plus, Trash2, Volume2 } from 'lucide-react';
 import { Suspense, useCallback, useEffect, useRef, useState, type FC } from 'react';
 
 import type {
@@ -24,7 +24,6 @@ import {
   CardHeader,
   CardTitle,
 } from '../../components/ui/card.tsx';
-import { Checkbox } from '../../components/ui/checkbox.tsx';
 import {
   Dialog,
   DialogContent,
@@ -44,23 +43,29 @@ import {
 } from '../../components/ui/select.tsx';
 import {
   checkAgentProviderRequest,
+  createCustomAgentProviderRequest,
   createRoutineRequest,
   deleteRoutineRequest,
+  deleteCustomAgentProviderRequest,
   fetchAgentModelCatalog,
   fetchAgentProviders,
   fetchAgentSlashCommands,
   fetchRoutines,
   updateAgentProviderRequest,
+  updateCustomAgentProviderRequest,
   updateRoutineRequest,
 } from '../../lib/api/acp.ts';
 import { parseThemePreference, type ThemePreference } from '../../lib/theme.pure.ts';
 import { useTheme } from '../../lib/theme.tsx';
 import {
   getNotificationPermissionState,
+  persistSystemNotificationPreference,
   requestNotificationPermission,
+  readSystemNotificationPreference,
   showNotificationPreview,
 } from '../../pwa/notifications.ts';
 import {
+  isTaskCompletionSoundEnabled,
   parseTaskCompletionSoundPreference,
   taskCompletionSoundOptions,
   type TaskCompletionSoundPreference,
@@ -217,6 +222,59 @@ const routineModeOptionsWithCurrent = ({
 
 const routineOptionLabel = (option: ModelOption | ModeOption): string =>
   option.name === option.id ? option.name : `${option.name} (${option.id})`;
+
+const providerSummaryToneClassName = (hasError: boolean): string =>
+  hasError ? 'text-destructive' : 'text-muted-foreground';
+
+const providerSummaryText = (
+  summary:
+    | {
+        readonly availableModelCount: number;
+        readonly availableModeCount: number;
+        readonly currentModelId: string | null | undefined;
+        readonly currentModeId: string | null | undefined;
+        readonly lastError: string | null | undefined;
+      }
+    | null
+    | undefined,
+): string => {
+  if (summary === null || summary === undefined) {
+    return '未確認';
+  }
+  if (summary.lastError !== null && summary.lastError !== undefined) {
+    return summary.lastError;
+  }
+
+  const currentModel =
+    summary.currentModelId !== null && summary.currentModelId !== undefined
+      ? `Current model: ${summary.currentModelId}`
+      : null;
+  const currentMode =
+    summary.currentModeId !== null && summary.currentModeId !== undefined
+      ? `Current mode: ${summary.currentModeId}`
+      : null;
+  return [
+    `${String(summary.availableModelCount)} models`,
+    `${String(summary.availableModeCount)} modes`,
+    currentModel,
+    currentMode,
+  ]
+    .filter((value) => value !== null)
+    .join(' / ');
+};
+
+type CustomProviderDialogState =
+  | { readonly mode: 'create' }
+  | { readonly mode: 'edit'; readonly providerId: string };
+
+const providerCommandText = (command: string, args: readonly string[]): string => {
+  const quote = (value: string): string =>
+    /\s|"/.test(value) ? `"${value.replaceAll('\\', '\\\\').replaceAll('"', '\\"')}"` : value;
+  return [command, ...args]
+    .filter((value) => value.length > 0)
+    .map(quote)
+    .join(' ');
+};
 
 const RoutinePromptField: FC<{
   readonly disabled: boolean;
@@ -805,14 +863,42 @@ export const ProviderSettingsPanel: FC = () => {
     queryKey: agentProvidersQueryKey,
     queryFn: fetchAgentProviders,
   });
-  const [providerCheckState, setProviderCheckState] = useState<
-    Readonly<
-      Record<string, { readonly status: 'checking' | 'ok' | 'error'; readonly message: string }>
-    >
+  const [activeProviderAction, setActiveProviderAction] = useState<
+    Readonly<Record<string, boolean>>
   >({});
+  const [customProviderName, setCustomProviderName] = useState('');
+  const [customProviderCommandText, setCustomProviderCommandText] = useState('');
+  const [customProviderDialogState, setCustomProviderDialogState] =
+    useState<CustomProviderDialogState | null>(null);
   const updateProviderMutation = useMutation({
     mutationFn: ({ enabled, presetId }: { readonly presetId: string; readonly enabled: boolean }) =>
       updateAgentProviderRequest(presetId, { enabled }),
+    onSuccess: (data) => {
+      queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, data);
+    },
+  });
+  const createCustomProviderMutation = useMutation({
+    mutationFn: createCustomAgentProviderRequest,
+    onSuccess: (data) => {
+      queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, data);
+    },
+  });
+  const deleteCustomProviderMutation = useMutation({
+    mutationFn: deleteCustomAgentProviderRequest,
+    onSuccess: (data) => {
+      queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, data);
+    },
+  });
+  const updateCustomProviderMutation = useMutation({
+    mutationFn: ({
+      commandText,
+      name,
+      providerId,
+    }: {
+      readonly providerId: string;
+      readonly name: string;
+      readonly commandText: string;
+    }) => updateCustomAgentProviderRequest(providerId, { name, commandText }),
     onSuccess: (data) => {
       queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, data);
     },
@@ -829,39 +915,113 @@ export const ProviderSettingsPanel: FC = () => {
     readonly presetId: string;
     readonly enabled: boolean;
   }) => {
-    const response = await updateProviderMutation.mutateAsync({ presetId, enabled });
-    if (!enabled) {
-      setProviderCheckState((current) => ({
-        ...current,
-        [presetId]: { status: 'ok', message: 'Disabled' },
-      }));
+    setActiveProviderAction((current) => ({ ...current, [presetId]: true }));
+    try {
+      const response = await updateProviderMutation.mutateAsync({ presetId, enabled });
+      queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, response);
+      if (enabled) {
+        try {
+          await checkProviderMutation.mutateAsync({ presetId });
+        } finally {
+          await queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
+        }
+      }
+    } catch {
+      await queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
+    } finally {
+      setActiveProviderAction((current) => ({ ...current, [presetId]: false }));
+    }
+  };
+
+  const openCreateCustomProviderDialog = () => {
+    setCustomProviderName('');
+    setCustomProviderCommandText('');
+    setCustomProviderDialogState({ mode: 'create' });
+  };
+
+  const openEditCustomProviderDialog = (input: {
+    readonly providerId: string;
+    readonly name: string;
+    readonly command: string;
+    readonly args: readonly string[];
+  }) => {
+    setCustomProviderName(input.name);
+    setCustomProviderCommandText(providerCommandText(input.command, input.args));
+    setCustomProviderDialogState({ mode: 'edit', providerId: input.providerId });
+  };
+
+  const closeCustomProviderDialog = () => {
+    setCustomProviderDialogState(null);
+    setCustomProviderName('');
+    setCustomProviderCommandText('');
+  };
+
+  const handleSubmitCustomProvider = async () => {
+    if (customProviderDialogState === null) {
       return;
     }
 
-    setProviderCheckState((current) => ({
-      ...current,
-      [presetId]: { status: 'checking', message: 'Checking...' },
-    }));
+    const actionKey =
+      customProviderDialogState.mode === 'create'
+        ? '__custom_provider_create__'
+        : customProviderDialogState.providerId;
+    setActiveProviderAction((current) => ({ ...current, [actionKey]: true }));
     try {
-      const catalog = await checkProviderMutation.mutateAsync({ presetId });
-      setProviderCheckState((current) => ({
-        ...current,
-        [presetId]: {
-          status: 'ok',
-          message: `OK · ${String(catalog.availableModels.length)} models · ${String(catalog.availableModes.length)} modes`,
-        },
-      }));
-    } catch (error) {
-      setProviderCheckState((current) => ({
-        ...current,
-        [presetId]: {
-          status: 'error',
-          message: error instanceof Error ? error.message : 'Check failed',
-        },
-      }));
+      if (customProviderDialogState.mode === 'create') {
+        await createCustomProviderMutation.mutateAsync({
+          name: customProviderName,
+          commandText: customProviderCommandText,
+        });
+      } else {
+        await updateCustomProviderMutation.mutateAsync({
+          providerId: customProviderDialogState.providerId,
+          name: customProviderName,
+          commandText: customProviderCommandText,
+        });
+      }
+      closeCustomProviderDialog();
+      await queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
+    } finally {
+      setActiveProviderAction((current) => ({ ...current, [actionKey]: false }));
     }
-    queryClient.setQueryData<AgentProvidersResponse>(agentProvidersQueryKey, response);
   };
+
+  const handleDeleteCustomProvider = async (providerId: string) => {
+    setActiveProviderAction((current) => ({ ...current, [providerId]: true }));
+    try {
+      await deleteCustomProviderMutation.mutateAsync(providerId);
+      await queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
+    } finally {
+      setActiveProviderAction((current) => ({ ...current, [providerId]: false }));
+    }
+  };
+
+  useEffect(() => {
+    const uncheckedProvider = providerData.providers.find(
+      (entry) =>
+        entry.enabled &&
+        entry.catalogSummary === null &&
+        activeProviderAction[entry.preset.id] !== true &&
+        !checkProviderMutation.isPending,
+    );
+    if (uncheckedProvider === undefined) {
+      return;
+    }
+
+    setActiveProviderAction((current) => ({
+      ...current,
+      [uncheckedProvider.preset.id]: true,
+    }));
+    void checkProviderMutation
+      .mutateAsync({ presetId: uncheckedProvider.preset.id })
+      .finally(() => {
+        void queryClient.invalidateQueries({ queryKey: agentProvidersQueryKey });
+        setActiveProviderAction((current) => ({
+          ...current,
+          [uncheckedProvider.preset.id]: false,
+        }));
+      });
+  }, [activeProviderAction, checkProviderMutation, providerData.providers, queryClient]);
 
   return (
     <Card className="app-panel">
@@ -871,57 +1031,175 @@ export const ProviderSettingsPanel: FC = () => {
       </CardHeader>
       <CardContent className="space-y-3">
         {providerData.providers.map((entry) => {
+          const isBusy = activeProviderAction[entry.preset.id] === true;
+          const summary = entry.catalogSummary;
+          const summaryHasError = summary?.lastError !== null && summary?.lastError !== undefined;
+          const isCustomProvider = entry.preset.id.startsWith('custom:');
           return (
-            <div
-              className="flex items-start gap-3 rounded-lg border border-border/70 px-3 py-3"
-              key={entry.preset.id}
-            >
-              <Checkbox
-                checked={entry.enabled}
-                disabled={updateProviderMutation.isPending || checkProviderMutation.isPending}
-                id={`provider-${entry.preset.id}`}
-                onCheckedChange={(checked) => {
-                  void handleProviderToggle({
-                    presetId: entry.preset.id,
-                    enabled: checked === true,
-                  });
-                }}
-              />
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <label
-                    className="min-w-0 cursor-pointer space-y-1"
-                    htmlFor={`provider-${entry.preset.id}`}
-                  >
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium">{entry.preset.label}</span>
-                      <Badge variant={entry.enabled ? 'default' : 'outline'}>
-                        {entry.enabled ? 'Enabled' : 'Disabled'}
-                      </Badge>
-                    </span>
-                    <span className="block text-sm text-muted-foreground">
-                      {entry.preset.description}
-                    </span>
-                  </label>
-                </div>
-                <span className="block break-all font-mono text-xs text-muted-foreground">
-                  {entry.preset.command} {entry.preset.args.join(' ')}
-                </span>
-                {providerCheckState[entry.preset.id] === undefined ? null : (
-                  <span
-                    className={
-                      providerCheckState[entry.preset.id]?.status === 'error'
-                        ? 'block text-xs text-destructive'
-                        : 'block text-xs text-muted-foreground'
-                    }
-                  >
-                    {providerCheckState[entry.preset.id]?.message}
+            <div className="rounded-2xl border border-border/70 px-4 py-4" key={entry.preset.id}>
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{entry.preset.label}</span>
+                    <Badge variant={entry.enabled ? 'default' : 'outline'}>
+                      {entry.enabled ? 'Enabled' : 'Disabled'}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{entry.preset.description}</p>
+                  <span className="block break-all font-mono text-xs text-muted-foreground">
+                    {entry.preset.command} {entry.preset.args.join(' ')}
                   </span>
+                  {entry.enabled ? (
+                    <p className={`text-xs ${providerSummaryToneClassName(summaryHasError)}`}>
+                      {isBusy ? '...確認中' : providerSummaryText(summary)}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">無効</p>
+                  )}
+                </div>
+                {isCustomProvider ? (
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      aria-label={`${entry.preset.label} を編集`}
+                      disabled={isBusy}
+                      onClick={() => {
+                        openEditCustomProviderDialog({
+                          providerId: entry.preset.id,
+                          name: entry.preset.label,
+                          command: entry.preset.command,
+                          args: entry.preset.args,
+                        });
+                      }}
+                      size="icon-sm"
+                      title="編集"
+                      type="button"
+                      variant="ghost"
+                    >
+                      <Pencil className="size-4" />
+                    </Button>
+                    <Button
+                      aria-label={`${entry.preset.label} を削除`}
+                      disabled={isBusy}
+                      onClick={() => {
+                        void handleDeleteCustomProvider(entry.preset.id);
+                      }}
+                      size="icon-sm"
+                      title="削除"
+                      type="button"
+                      variant="ghost"
+                    >
+                      {isBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-4" />
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    disabled={isBusy}
+                    onClick={() => {
+                      void handleProviderToggle({
+                        presetId: entry.preset.id,
+                        enabled: !entry.enabled,
+                      });
+                    }}
+                    type="button"
+                    variant={entry.enabled ? 'outline' : 'default'}
+                  >
+                    {isBusy ? <Loader2 className="size-4 animate-spin" /> : null}
+                    {isBusy ? '...確認中' : entry.enabled ? '無効にする' : '有効にする'}
+                  </Button>
                 )}
               </div>
             </div>
           );
         })}
+        <Button
+          className="w-full justify-center"
+          onClick={openCreateCustomProviderDialog}
+          type="button"
+          variant="outline"
+        >
+          <Plus className="size-4" />
+          Custom Provider を追加
+        </Button>
+        <Dialog
+          onOpenChange={(open) => {
+            if (!open) {
+              closeCustomProviderDialog();
+            }
+          }}
+          open={customProviderDialogState !== null}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {customProviderDialogState?.mode === 'edit'
+                  ? 'Custom Provider を編集'
+                  : 'Custom Provider を追加'}
+              </DialogTitle>
+              <DialogDescription>
+                ACP agent list から対応 agent を探すか、ACP 対応 server を実装して、stdio
+                で起動できるコマンドを入力してください。
+                https://agentclientprotocol.com/get-started/agents
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="custom-provider-dialog-name">Name</Label>
+                <Input
+                  id="custom-provider-dialog-name"
+                  onChange={(event) => {
+                    setCustomProviderName(event.target.value);
+                  }}
+                  placeholder="hoge-agent"
+                  value={customProviderName}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="custom-provider-dialog-command">Command</Label>
+                <Input
+                  id="custom-provider-dialog-command"
+                  onChange={(event) => {
+                    setCustomProviderCommandText(event.target.value);
+                  }}
+                  placeholder="npx hoge-agent --acp"
+                  value={customProviderCommandText}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={closeCustomProviderDialog} type="button" variant="outline">
+                キャンセル
+              </Button>
+              <Button
+                disabled={
+                  customProviderName.trim().length === 0 ||
+                  customProviderCommandText.trim().length === 0 ||
+                  activeProviderAction[
+                    customProviderDialogState?.mode === 'edit'
+                      ? customProviderDialogState.providerId
+                      : '__custom_provider_create__'
+                  ] === true
+                }
+                onClick={() => {
+                  void handleSubmitCustomProvider();
+                }}
+                type="button"
+              >
+                {activeProviderAction[
+                  customProviderDialogState?.mode === 'edit'
+                    ? customProviderDialogState.providerId
+                    : '__custom_provider_create__'
+                ] === true ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : null}
+                {customProviderDialogState?.mode === 'edit' ? '保存' : '追加'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );
@@ -972,14 +1250,19 @@ export const NotificationsSettingsPanel: FC = () => {
   const [notificationPermission, setNotificationPermission] = useState(
     getNotificationPermissionState,
   );
+  const [systemNotificationPreference, setSystemNotificationPreference] = useState(
+    readSystemNotificationPreference,
+  );
   const [taskCompletionSoundPreference, setTaskCompletionSoundPreference] = useState(
     readTaskCompletionSoundPreference,
   );
   const [notificationError, setNotificationError] = useState<string | null>(null);
+  const [isUpdatingSystemNotifications, setIsUpdatingSystemNotifications] = useState(false);
 
   useEffect(() => {
     const syncNotificationPermission = () => {
       setNotificationPermission(getNotificationPermissionState());
+      setSystemNotificationPreference(readSystemNotificationPreference());
     };
 
     syncNotificationPermission();
@@ -990,21 +1273,42 @@ export const NotificationsSettingsPanel: FC = () => {
     };
   }, []);
 
-  const handleEnableNotifications = async () => {
-    const nextPermission = await requestNotificationPermission();
-    setNotificationPermission(nextPermission);
-
-    if (nextPermission === 'denied') {
-      setNotificationError('通知が拒否されています。ブラウザ設定から許可してください。');
+  const handleSystemNotificationToggle = async () => {
+    if (systemNotificationPreference === 'enabled') {
+      persistSystemNotificationPreference('disabled');
+      setSystemNotificationPreference('disabled');
+      setNotificationError(null);
       return;
     }
 
-    if (nextPermission === 'unsupported') {
+    if (notificationPermission === 'unsupported') {
       setNotificationError('この環境では Service Worker 通知を利用できません。');
       return;
     }
 
-    setNotificationError(null);
+    setIsUpdatingSystemNotifications(true);
+    try {
+      const nextPermission =
+        notificationPermission === 'granted' ? 'granted' : await requestNotificationPermission();
+      setNotificationPermission(nextPermission);
+
+      if (nextPermission === 'granted') {
+        persistSystemNotificationPreference('enabled');
+        setSystemNotificationPreference('enabled');
+        setNotificationError(null);
+        return;
+      }
+
+      persistSystemNotificationPreference('disabled');
+      setSystemNotificationPreference('disabled');
+      if (nextPermission === 'denied') {
+        setNotificationError('通知が拒否されています。ブラウザ設定から許可してください。');
+        return;
+      }
+      setNotificationError('この環境では Service Worker 通知を利用できません。');
+    } finally {
+      setIsUpdatingSystemNotifications(false);
+    }
   };
 
   const handlePreviewNotification = async () => {
@@ -1018,7 +1322,7 @@ export const NotificationsSettingsPanel: FC = () => {
     });
 
     if (!didShowNotification) {
-      setNotificationError('通知を表示できませんでした。先に通知を許可してください。');
+      setNotificationError('通知を表示できませんでした。先に通知を有効にしてください。');
       return;
     }
 
@@ -1050,8 +1354,52 @@ export const NotificationsSettingsPanel: FC = () => {
           バックグラウンド時の assistant 応答を Service Worker 通知で受け取るための設定。
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid gap-3 rounded-lg border border-border/70 px-3 py-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
+      <CardContent className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Label>System notifications</Label>
+              <Badge variant="outline">{notificationPermission}</Badge>
+              <Badge variant={systemNotificationPreference === 'enabled' ? 'default' : 'outline'}>
+                {systemNotificationPreference === 'enabled' ? 'Enabled' : 'Disabled'}
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              バックグラウンド時の assistant 応答をシステム通知で受け取ります。
+            </p>
+          </div>
+          <Button
+            disabled={
+              notificationPermission === 'unsupported' ||
+              (notificationPermission === 'denied' && systemNotificationPreference !== 'enabled')
+            }
+            onClick={() => {
+              void handleSystemNotificationToggle();
+            }}
+            type="button"
+            variant={systemNotificationPreference === 'enabled' ? 'outline' : 'default'}
+          >
+            {isUpdatingSystemNotifications ? <Loader2 className="size-4 animate-spin" /> : null}
+            {isUpdatingSystemNotifications
+              ? '...確認中'
+              : systemNotificationPreference === 'enabled'
+                ? '無効にする'
+                : '有効にする'}
+          </Button>
+          <Button
+            disabled={
+              notificationPermission !== 'granted' || systemNotificationPreference !== 'enabled'
+            }
+            onClick={() => {
+              void handlePreviewNotification();
+            }}
+            type="button"
+            variant="outline"
+          >
+            Test
+          </Button>
+        </div>
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
           <div className="min-w-0 space-y-1">
             <Label htmlFor="task-completion-sound">Completion sound</Label>
             <p className="text-sm text-muted-foreground">
@@ -1076,7 +1424,7 @@ export const NotificationsSettingsPanel: FC = () => {
             </SelectContent>
           </Select>
           <Button
-            disabled={taskCompletionSoundPreference === 'none'}
+            disabled={!isTaskCompletionSoundEnabled(taskCompletionSoundPreference)}
             onClick={() => {
               void handlePreviewTaskCompletionSound();
             }}
@@ -1087,33 +1435,11 @@ export const NotificationsSettingsPanel: FC = () => {
             Test sound
           </Button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{notificationPermission}</Badge>
-          <Button
-            disabled={
-              notificationPermission === 'denied' ||
-              notificationPermission === 'granted' ||
-              notificationPermission === 'unsupported'
-            }
-            onClick={() => {
-              void handleEnableNotifications();
-            }}
-            type="button"
-            variant="outline"
-          >
-            Enable
-          </Button>
-          <Button
-            disabled={notificationPermission !== 'granted'}
-            onClick={() => {
-              void handlePreviewNotification();
-            }}
-            type="button"
-            variant="outline"
-          >
-            Test
-          </Button>
-        </div>
+        {notificationPermission === 'denied' ? (
+          <p className="text-xs text-muted-foreground">
+            ブラウザ側で通知が拒否されています。再度有効にする場合はブラウザ設定から許可してください。
+          </p>
+        ) : null}
         {notificationError === null ? null : (
           <p className="text-xs text-destructive">{notificationError}</p>
         )}

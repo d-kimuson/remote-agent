@@ -10,6 +10,7 @@ import {
   agentSlashCommandsQuerySchema,
   agentSlashCommandsResponseSchema,
   checkAgentProviderRequestSchema,
+  createCustomAgentProviderRequestSchema,
   cancelSessionResponseSchema,
   createSessionRequestSchema,
   discoverResumableSessionsRequestSchema,
@@ -24,6 +25,7 @@ import {
   sessionResponseSchema,
   sessionsResponseSchema,
   updateAgentProviderRequestSchema,
+  updateCustomAgentProviderRequestSchema,
   updateSessionConfigOptionRequestSchema,
   updateSessionRequestSchema,
   type CreateSessionRequest,
@@ -41,9 +43,13 @@ import { parseArgsText } from './args.pure.ts';
 import { agentPresets } from './presets.ts';
 import {
   getProviderCatalog,
+  createCustomProvider,
+  deleteCustomProvider,
   markProviderCatalogError,
   listProviderStatuses,
+  resolveProviderPreset,
   setProviderEnabled,
+  updateCustomProvider,
   upsertProviderCatalog,
 } from './repositories/provider-catalog-store.ts';
 import { discoverResumableSessions } from './services/agent-session-client.ts';
@@ -80,19 +86,15 @@ const findPreset = (presetId: string | null | undefined) => {
   return agentPresets.find((preset) => preset.id === id) ?? null;
 };
 
-const resolveAgentCommand = (
+const resolveAgentCommand = async (
   request: CreateSessionRequest,
-): {
+): Promise<{
   readonly presetId: string | null;
   readonly command: string;
   readonly args: readonly string[];
-} => {
-  const preset = findPreset(request.presetId ?? 'codex');
+}> => {
+  const preset = await resolveProviderPreset({ presetId: request.presetId ?? 'codex' });
   const parsedArgs = parseArgsText(request.argsText);
-
-  if (preset === null) {
-    throw new Error(`Unknown ACP provider preset: ${request.presetId ?? 'codex'}`);
-  }
 
   if (request.command !== null && request.command !== undefined) {
     throw new Error('Custom ACP commands are temporarily disabled. Use a provider preset.');
@@ -338,6 +340,73 @@ export const acpRoutes = new Hono()
       return c.json(response);
     },
   )
+  .post(
+    '/providers/custom',
+    describeRoute({
+      summary: 'Create a custom ACP provider',
+      responses: {
+        201: jsonResponse('ACP providers', agentProvidersResponseSchema),
+        400: jsonResponse('Custom ACP provider create error', errorResponseSchema),
+      },
+    }),
+    vValidator('json', createCustomAgentProviderRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const request = c.req.valid('json');
+        const providers = await createCustomProvider(request);
+        return c.json(parse(agentProvidersResponseSchema, { providers }), 201);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to create provider';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .patch(
+    '/providers/custom/:providerId',
+    describeRoute({
+      summary: 'Update a custom ACP provider',
+      responses: {
+        200: jsonResponse('ACP providers', agentProvidersResponseSchema),
+        400: jsonResponse('Custom ACP provider update error', errorResponseSchema),
+      },
+    }),
+    vValidator('json', updateCustomAgentProviderRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const request = c.req.valid('json');
+        const providers = await updateCustomProvider({
+          providerId: decodeURIComponent(c.req.param('providerId')),
+          name: request.name,
+          commandText: request.commandText,
+        });
+        return c.json(parse(agentProvidersResponseSchema, { providers }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to update provider';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .delete(
+    '/providers/custom/:providerId',
+    describeRoute({
+      summary: 'Delete a custom ACP provider',
+      responses: {
+        200: jsonResponse('ACP providers', agentProvidersResponseSchema),
+        400: jsonResponse('Custom ACP provider delete error', errorResponseSchema),
+      },
+    }),
+    async (c) => {
+      try {
+        const providers = await deleteCustomProvider({
+          providerId: decodeURIComponent(c.req.param('providerId')),
+        });
+        return c.json(parse(agentProvidersResponseSchema, { providers }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to delete provider';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
   .patch(
     '/providers/:presetId',
     describeRoute({
@@ -492,7 +561,7 @@ export const acpRoutes = new Hono()
     async (c) => {
       try {
         const request = c.req.valid('json');
-        const preset = resolvePreset(request.presetId);
+        const preset = await resolveProviderPreset({ presetId: request.presetId });
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,
@@ -611,7 +680,7 @@ export const acpRoutes = new Hono()
     async (c) => {
       try {
         const request = c.req.valid('json');
-        const resolved = resolveAgentCommand(request);
+        const resolved = await resolveAgentCommand(request);
         const context = await resolveProjectContext({
           projectId: request.projectId,
           cwd: request.cwd,
