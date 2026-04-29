@@ -17,6 +17,16 @@ const messageFromDelta = (event: SessionStreamDeltaEvent): ChatMessage => ({
   id: event.messageId,
   role: 'assistant',
   kind: messageKindFromDelta(event),
+  rawJson: {
+    schemaVersion: 1,
+    type: messageKindFromDelta(event),
+    role: 'assistant',
+    streamPartId: event.streamPartId,
+    providerStreamId: event.streamPartId,
+    text: event.text,
+    createdAt: event.createdAt,
+  },
+  textForSearch: event.text,
   text: event.text,
   rawEvents: [],
   createdAt: event.createdAt,
@@ -31,6 +41,11 @@ const mergeTextDeltaMessage = (
 ): ChatMessage => ({
   ...message,
   kind: message.kind ?? messageKindFromDelta(event),
+  rawJson:
+    message.rawJson.type === 'assistant_text' || message.rawJson.type === 'reasoning'
+      ? { ...message.rawJson, text: event.text }
+      : messageFromDelta(event).rawJson,
+  textForSearch: event.text,
   text: event.text,
   updatedAt: event.updatedAt,
   streamPartId: message.streamPartId ?? event.streamPartId,

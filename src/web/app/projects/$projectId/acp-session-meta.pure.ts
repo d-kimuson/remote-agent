@@ -91,10 +91,11 @@ const parseJson = (text: string): JsonParseResult => {
 };
 
 export const acpSessionUpdateFromMessage = (message: ChatMessage): AcpSessionUpdate | null => {
-  if ((message.kind ?? null) !== 'raw_meta' || message.metadataJson === null) {
+  if (message.rawJson.type !== 'raw_meta') {
     return null;
   }
-  const value = parseJson(message.metadataJson ?? '');
+  const value =
+    message.rawJson.part === undefined ? parseJson('') : { ok: true, value: message.rawJson.part };
   if (!value.ok) {
     return null;
   }

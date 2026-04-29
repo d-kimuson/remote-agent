@@ -1,4 +1,3 @@
-import { sql } from 'drizzle-orm';
 import { index, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const appSettingsTable = sqliteTable('app_settings', {
@@ -166,20 +165,13 @@ export const sessionMessagesTable = sqliteTable(
         onDelete: 'cascade',
         onUpdate: 'cascade',
       }),
-    role: text('role').notNull(),
-    text: text('text').notNull(),
-    rawEventsJson: text('raw_events_json').notNull(),
+    kind: text('kind').notNull(),
+    textForSearch: text('text_for_search').notNull().default(''),
+    rawJson: text('raw_json').notNull(),
     createdAt: text('created_at').notNull(),
-    messageKind: text('message_kind').notNull().default('legacy_assistant_turn'),
-    streamPartId: text('stream_part_id'),
-    metadataJson: text('metadata_json').notNull().default('{}'),
-    updatedAt: text('updated_at').notNull(),
   },
   (table) => [
-    index('idx_session_messages_session_id').on(table.sessionId),
-    index('idx_session_messages_created_at').on(table.createdAt),
-    uniqueIndex('idx_session_messages_stream_part')
-      .on(table.sessionId, table.streamPartId)
-      .where(sql`${table.streamPartId} IS NOT NULL`),
+    index('idx_session_messages_session_created').on(table.sessionId, table.createdAt),
+    index('idx_session_messages_session_kind').on(table.sessionId, table.kind),
   ],
 );

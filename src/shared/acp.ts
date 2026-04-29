@@ -8,9 +8,11 @@ import {
   optional,
   parse,
   pipe,
+  safeParse,
   string,
   trim,
   union,
+  unknown,
   type InferOutput,
 } from 'valibot';
 
@@ -176,6 +178,315 @@ export const rawEventSchema = union([
 ]);
 
 export type RawEvent = InferOutput<typeof rawEventSchema>;
+
+export const chatMessageRoleSchema = union([literal('user'), literal('assistant')]);
+
+export type ChatMessageRole = InferOutput<typeof chatMessageRoleSchema>;
+
+/** 1 行の session_messages に対応（ストリーム単位・ツール単位を区別） */
+export const chatMessageKindSchema = union([
+  literal('user'),
+  literal('legacy_assistant_turn'),
+  literal('assistant_text'),
+  literal('reasoning'),
+  literal('tool_input'),
+  literal('tool_call'),
+  literal('tool_result'),
+  literal('tool_error'),
+  literal('tool_output_denied'),
+  literal('tool_approval_request'),
+  literal('source'),
+  literal('file'),
+  literal('stream_start'),
+  literal('stream_finish'),
+  literal('step_start'),
+  literal('step_finish'),
+  literal('abort'),
+  literal('stream_error'),
+  literal('raw_meta'),
+  literal('x-error'),
+]);
+
+export type ChatMessageKind = InferOutput<typeof chatMessageKindSchema>;
+
+const persistedMessageBaseSchema = object({
+  schemaVersion: literal(1),
+  role: chatMessageRoleSchema,
+  createdAt: pipe(string(), trim()),
+});
+
+const textPartEnvelopeSchema = object({
+  start: optional(unknown()),
+  end: optional(unknown()),
+});
+
+export const userRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('user'),
+  role: literal('user'),
+  text: string(),
+  attachments: optional(array(unknown())),
+  promptPlan: optional(unknown()),
+});
+
+export const assistantTextRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('assistant_text'),
+  role: literal('assistant'),
+  streamPartId: pipe(string(), trim()),
+  providerStreamId: pipe(string(), trim()),
+  text: string(),
+  parts: optional(textPartEnvelopeSchema),
+  deltaCount: optional(number()),
+  endedAt: optional(pipe(string(), trim())),
+});
+
+export const reasoningRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('reasoning'),
+  role: literal('assistant'),
+  streamPartId: pipe(string(), trim()),
+  providerStreamId: pipe(string(), trim()),
+  text: string(),
+  parts: optional(textPartEnvelopeSchema),
+  deltaCount: optional(number()),
+  endedAt: optional(pipe(string(), trim())),
+});
+
+export const toolInputRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('tool_input'),
+  role: literal('assistant'),
+  streamPartId: pipe(string(), trim()),
+  providerStreamId: pipe(string(), trim()),
+  text: string(),
+  toolName: optional(nullable(pipe(string(), trim()))),
+  providerExecuted: optional(nullable(boolean())),
+  dynamic: optional(nullable(boolean())),
+  title: optional(nullable(pipe(string(), trim()))),
+  parts: optional(textPartEnvelopeSchema),
+  deltaCount: optional(number()),
+  endedAt: optional(pipe(string(), trim())),
+});
+
+export const legacyAssistantTurnRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('legacy_assistant_turn'),
+  role: literal('assistant'),
+  text: string(),
+  rawEvents: array(rawEventSchema),
+  metadata: optional(unknown()),
+});
+
+type SinglePartRawType =
+  | 'tool_call'
+  | 'tool_result'
+  | 'tool_error'
+  | 'tool_output_denied'
+  | 'tool_approval_request'
+  | 'source'
+  | 'file'
+  | 'stream_start'
+  | 'stream_finish'
+  | 'step_start'
+  | 'step_finish'
+  | 'abort'
+  | 'stream_error';
+
+const singlePartRawSchema = <T extends SinglePartRawType>(type: T) =>
+  object({
+    ...persistedMessageBaseSchema.entries,
+    type: literal(type),
+    role: literal('assistant'),
+    part: unknown(),
+    text: optional(string()),
+  });
+
+export const toolCallRawSchema = object({
+  ...singlePartRawSchema('tool_call').entries,
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+});
+
+export const toolResultRawSchema = object({
+  ...singlePartRawSchema('tool_result').entries,
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+});
+
+export const toolErrorRawSchema = object({
+  ...singlePartRawSchema('tool_error').entries,
+  toolCallId: pipe(string(), trim()),
+  toolName: pipe(string(), trim()),
+});
+
+export const rawMetaRawSchema = object({
+  ...persistedMessageBaseSchema.entries,
+  type: literal('raw_meta'),
+  role: literal('assistant'),
+  text: string(),
+  part: optional(unknown()),
+});
+
+export const xErrorRawSchema = object({
+  schemaVersion: literal(1),
+  type: literal('x-error'),
+  role: literal('assistant'),
+  sourceKind: pipe(string(), trim()),
+  errorMessage: string(),
+  rawJsonText: string(),
+  issues: array(object({ message: string() })),
+  createdAt: pipe(string(), trim()),
+});
+
+export const persistedMessageRawSchema = union([
+  userRawSchema,
+  assistantTextRawSchema,
+  reasoningRawSchema,
+  toolInputRawSchema,
+  legacyAssistantTurnRawSchema,
+  toolCallRawSchema,
+  toolResultRawSchema,
+  toolErrorRawSchema,
+  singlePartRawSchema('tool_output_denied'),
+  singlePartRawSchema('tool_approval_request'),
+  singlePartRawSchema('source'),
+  singlePartRawSchema('file'),
+  singlePartRawSchema('stream_start'),
+  singlePartRawSchema('stream_finish'),
+  singlePartRawSchema('step_start'),
+  singlePartRawSchema('step_finish'),
+  singlePartRawSchema('abort'),
+  singlePartRawSchema('stream_error'),
+  rawMetaRawSchema,
+  xErrorRawSchema,
+]);
+
+export type PersistedMessageRaw = InferOutput<typeof persistedMessageRawSchema>;
+export type XErrorRaw = InferOutput<typeof xErrorRawSchema>;
+
+export const chatMessageRawKind = (rawJson: PersistedMessageRaw): ChatMessageKind | 'x-error' =>
+  rawJson.type;
+
+export const chatMessageRoleFromRaw = (rawJson: PersistedMessageRaw): ChatMessageRole =>
+  rawJson.role;
+
+export const chatMessageTextFromRaw = (rawJson: PersistedMessageRaw): string => {
+  switch (rawJson.type) {
+    case 'user':
+    case 'assistant_text':
+    case 'reasoning':
+    case 'tool_input':
+    case 'legacy_assistant_turn':
+    case 'raw_meta':
+      return rawJson.text;
+    case 'x-error':
+      return rawJson.errorMessage;
+    case 'tool_call':
+    case 'tool_result':
+    case 'tool_error':
+    case 'tool_output_denied':
+    case 'tool_approval_request':
+    case 'source':
+    case 'file':
+    case 'stream_start':
+    case 'stream_finish':
+    case 'step_start':
+    case 'step_finish':
+    case 'abort':
+    case 'stream_error':
+      if ('text' in rawJson && typeof rawJson.text === 'string') {
+        return rawJson.text;
+      }
+      return JSON.stringify(rawJson.part);
+    default: {
+      const exhaustive: never = rawJson;
+      return exhaustive;
+    }
+  }
+};
+
+export const chatMessageRawEventsFromRaw = (rawJson: PersistedMessageRaw): readonly RawEvent[] => {
+  switch (rawJson.type) {
+    case 'user':
+    case 'assistant_text':
+    case 'raw_meta':
+    case 'x-error':
+      return [];
+    case 'reasoning':
+      return rawJson.text.length > 0
+        ? [{ type: 'reasoning', text: rawJson.text, rawText: rawJson.text }]
+        : [];
+    case 'tool_input':
+      return rawJson.text.length > 0
+        ? [
+            {
+              type: 'toolInput',
+              streamId: rawJson.providerStreamId,
+              text: rawJson.text,
+              rawText: rawJson.text,
+            },
+          ]
+        : [];
+    case 'legacy_assistant_turn':
+      return rawJson.rawEvents;
+    case 'tool_call':
+      return [
+        {
+          type: 'toolCall',
+          toolCallId: rawJson.toolCallId,
+          toolName: rawJson.toolName,
+          inputText: JSON.stringify(rawJson.part),
+          rawText: JSON.stringify(rawJson.part),
+        },
+      ];
+    case 'tool_result':
+      return [
+        {
+          type: 'toolResult',
+          toolCallId: rawJson.toolCallId,
+          toolName: rawJson.toolName,
+          outputText: JSON.stringify(rawJson.part),
+          rawText: JSON.stringify(rawJson.part),
+        },
+      ];
+    case 'tool_error':
+      return [
+        {
+          type: 'toolError',
+          toolCallId: rawJson.toolCallId,
+          toolName: rawJson.toolName,
+          errorText: JSON.stringify(rawJson.part),
+          rawText: JSON.stringify(rawJson.part),
+        },
+      ];
+    case 'stream_start':
+    case 'stream_finish':
+    case 'step_start':
+    case 'step_finish':
+    case 'abort':
+    case 'stream_error':
+    case 'source':
+    case 'file':
+    case 'tool_output_denied':
+    case 'tool_approval_request':
+      return [
+        {
+          type: 'streamPart',
+          partType: rawJson.type,
+          text: JSON.stringify(rawJson.part),
+          rawText: JSON.stringify(rawJson.part),
+        },
+      ];
+    default: {
+      const exhaustive: never = rawJson;
+      return exhaustive;
+    }
+  }
+};
+
+export const parsePersistedMessageRaw = (value: unknown) =>
+  safeParse(persistedMessageRawSchema, value);
 
 export const appInfoSchema = object({
   appName: pipe(string(), trim()),
@@ -707,39 +1018,12 @@ export const sessionsResponseSchema = object({
 
 export type SessionsResponse = InferOutput<typeof sessionsResponseSchema>;
 
-export const chatMessageRoleSchema = union([literal('user'), literal('assistant')]);
-
-export type ChatMessageRole = InferOutput<typeof chatMessageRoleSchema>;
-
-/** 1 行の session_messages に対応（ストリーム単位・ツール単位を区別） */
-export const chatMessageKindSchema = union([
-  literal('user'),
-  literal('legacy_assistant_turn'),
-  literal('assistant_text'),
-  literal('reasoning'),
-  literal('tool_input'),
-  literal('tool_call'),
-  literal('tool_result'),
-  literal('tool_error'),
-  literal('tool_output_denied'),
-  literal('tool_approval_request'),
-  literal('source'),
-  literal('file'),
-  literal('stream_start'),
-  literal('stream_finish'),
-  literal('step_start'),
-  literal('step_finish'),
-  literal('abort'),
-  literal('stream_error'),
-  literal('raw_meta'),
-]);
-
-export type ChatMessageKind = InferOutput<typeof chatMessageKindSchema>;
-
 export const chatMessageSchema = object({
   id: pipe(string(), trim()),
   role: chatMessageRoleSchema,
   kind: optional(chatMessageKindSchema),
+  rawJson: persistedMessageRawSchema,
+  textForSearch: optional(string()),
   text: string(),
   rawEvents: array(rawEventSchema),
   createdAt: pipe(string(), trim()),

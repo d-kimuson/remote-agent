@@ -8,6 +8,11 @@ const isAcpProviderDynamicToolName = (name: string): boolean =>
 
 const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null;
 
+const stringField = (record: Record<string, unknown>, key: string): string | null => {
+  const value = record[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+};
+
 const tryProviderAgentInputToolName = (inputText: string): string | null => {
   const t = inputText.trim();
   if (t.length === 0) {
@@ -18,10 +23,18 @@ const tryProviderAgentInputToolName = (inputText: string): string | null => {
     if (!isRecord(parsed)) {
       return null;
     }
-    const tn = parsed['toolName'];
-    if (typeof tn === 'string' && tn.trim().length > 0) {
-      return tn.trim();
+    const directToolName = stringField(parsed, 'toolName');
+    if (directToolName !== null && !isAcpProviderDynamicToolName(directToolName)) {
+      return directToolName;
     }
+    const input = parsed['input'];
+    if (isRecord(input)) {
+      const nestedToolName = stringField(input, 'toolName');
+      if (nestedToolName !== null) {
+        return nestedToolName;
+      }
+    }
+    return directToolName;
   } catch {
     /* 非 JSON */
   }

@@ -12,11 +12,14 @@ import { readFile } from 'node:fs/promises';
 import { array, parse, string } from 'valibot';
 
 import {
+  chatMessageRawEventsFromRaw,
+  chatMessageRawKind,
+  chatMessageRoleFromRaw,
+  chatMessageTextFromRaw,
   chatMessageKindSchema,
-  chatMessageRoleSchema,
   modeOptionSchema,
   modelOptionSchema,
-  rawEventSchema,
+  parsePersistedMessageRaw,
   sessionConfigOptionSchema,
   sessionOriginSchema,
   sessionSummarySchema,
@@ -26,6 +29,7 @@ import {
   type MessageResponse,
   type ModeOption,
   type ModelOption,
+  type PersistedMessageRaw,
   type RawEvent,
   type SendMessageRequest,
   type SessionSummary,
@@ -358,6 +362,136 @@ const mapMessageKindFromDb = (value: string | null | undefined): ChatMessageKind
   return parse(chatMessageKindSchema, value);
 };
 
+const messageFromRaw = ({
+  id,
+  kind,
+  rawJson,
+  textForSearch,
+  createdAt,
+}: {
+  readonly id: string;
+  readonly kind: ChatMessageKind;
+  readonly rawJson: PersistedMessageRaw;
+  readonly textForSearch: string;
+  readonly createdAt: string;
+}): ChatMessage => ({
+  id,
+  role: chatMessageRoleFromRaw(rawJson),
+  kind,
+  rawJson,
+  textForSearch,
+  text: chatMessageTextFromRaw(rawJson),
+  rawEvents: [...chatMessageRawEventsFromRaw(rawJson)],
+  createdAt,
+  streamPartId:
+    rawJson.type === 'assistant_text' ||
+    rawJson.type === 'reasoning' ||
+    rawJson.type === 'tool_input'
+      ? rawJson.streamPartId
+      : null,
+});
+
+const xErrorMessageFromRow = (row: {
+  readonly id: string;
+  readonly kind: string;
+  readonly rawJson: string;
+  readonly createdAt: string;
+  readonly textForSearch: string;
+}): ChatMessage => {
+  const rawJson: PersistedMessageRaw = {
+    schemaVersion: 1,
+    type: 'x-error',
+    role: 'assistant',
+    sourceKind: row.kind,
+    errorMessage: 'Invalid raw_json for session message',
+    rawJsonText: row.rawJson.slice(0, 10_000),
+    issues: [{ message: 'raw_json validation failed or kind mismatch' }],
+    createdAt: row.createdAt,
+  };
+  return messageFromRaw({
+    id: row.id,
+    kind: 'x-error',
+    rawJson,
+    textForSearch: row.textForSearch,
+    createdAt: row.createdAt,
+  });
+};
+
+const assistantRawJsonFromBuiltMessage = ({
+  kind,
+  text,
+  rawEvents,
+  metadataJson,
+  createdAt,
+}: {
+  readonly kind: ChatMessageKind;
+  readonly text: string;
+  readonly rawEvents: readonly RawEvent[];
+  readonly metadataJson: string;
+  readonly createdAt: string;
+}): PersistedMessageRaw => {
+  switch (kind) {
+    case 'legacy_assistant_turn':
+      return {
+        schemaVersion: 1,
+        type: 'legacy_assistant_turn',
+        role: 'assistant',
+        text,
+        rawEvents: [...rawEvents],
+        metadata: metadataJson === '{}' ? undefined : JSON.parse(metadataJson),
+        createdAt,
+      };
+    case 'raw_meta':
+      return {
+        schemaVersion: 1,
+        type: 'raw_meta',
+        role: 'assistant',
+        text,
+        part: metadataJson === '{}' ? rawEvents : JSON.parse(metadataJson),
+        createdAt,
+      };
+    case 'abort':
+    case 'stream_error':
+    case 'stream_start':
+    case 'stream_finish':
+    case 'step_start':
+    case 'step_finish':
+    case 'source':
+    case 'file':
+    case 'tool_output_denied':
+    case 'tool_approval_request':
+      return {
+        schemaVersion: 1,
+        type: kind,
+        role: 'assistant',
+        part: metadataJson === '{}' ? { text, rawEvents } : JSON.parse(metadataJson),
+        text,
+        createdAt,
+      };
+    case 'assistant_text':
+    case 'reasoning':
+    case 'tool_input':
+    case 'tool_call':
+    case 'tool_result':
+    case 'tool_error':
+    case 'user':
+    case 'x-error':
+      return {
+        schemaVersion: 1,
+        type: 'legacy_assistant_turn',
+        role: 'assistant',
+        text,
+        rawEvents: [...rawEvents],
+        metadata: metadataJson === '{}' ? undefined : JSON.parse(metadataJson),
+        createdAt,
+      };
+    default: {
+      const exhaustive: never = kind;
+      return exhaustive;
+    }
+  }
+};
+
 const parseStringArray = (input: string): readonly string[] => {
   const data: unknown = JSON.parse(input);
   return parse(array(string()), data);
@@ -365,14 +499,14 @@ const parseStringArray = (input: string): readonly string[] => {
 
 const firstUserMessagePreviewBySessionId = (client: DatabaseSync): ReadonlyMap<string, string> => {
   const statement = client.prepare(`
-    SELECT t.session_id AS sessionId, t.text AS text
+    SELECT t.session_id AS sessionId, t.text_for_search AS text
     FROM session_messages t
     INNER JOIN (
       SELECT session_id, MIN(created_at) AS first_at
       FROM session_messages
-      WHERE role = 'user'
+      WHERE kind = 'user'
       GROUP BY session_id
-    ) u ON t.session_id = u.session_id AND t.created_at = u.first_at AND t.role = 'user'
+    ) u ON t.session_id = u.session_id AND t.created_at = u.first_at AND t.kind = 'user'
   `);
   const isFirstUserPreviewRow = (row: unknown): row is { sessionId: string; text: string } => {
     if (row === null || typeof row !== 'object') {
@@ -639,20 +773,29 @@ export const createSessionStore = ({
 
     return records
       .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-      .map((record) => ({
-        id: record.id,
-        role: parse(chatMessageRoleSchema, record.role),
-        kind:
-          record.role === 'user'
-            ? 'user'
-            : mapMessageKindFromDb(record.messageKind as string | null | undefined),
-        text: record.text,
-        rawEvents: parse(array(rawEventSchema), JSON.parse(record.rawEventsJson)),
-        createdAt: record.createdAt,
-        updatedAt: record.updatedAt,
-        streamPartId: record.streamPartId,
-        metadataJson: record.metadataJson,
-      }));
+      .map((record) => {
+        const parsedJson = (() => {
+          try {
+            return parsePersistedMessageRaw(JSON.parse(record.rawJson));
+          } catch {
+            return null;
+          }
+        })();
+        if (parsedJson === null || !parsedJson.success) {
+          return xErrorMessageFromRow(record);
+        }
+        const kind = mapMessageKindFromDb(record.kind);
+        if (chatMessageRawKind(parsedJson.output) !== kind) {
+          return xErrorMessageFromRow(record);
+        }
+        return messageFromRaw({
+          id: record.id,
+          kind,
+          rawJson: parsedJson.output,
+          textForSearch: record.textForSearch,
+          createdAt: record.createdAt,
+        });
+      });
   };
 
   const persistMessage = async ({
@@ -663,20 +806,15 @@ export const createSessionStore = ({
     readonly message: ChatMessage;
   }): Promise<void> => {
     const created = message.createdAt;
-    const updated = message.updatedAt ?? created;
     const kind: ChatMessageKind =
       message.kind ?? (message.role === 'user' ? 'user' : 'legacy_assistant_turn');
     await database.db.insert(sessionMessagesTable).values({
       id: message.id,
       sessionId,
-      role: message.role,
-      text: message.text,
-      rawEventsJson: JSON.stringify(message.rawEvents),
+      kind,
+      textForSearch: message.textForSearch ?? message.text,
+      rawJson: JSON.stringify(message.rawJson),
       createdAt: created,
-      messageKind: kind,
-      streamPartId: message.streamPartId ?? null,
-      metadataJson: message.metadataJson ?? '{}',
-      updatedAt: updated,
     });
     emitAcpSse({ type: 'session_messages_updated', sessionId });
   };
@@ -724,10 +862,38 @@ export const createSessionStore = ({
     readonly metadataJson?: string;
   }): ChatMessage => {
     const t = new Date().toISOString();
+    const resolvedKind = kind ?? (role === 'user' ? 'user' : 'legacy_assistant_turn');
+    const rawJson: PersistedMessageRaw =
+      role === 'user'
+        ? {
+            schemaVersion: 1,
+            type: 'user',
+            role: 'user',
+            text,
+            attachments: [],
+            createdAt: t,
+          }
+        : resolvedKind === 'legacy_assistant_turn'
+          ? assistantRawJsonFromBuiltMessage({
+              kind: resolvedKind,
+              text,
+              rawEvents,
+              metadataJson,
+              createdAt: t,
+            })
+          : assistantRawJsonFromBuiltMessage({
+              kind: resolvedKind,
+              text,
+              rawEvents,
+              metadataJson,
+              createdAt: t,
+            });
     return {
       id: crypto.randomUUID(),
       role,
-      kind: kind ?? (role === 'user' ? 'user' : 'legacy_assistant_turn'),
+      kind: resolvedKind,
+      rawJson,
+      textForSearch: text,
       text,
       rawEvents: [...rawEvents],
       createdAt: t,
@@ -845,12 +1011,12 @@ export const createSessionStore = ({
     id: row.id,
     role: row.role,
     kind: row.messageKind,
-    text: row.text,
-    rawEvents: [...row.rawEvents],
+    rawJson: row.rawJson,
+    textForSearch: row.textForSearch,
+    text: chatMessageTextFromRaw(row.rawJson),
+    rawEvents: [...chatMessageRawEventsFromRaw(row.rawJson)],
     createdAt: row.createdAt,
-    updatedAt: row.updatedAt,
     streamPartId: row.streamPartId,
-    metadataJson: row.metadataJson,
   });
 
   const streamPersistence: PromptStreamPersistence = {
@@ -861,15 +1027,13 @@ export const createSessionStore = ({
       await database.db
         .update(sessionMessagesTable)
         .set({
-          text: input.text,
-          rawEventsJson: JSON.stringify([...input.rawEvents]),
-          metadataJson: input.metadataJson,
-          updatedAt: input.updatedAt,
+          textForSearch: input.textForSearch,
+          rawJson: JSON.stringify(input.rawJson),
         })
         .where(
           and(
             eq(sessionMessagesTable.sessionId, input.sessionId),
-            eq(sessionMessagesTable.streamPartId, input.streamPartId),
+            eq(sessionMessagesTable.id, input.streamPartId),
           ),
         );
       if (input.notify !== 'none') {

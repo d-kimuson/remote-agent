@@ -1,7 +1,13 @@
 import { streamText, type ModelMessage } from 'ai';
 
-import type { ChatMessage, ChatMessageKind, RawEvent } from '../../../shared/acp.ts';
-
+import {
+  chatMessageRawEventsFromRaw,
+  chatMessageTextFromRaw,
+  type ChatMessage,
+  type ChatMessageKind,
+  type PersistedMessageRaw,
+  type RawEvent,
+} from '../../../shared/acp.ts';
 import { normalizeRawEvent } from '../raw-event.pure.ts';
 
 const stringifyForPersistence = (value: unknown): string => {
@@ -23,12 +29,10 @@ export type PromptStreamInsertRow = {
   readonly sessionId: string;
   readonly role: 'user' | 'assistant';
   readonly messageKind: ChatMessageKind;
-  readonly text: string;
-  readonly rawEvents: readonly RawEvent[];
+  readonly textForSearch: string;
+  readonly rawJson: PersistedMessageRaw;
   readonly streamPartId: string | null;
-  readonly metadataJson: string;
   readonly createdAt: string;
-  readonly updatedAt: string;
 };
 
 export type PromptStreamPersistence = {
@@ -36,10 +40,8 @@ export type PromptStreamPersistence = {
   readonly updateByStreamPartId: (input: {
     readonly sessionId: string;
     readonly streamPartId: string;
-    readonly text: string;
-    readonly rawEvents: readonly RawEvent[];
-    readonly metadataJson: string;
-    readonly updatedAt: string;
+    readonly textForSearch: string;
+    readonly rawJson: PersistedMessageRaw;
     readonly notify?: 'messages_updated' | 'none';
   }) => Promise<void>;
 };
@@ -57,15 +59,23 @@ const toChatMessage = (row: PromptStreamInsertRow): ChatMessage => ({
   id: row.id,
   role: row.role,
   kind: row.messageKind,
-  text: row.text,
-  rawEvents: [...row.rawEvents],
+  rawJson: row.rawJson,
+  textForSearch: row.textForSearch,
+  text: chatMessageTextFromRaw(row.rawJson),
+  rawEvents: [...chatMessageRawEventsFromRaw(row.rawJson)],
   createdAt: row.createdAt,
-  updatedAt: row.updatedAt,
   streamPartId: row.streamPartId,
-  metadataJson: row.metadataJson === '{}' ? undefined : row.metadataJson,
 });
 
 const streamBufferKey = (kind: StreamBuffer, id: string): string => `${kind}:${id}`;
+
+const nextStreamBuffer = (
+  current: { readonly text: string; readonly deltaCount: number } | undefined,
+  delta: string,
+): { readonly text: string; readonly deltaCount: number } => ({
+  text: (current?.text ?? '') + delta,
+  deltaCount: (current?.deltaCount ?? 0) + 1,
+});
 
 export const collectPromptStream = async (input: {
   readonly provider: {
@@ -128,8 +138,9 @@ export const collectPromptStream = async (input: {
   const streamTurnId = crypto.randomUUID();
   const streamPartIdForRow = (rawStreamId: string): string => `${streamTurnId}::${rawStreamId}`;
 
-  const streamBuffers = new Map<string, string>();
+  const streamBuffers = new Map<string, { readonly text: string; readonly deltaCount: number }>();
   const streamMessageIds = new Map<string, string>();
+  const streamRawMessages = new Map<string, PersistedMessageRaw>();
 
   const pushSegment = (row: PromptStreamInsertRow): void => {
     assistantSegmentMessages.push(toChatMessage(row));
@@ -141,23 +152,35 @@ export const collectPromptStream = async (input: {
     pushSegment(full);
   };
 
+  const insertRaw = async (input: {
+    readonly messageKind: ChatMessageKind;
+    readonly rawJson: PersistedMessageRaw;
+    readonly textForSearch?: string;
+  }): Promise<void> => {
+    await insertRow({
+      id: crypto.randomUUID(),
+      role: 'assistant',
+      messageKind: input.messageKind,
+      textForSearch: input.textForSearch ?? chatMessageTextFromRaw(input.rawJson),
+      rawJson: input.rawJson,
+      streamPartId: null,
+      createdAt: input.rawJson.createdAt,
+    });
+  };
+
   const updateStreamRow = async (
     streamPartId: string,
     patch: {
-      text: string;
-      rawEvents: readonly RawEvent[];
-      metadataJson?: string;
+      textForSearch: string;
+      rawJson: PersistedMessageRaw;
       notify?: 'messages_updated' | 'none';
     },
   ): Promise<ChatMessage | null> => {
-    const t = now();
     await persistence.updateByStreamPartId({
       sessionId,
       streamPartId,
-      text: patch.text,
-      rawEvents: patch.rawEvents,
-      metadataJson: patch.metadataJson ?? '{}',
-      updatedAt: t,
+      textForSearch: patch.textForSearch,
+      rawJson: patch.rawJson,
       notify: patch.notify,
     });
     const messageId = streamMessageIds.get(streamPartId);
@@ -174,10 +197,10 @@ export const collectPromptStream = async (input: {
     }
     const nextMessage = {
       ...prev,
-      text: patch.text,
-      rawEvents: [...patch.rawEvents],
-      updatedAt: t,
-      metadataJson: patch.metadataJson ?? prev.metadataJson,
+      rawJson: patch.rawJson,
+      textForSearch: patch.textForSearch,
+      text: chatMessageTextFromRaw(patch.rawJson),
+      rawEvents: [...chatMessageRawEventsFromRaw(patch.rawJson)],
     };
     assistantSegmentMessages[idx] = nextMessage;
     return nextMessage;
@@ -186,32 +209,53 @@ export const collectPromptStream = async (input: {
   for await (const part of result.fullStream) {
     switch (part.type) {
       case 'text-start': {
-        const id = crypto.randomUUID();
         const partRowId = streamPartIdForRow(part.id);
+        const id = partRowId;
+        const createdAt = now();
+        const rawJson: PersistedMessageRaw = {
+          schemaVersion: 1,
+          type: 'assistant_text',
+          role: 'assistant',
+          streamPartId: partRowId,
+          providerStreamId: part.id,
+          text: '',
+          parts: { start: part },
+          deltaCount: 0,
+          createdAt,
+        };
         streamMessageIds.set(partRowId, id);
-        streamBuffers.set(streamBufferKey('text', part.id), '');
+        streamBuffers.set(streamBufferKey('text', part.id), { text: '', deltaCount: 0 });
+        streamRawMessages.set(partRowId, rawJson);
         await insertRow({
           id,
           role: 'assistant',
           messageKind: 'assistant_text',
-          text: '',
-          rawEvents: [],
+          textForSearch: '',
+          rawJson,
           streamPartId: partRowId,
-          metadataJson: stringifyForPersistence({ providerMetadata: part.providerMetadata }),
-          createdAt: now(),
-          updatedAt: now(),
+          createdAt,
         });
         break;
       }
       case 'text-delta': {
         const key = streamBufferKey('text', part.id);
-        const prev = streamBuffers.get(key) ?? '';
-        const next = prev + part.text;
+        const next = nextStreamBuffer(streamBuffers.get(key), part.text);
         streamBuffers.set(key, next);
         aggregatedText.value += part.text;
-        const message = await updateStreamRow(streamPartIdForRow(part.id), {
-          text: next,
-          rawEvents: [],
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'assistant_text') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
+          text: next.text,
+          deltaCount: next.deltaCount,
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        const message = await updateStreamRow(partRowId, {
+          textForSearch: next.text,
+          rawJson,
           notify: 'none',
         });
         if (message !== null) {
@@ -221,44 +265,74 @@ export const collectPromptStream = async (input: {
       }
       case 'text-end': {
         const key = streamBufferKey('text', part.id);
-        const finalText = streamBuffers.get(key) ?? '';
+        const finalBuffer = streamBuffers.get(key) ?? { text: '', deltaCount: 0 };
         streamBuffers.delete(key);
-        await updateStreamRow(streamPartIdForRow(part.id), {
-          text: finalText,
-          rawEvents: [],
-          metadataJson: stringifyForPersistence({
-            ended: true,
-            providerMetadata: part.providerMetadata,
-          }),
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'assistant_text') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
+          text: finalBuffer.text,
+          deltaCount: finalBuffer.deltaCount,
+          parts: { ...prevRaw.parts, end: part },
+          endedAt: now(),
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        await updateStreamRow(partRowId, {
+          textForSearch: finalBuffer.text,
+          rawJson,
         });
         break;
       }
       case 'reasoning-start': {
-        const id = crypto.randomUUID();
         const partRowId = streamPartIdForRow(part.id);
+        const id = partRowId;
+        const createdAt = now();
+        const rawJson: PersistedMessageRaw = {
+          schemaVersion: 1,
+          type: 'reasoning',
+          role: 'assistant',
+          streamPartId: partRowId,
+          providerStreamId: part.id,
+          text: '',
+          parts: { start: part },
+          deltaCount: 0,
+          createdAt,
+        };
         streamMessageIds.set(partRowId, id);
-        streamBuffers.set(streamBufferKey('reasoning', part.id), '');
+        streamBuffers.set(streamBufferKey('reasoning', part.id), { text: '', deltaCount: 0 });
+        streamRawMessages.set(partRowId, rawJson);
         await insertRow({
           id,
           role: 'assistant',
           messageKind: 'reasoning',
-          text: '',
-          rawEvents: [],
+          textForSearch: '',
+          rawJson,
           streamPartId: partRowId,
-          metadataJson: stringifyForPersistence({ providerMetadata: part.providerMetadata }),
-          createdAt: now(),
-          updatedAt: now(),
+          createdAt,
         });
         break;
       }
       case 'reasoning-delta': {
         const key = streamBufferKey('reasoning', part.id);
-        const prev = streamBuffers.get(key) ?? '';
-        const next = prev + part.text;
+        const next = nextStreamBuffer(streamBuffers.get(key), part.text);
         streamBuffers.set(key, next);
-        const message = await updateStreamRow(streamPartIdForRow(part.id), {
-          text: next,
-          rawEvents: [],
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'reasoning') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
+          text: next.text,
+          deltaCount: next.deltaCount,
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        const message = await updateStreamRow(partRowId, {
+          textForSearch: next.text,
+          rawJson,
           notify: 'none',
         });
         if (message !== null) {
@@ -268,61 +342,90 @@ export const collectPromptStream = async (input: {
       }
       case 'reasoning-end': {
         const key = streamBufferKey('reasoning', part.id);
-        const merged = streamBuffers.get(key) ?? '';
+        const finalBuffer = streamBuffers.get(key) ?? { text: '', deltaCount: 0 };
+        const merged = finalBuffer.text;
         streamBuffers.delete(key);
         if (merged.length > 0) {
           aggregatedRawEvents.push({ type: 'reasoning', text: merged, rawText: merged });
         }
-        await updateStreamRow(streamPartIdForRow(part.id), {
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'reasoning') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
           text: merged,
-          rawEvents:
-            merged.length > 0 ? [{ type: 'reasoning', text: merged, rawText: merged }] : [],
-          metadataJson: stringifyForPersistence({
-            ended: true,
-            providerMetadata: part.providerMetadata,
-          }),
+          deltaCount: finalBuffer.deltaCount,
+          parts: { ...prevRaw.parts, end: part },
+          endedAt: now(),
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        await updateStreamRow(partRowId, {
+          textForSearch: merged,
+          rawJson,
         });
         break;
       }
       case 'tool-input-start': {
-        const id = crypto.randomUUID();
         const partRowId = streamPartIdForRow(part.id);
+        const id = partRowId;
+        const createdAt = now();
+        const rawJson: PersistedMessageRaw = {
+          schemaVersion: 1,
+          type: 'tool_input',
+          role: 'assistant',
+          streamPartId: partRowId,
+          providerStreamId: part.id,
+          text: '',
+          toolName: part.toolName,
+          providerExecuted: part.providerExecuted,
+          dynamic: part.dynamic,
+          title: part.title,
+          parts: { start: part },
+          deltaCount: 0,
+          createdAt,
+        };
         streamMessageIds.set(partRowId, id);
-        streamBuffers.set(streamBufferKey('tool_input', part.id), '');
+        streamBuffers.set(streamBufferKey('tool_input', part.id), { text: '', deltaCount: 0 });
+        streamRawMessages.set(partRowId, rawJson);
         await insertRow({
           id,
           role: 'assistant',
           messageKind: 'tool_input',
-          text: '',
-          rawEvents: [],
+          textForSearch: '',
+          rawJson,
           streamPartId: partRowId,
-          metadataJson: stringifyForPersistence({
-            toolName: part.toolName,
-            providerExecuted: part.providerExecuted,
-            dynamic: part.dynamic,
-            title: part.title,
-            providerMetadata: part.providerMetadata,
-          }),
-          createdAt: now(),
-          updatedAt: now(),
+          createdAt,
         });
         break;
       }
       case 'tool-input-delta': {
         const key = streamBufferKey('tool_input', part.id);
-        const prev = streamBuffers.get(key) ?? '';
-        const next = prev + part.delta;
+        const next = nextStreamBuffer(streamBuffers.get(key), part.delta);
         streamBuffers.set(key, next);
-        await updateStreamRow(streamPartIdForRow(part.id), {
-          text: next,
-          rawEvents: [],
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'tool_input') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
+          text: next.text,
+          deltaCount: next.deltaCount,
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        await updateStreamRow(partRowId, {
+          textForSearch: next.text,
+          rawJson,
           notify: 'none',
         });
         break;
       }
       case 'tool-input-end': {
         const key = streamBufferKey('tool_input', part.id);
-        const merged = streamBuffers.get(key) ?? '';
+        const finalBuffer = streamBuffers.get(key) ?? { text: '', deltaCount: 0 };
+        const merged = finalBuffer.text;
         streamBuffers.delete(key);
         aggregatedRawEvents.push({
           type: 'toolInput',
@@ -330,28 +433,31 @@ export const collectPromptStream = async (input: {
           text: merged,
           rawText: merged,
         });
-        await updateStreamRow(streamPartIdForRow(part.id), {
+        const partRowId = streamPartIdForRow(part.id);
+        const prevRaw = streamRawMessages.get(partRowId);
+        if (prevRaw?.type !== 'tool_input') {
+          break;
+        }
+        const rawJson: PersistedMessageRaw = {
+          ...prevRaw,
           text: merged,
-          rawEvents: [],
-          metadataJson: stringifyForPersistence({
-            ended: true,
-            providerMetadata: part.providerMetadata,
-          }),
+          deltaCount: finalBuffer.deltaCount,
+          parts: { ...prevRaw.parts, end: part },
+          endedAt: now(),
+        };
+        streamRawMessages.set(partRowId, rawJson);
+        await updateStreamRow(partRowId, {
+          textForSearch: merged,
+          rawJson,
         });
         break;
       }
       case 'source': {
         const text = stringifyForPersistence(part);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'source',
-          text,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: { schemaVersion: 1, type: 'source', role: 'assistant', part, createdAt: now() },
+          textForSearch: text,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -363,16 +469,10 @@ export const collectPromptStream = async (input: {
       }
       case 'file': {
         const text = stringifyForPersistence(part.file);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'file',
-          text,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: stringifyForPersistence(part.providerMetadata),
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: { schemaVersion: 1, type: 'file', role: 'assistant', part, createdAt: now() },
+          textForSearch: text,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -395,16 +495,18 @@ export const collectPromptStream = async (input: {
           rawText: stringifyForPersistence({ toolName, input }),
         };
         aggregatedRawEvents.push(ev);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'tool_call',
-          text: inputText,
-          rawEvents: [ev],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'tool_call',
+            role: 'assistant',
+            toolCallId,
+            toolName,
+            part,
+            createdAt: now(),
+          },
+          textForSearch: inputText,
         });
         break;
       }
@@ -419,16 +521,18 @@ export const collectPromptStream = async (input: {
           rawText: stringifyForPersistence(part),
         };
         aggregatedRawEvents.push(ev);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'tool_result',
-          text: outputText,
-          rawEvents: [ev],
-          streamPartId: null,
-          metadataJson: JSON.stringify({ preliminary: part.preliminary === true }),
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'tool_result',
+            role: 'assistant',
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            part,
+            createdAt: now(),
+          },
+          textForSearch: outputText,
         });
         break;
       }
@@ -442,34 +546,33 @@ export const collectPromptStream = async (input: {
           rawText: stringifyForPersistence(part),
         };
         aggregatedRawEvents.push(ev);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'tool_error',
-          text: ev.errorText,
-          rawEvents: [ev],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'tool_error',
+            role: 'assistant',
+            toolCallId: part.toolCallId,
+            toolName: part.toolName,
+            part,
+            createdAt: now(),
+          },
+          textForSearch: ev.errorText,
         });
         break;
       }
       case 'tool-output-denied': {
         const t = stringifyForPersistence(part);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'tool_output_denied',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: stringifyForPersistence({
-            toolCallId: part.toolCallId,
-            toolName: part.toolName,
-          }),
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'tool_output_denied',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -481,16 +584,16 @@ export const collectPromptStream = async (input: {
       }
       case 'tool-approval-request': {
         const t = stringifyForPersistence(part);
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'tool_approval_request',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: stringifyForPersistence({ approvalId: part.approvalId }),
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'tool_approval_request',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -502,16 +605,16 @@ export const collectPromptStream = async (input: {
       }
       case 'start-step': {
         const t = stringifyForPersistence({ request: part.request, warnings: part.warnings });
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'step_start',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'step_start',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -529,16 +632,16 @@ export const collectPromptStream = async (input: {
           rawFinishReason: part.rawFinishReason,
           providerMetadata: part.providerMetadata,
         });
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'step_finish',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'step_finish',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({
           type: 'streamPart',
@@ -549,16 +652,16 @@ export const collectPromptStream = async (input: {
         break;
       }
       case 'start': {
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'stream_start',
-          text: '',
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'stream_start',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: '',
         });
         aggregatedRawEvents.push({ type: 'streamPart', partType: 'start', text: '', rawText: '' });
         break;
@@ -569,51 +672,42 @@ export const collectPromptStream = async (input: {
           rawFinishReason: part.rawFinishReason,
           totalUsage: part.totalUsage,
         });
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'stream_finish',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'stream_finish',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({ type: 'streamPart', partType: 'finish', text: t, rawText: t });
         break;
       }
       case 'abort': {
         const t = stringifyForPersistence({ reason: part.reason });
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'abort',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: stringifyForPersistence({
-            stopReason: 'cancelled',
-            reason: part.reason,
-          }),
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: { schemaVersion: 1, type: 'abort', role: 'assistant', part, createdAt: now() },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({ type: 'streamPart', partType: 'abort', text: t, rawText: t });
         break;
       }
       case 'error': {
         const t = stringifyForPersistence({ error: part.error });
-        await insertRow({
-          id: crypto.randomUUID(),
-          role: 'assistant',
+        await insertRaw({
           messageKind: 'stream_error',
-          text: t,
-          rawEvents: [],
-          streamPartId: null,
-          metadataJson: '{}',
-          createdAt: now(),
-          updatedAt: now(),
+          rawJson: {
+            schemaVersion: 1,
+            type: 'stream_error',
+            role: 'assistant',
+            part,
+            createdAt: now(),
+          },
+          textForSearch: t,
         });
         aggregatedRawEvents.push({ type: 'streamPart', partType: 'error', text: t, rawText: t });
         break;
@@ -623,28 +717,30 @@ export const collectPromptStream = async (input: {
         const t = stringifyForPersistence(part.rawValue);
         if (rawEvent !== null) {
           aggregatedRawEvents.push(rawEvent);
-          await insertRow({
-            id: crypto.randomUUID(),
-            role: 'assistant',
+          await insertRaw({
             messageKind: 'raw_meta',
-            text: t,
-            rawEvents: [rawEvent],
-            streamPartId: null,
-            metadataJson: '{}',
-            createdAt: now(),
-            updatedAt: now(),
+            rawJson: {
+              schemaVersion: 1,
+              type: 'raw_meta',
+              role: 'assistant',
+              text: t,
+              part: part.rawValue,
+              createdAt: now(),
+            },
+            textForSearch: t,
           });
         } else {
-          await insertRow({
-            id: crypto.randomUUID(),
-            role: 'assistant',
+          await insertRaw({
             messageKind: 'raw_meta',
-            text: t,
-            rawEvents: [],
-            streamPartId: null,
-            metadataJson: JSON.stringify({ unnormalized: true }),
-            createdAt: now(),
-            updatedAt: now(),
+            rawJson: {
+              schemaVersion: 1,
+              type: 'raw_meta',
+              role: 'assistant',
+              text: t,
+              part: { unnormalized: true, value: part.rawValue },
+              createdAt: now(),
+            },
+            textForSearch: t,
           });
         }
         break;

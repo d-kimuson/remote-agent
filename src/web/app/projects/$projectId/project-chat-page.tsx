@@ -16,6 +16,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { nanoid } from 'nanoid';
 import {
   Suspense,
   useCallback,
@@ -50,7 +51,6 @@ import {
 } from '../../../../shared/acp.ts';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
 import { Button } from '../../../components/ui/button.tsx';
-import { Checkbox } from '../../../components/ui/checkbox.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
 import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
@@ -143,6 +143,7 @@ import {
 } from './transcript-display.pure.ts';
 import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
 import { createChatMessage, type TranscriptMap } from './types.ts';
+import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
 import {
   canSendWithDraftWorktreeState,
   draftWorktreeNameError,
@@ -152,6 +153,7 @@ import {
 
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = 'w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl';
+const createDefaultWorktreeName = (): string => `wt-${nanoid(8)}`;
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -305,8 +307,23 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
   message,
 }) => {
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
+  if (message.rawJson.type === 'x-error') {
+    return (
+      <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-900 dark:text-red-100">
+        <div className="font-medium">Invalid stored message: {message.id}</div>
+        <div className="mt-1">sourceKind: {message.rawJson.sourceKind}</div>
+        <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words">
+          {message.rawJson.rawJsonText}
+        </pre>
+      </div>
+    );
+  }
   if (message.role === 'user') {
-    return <ChatMarkdown>{message.text}</ChatMarkdown>;
+    return (
+      <ChatMarkdown>
+        {message.rawJson.type === 'user' ? message.rawJson.text : message.text}
+      </ChatMarkdown>
+    );
   }
   const k: ChatMessageKind = message.kind ?? 'legacy_assistant_turn';
   if (k === 'raw_meta') {
@@ -330,14 +347,17 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
     );
   }
   if (k === 'reasoning' && message.text.length > 0) {
-    return (
-      <ChatRawEvents events={[{ type: 'reasoning', text: message.text, rawText: message.text }]} />
-    );
+    const text = message.rawJson.type === 'reasoning' ? message.rawJson.text : message.text;
+    return <ChatRawEvents events={[{ type: 'reasoning', text, rawText: text }]} />;
   }
   if (k === 'assistant_text' || k === 'tool_input') {
-    return message.text.length > 0 ? (
+    const text =
+      message.rawJson.type === 'assistant_text' || message.rawJson.type === 'tool_input'
+        ? message.rawJson.text
+        : message.text;
+    return text.length > 0 ? (
       <div className="text-foreground">
-        <ChatMarkdown>{message.text}</ChatMarkdown>
+        <ChatMarkdown>{text}</ChatMarkdown>
       </div>
     ) : null;
   }
@@ -748,7 +768,7 @@ export const ProjectChatPage: FC<{
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftModeId, setDraftModeId] = useState<string | null>(null);
   const [useDraftWorktree, setUseDraftWorktree] = useState(false);
-  const [draftWorktreeName, setDraftWorktreeName] = useState('');
+  const [draftWorktreeName, setDraftWorktreeName] = useState(createDefaultWorktreeName);
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
   const promptReaderRef = useRef<() => string>(() => '');
@@ -838,6 +858,7 @@ export const ProjectChatPage: FC<{
       const nextGeneration = draftViewGenerationRef.current + 1;
       draftViewGenerationRef.current = nextGeneration;
       setDraftViewGeneration(nextGeneration);
+      setDraftWorktreeName(createDefaultWorktreeName());
     }
     previousSessionIdRef.current = sessionId;
   }, [sessionId]);
@@ -849,6 +870,15 @@ export const ProjectChatPage: FC<{
       ),
     [projectId, sessionsData.sessions],
   );
+  const {
+    canLoadSessions,
+    dialog: loadSessionDialog,
+    openLoadSessionDialog,
+  } = useLoadSessionDialog({
+    projectId,
+    providers: providerData.providers,
+    workingDirectory: projectData.project.workingDirectory,
+  });
   /** サイドバー用は `projectSessions` だが、URL の `session-id` との対応づけは全セッションから行う。 */
   const selectedSession =
     sessionId === null
@@ -2202,11 +2232,14 @@ export const ProjectChatPage: FC<{
         </Suspense>
       ) : null}
       <ProjectMenuContent
+        canLoadSessions={canLoadSessions}
         currentSessionId={sessionId}
+        onOpenLoadSessions={openLoadSessionDialog}
         projectId={projectId}
         sessionCount={projectSessions.length}
         sessions={projectSessions}
       />
+      {loadSessionDialog}
       <div className="flex h-full flex-col px-2 py-2 md:px-3">
         <header className="flex h-10 shrink-0 items-center justify-between gap-3 px-1">
           <div className="flex min-w-0 items-center gap-2">
@@ -2414,19 +2447,47 @@ export const ProjectChatPage: FC<{
 
                 {shouldUseDraftSession ? (
                   <div className="flex min-w-0 flex-wrap items-start gap-2 border-b bg-muted/10 px-3 py-2">
-                    <label
-                      className="flex min-w-0 items-center gap-2 rounded-md border border-border/70 bg-background px-2 py-1.5 text-sm"
-                      htmlFor="draft-worktree-enabled"
-                    >
-                      <Checkbox
-                        checked={useDraftWorktree}
+                    <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-background px-2 py-1">
+                      <button
+                        aria-checked={useDraftWorktree}
+                        aria-label={
+                          useDraftWorktree
+                            ? 'Disable worktree creation'
+                            : 'Enable worktree creation'
+                        }
+                        className={cn(
+                          'inline-flex h-6 min-w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                          useDraftWorktree
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-muted text-muted-foreground',
+                        )}
                         id="draft-worktree-enabled"
-                        onCheckedChange={(checked) => {
-                          setUseDraftWorktree(checked === true);
+                        onClick={() => {
+                          setUseDraftWorktree((current) => {
+                            const next = !current;
+                            if (next) {
+                              setDraftWorktreeName((name) =>
+                                name.trim().length > 0 ? name : createDefaultWorktreeName(),
+                              );
+                            }
+                            return next;
+                          });
                         }}
-                      />
-                      <span className="whitespace-nowrap">Create worktree</span>
-                    </label>
+                        role="switch"
+                        type="button"
+                      >
+                        <span
+                          className={cn(
+                            'size-[18px] rounded-full bg-background shadow-sm transition-transform',
+                            useDraftWorktree ? 'translate-x-5' : 'translate-x-0',
+                          )}
+                        />
+                        <span className="sr-only">{useDraftWorktree ? 'Enabled' : 'Disabled'}</span>
+                      </button>
+                      <Label className="whitespace-nowrap" htmlFor="draft-worktree-enabled">
+                        worktree
+                      </Label>
+                    </div>
                     {useDraftWorktree ? (
                       <div className="min-w-48 flex-1 sm:max-w-96">
                         <Label className="sr-only" htmlFor="draft-worktree-name">

@@ -1,4 +1,4 @@
-import type { ChatMessage, RawEvent } from '../../shared/acp.ts';
+import type { ChatMessage, PersistedMessageRaw, RawEvent } from '../../shared/acp.ts';
 
 type CodexSessionLogMeta = {
   readonly sessionId: string;
@@ -139,17 +139,40 @@ const buildMessage = ({
   readonly rawEvents: readonly RawEvent[];
   readonly timestamp: string;
   readonly metadataJson?: string;
-}): ChatMessage => ({
-  id: `codex-log:${sessionId}:${index}`,
-  role,
-  kind,
-  text,
-  rawEvents: [...rawEvents],
-  createdAt: timestamp,
-  updatedAt: timestamp,
-  streamPartId: null,
-  metadataJson,
-});
+}): ChatMessage => {
+  const rawJson: PersistedMessageRaw =
+    role === 'user'
+      ? {
+          schemaVersion: 1,
+          type: 'user',
+          role: 'user',
+          text,
+          attachments: [],
+          createdAt: timestamp,
+        }
+      : {
+          schemaVersion: 1,
+          type: 'legacy_assistant_turn',
+          role: 'assistant',
+          text,
+          rawEvents: [...rawEvents],
+          metadata: JSON.parse(metadataJson),
+          createdAt: timestamp,
+        };
+  return {
+    id: `codex-log:${sessionId}:${index}`,
+    role,
+    kind,
+    rawJson,
+    textForSearch: text,
+    text,
+    rawEvents: [...rawEvents],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    streamPartId: null,
+    metadataJson,
+  };
+};
 
 const stableIdFrom = ({
   fallbackSessionId,
@@ -182,17 +205,41 @@ const buildImportedMessage = ({
   readonly rawEvents: readonly RawEvent[];
   readonly timestamp: string;
   readonly source: string;
-}): ChatMessage => ({
-  id,
-  role,
-  kind,
-  text,
-  rawEvents: [...rawEvents],
-  createdAt: timestamp,
-  updatedAt: timestamp,
-  streamPartId: null,
-  metadataJson: JSON.stringify({ source }),
-});
+}): ChatMessage => {
+  const metadataJson = JSON.stringify({ source });
+  const rawJson: PersistedMessageRaw =
+    role === 'user'
+      ? {
+          schemaVersion: 1,
+          type: 'user',
+          role: 'user',
+          text,
+          attachments: [],
+          createdAt: timestamp,
+        }
+      : {
+          schemaVersion: 1,
+          type: 'legacy_assistant_turn',
+          role: 'assistant',
+          text,
+          rawEvents: [...rawEvents],
+          metadata: { source },
+          createdAt: timestamp,
+        };
+  return {
+    id,
+    role,
+    kind,
+    rawJson,
+    textForSearch: text,
+    text,
+    rawEvents: [...rawEvents],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    streamPartId: null,
+    metadataJson,
+  };
+};
 
 const messageFromCodexMessage = ({
   payload,

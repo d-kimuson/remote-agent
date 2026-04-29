@@ -6,6 +6,16 @@ import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
 
 const msg = (overrides: Partial<ChatMessage> & { id: string }): ChatMessage => ({
   role: 'assistant',
+  kind: 'legacy_assistant_turn',
+  rawJson: {
+    schemaVersion: 1,
+    type: 'legacy_assistant_turn',
+    role: 'assistant',
+    text: '',
+    rawEvents: [],
+    createdAt: '2025-01-01T00:00:00.000Z',
+  },
+  textForSearch: '',
   text: '',
   rawEvents: [],
   createdAt: '2025-01-01T00:00:00.000Z',

@@ -11,6 +11,16 @@ import {
 const baseMessage = (overrides: Partial<ChatMessage>): ChatMessage => ({
   id: 'm1',
   role: 'assistant',
+  kind: 'legacy_assistant_turn',
+  rawJson: {
+    schemaVersion: 1,
+    type: 'legacy_assistant_turn',
+    role: 'assistant',
+    text: '',
+    rawEvents: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  textForSearch: '',
   text: '',
   rawEvents: [],
   createdAt: '2026-01-01T00:00:00.000Z',

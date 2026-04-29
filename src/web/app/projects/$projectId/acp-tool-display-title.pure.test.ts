@@ -25,6 +25,31 @@ describe('resolveAcpToolCardTitle', () => {
     ).toBe('read_file');
   });
 
+  test('dynamic ツール名の raw part 形式では input.toolName を出す', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            type: 'tool-call',
+            toolCallId: 'toolu_1',
+            toolName: 'acp.acp_provider_agent_dynamic_tool',
+            input: {
+              toolCallId: 'toolu_1',
+              toolName: 'pwd',
+              args: { command: 'pwd', description: 'Print working directory' },
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('pwd');
+  });
+
   test('内訳が取れないときは外側の toolName', () => {
     expect(
       resolveAcpToolCardTitle({
