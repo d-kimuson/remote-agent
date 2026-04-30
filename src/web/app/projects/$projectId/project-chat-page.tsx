@@ -145,6 +145,7 @@ import {
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from './queries.ts';
+import { ReviewDialogButton } from './review-dialog.tsx';
 import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from './rich-prompt-editor.tsx';
 import {
@@ -974,6 +975,13 @@ export const ProjectChatPage: FC<{
     }));
   }, []);
 
+  const handleInsertReviewPrompt = useCallback(
+    (markdown: string) => {
+      replacePrompt(appendRichPromptText({ value: promptReaderRef.current(), addition: markdown }));
+    },
+    [replacePrompt],
+  );
+
   const handlePromptValueReaderReady = useCallback((readValue: () => string) => {
     promptReaderRef.current = readValue;
   }, []);
@@ -1019,6 +1027,7 @@ export const ProjectChatPage: FC<{
         sessionsData.sessions.find((s) => s.sessionId === sessionId) ??
         null);
   const shouldUseDraftSession = sessionId === null;
+  const reviewSessionId = selectedSession?.sessionId ?? `project:${projectId}`;
 
   useEffect(() => {
     if (sessionId !== null) {
@@ -2725,6 +2734,12 @@ export const ProjectChatPage: FC<{
                   disabled={isEditorDisabled}
                   toolbarTrailing={
                     <>
+                      <ReviewDialogButton
+                        disabled={isEditorDisabled}
+                        onInsertReview={handleInsertReviewPrompt}
+                        projectId={projectId}
+                        reviewSessionId={reviewSessionId}
+                      />
                       <Button
                         aria-label="Attach files"
                         disabled={isEditorDisabled || uploadAttachmentsMutation.isPending}

@@ -12,8 +12,12 @@ import {
   updateProjectSettingsRequestSchema,
   updateProjectModelPreferenceRequestSchema,
   updateProjectModePreferenceRequestSchema,
+  gitDiffRequestSchema,
+  gitDiffResponseSchema,
+  gitRevisionsResponseSchema,
 } from '../../shared/acp.ts';
 import { errorResponseSchema, jsonResponse, validationErrorHook } from '../hono-utils.ts';
+import { getGitDiff, getGitRevisions } from './git-store.ts';
 import {
   createProject,
   getProject,
@@ -98,6 +102,59 @@ export const projectRoutes = new Hono()
         return c.json(response, 201);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to create worktree';
+        if (message.startsWith('Unknown project:')) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .get(
+    '/:projectId/git/revisions',
+    describeRoute({
+      summary: 'Get project git revisions',
+      responses: {
+        200: jsonResponse('Git revisions', gitRevisionsResponseSchema),
+        400: jsonResponse('Git revisions error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
+      },
+    }),
+    async (c) => {
+      try {
+        const response = parse(
+          gitRevisionsResponseSchema,
+          await getGitRevisions(c.req.param('projectId')),
+        );
+        return c.json(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to read git revisions';
+        if (message.startsWith('Unknown project:')) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    '/:projectId/git/diff',
+    describeRoute({
+      summary: 'Get project git diff',
+      responses: {
+        200: jsonResponse('Git diff', gitDiffResponseSchema),
+        400: jsonResponse('Git diff error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
+      },
+    }),
+    vValidator('json', gitDiffRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const response = parse(
+          gitDiffResponseSchema,
+          await getGitDiff(c.req.param('projectId'), c.req.valid('json')),
+        );
+        return c.json(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to read git diff';
         if (message.startsWith('Unknown project:')) {
           return c.json({ error: message }, 404);
         }

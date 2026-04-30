@@ -626,6 +626,76 @@ export const projectWorktreeResponseSchema = object({
 
 export type ProjectWorktreeResponse = InferOutput<typeof projectWorktreeResponseSchema>;
 
+export const gitDiffLineSchema = object({
+  type: union([
+    literal('added'),
+    literal('deleted'),
+    literal('unchanged'),
+    literal('hunk'),
+    literal('context'),
+  ]),
+  oldLineNumber: optional(number()),
+  newLineNumber: optional(number()),
+  content: string(),
+});
+
+export type GitDiffLine = InferOutput<typeof gitDiffLineSchema>;
+
+export const gitDiffHunkSchema = object({
+  oldStart: number(),
+  newStart: number(),
+  lines: array(gitDiffLineSchema),
+});
+
+export type GitDiffHunk = InferOutput<typeof gitDiffHunkSchema>;
+
+export const gitFileDiffSchema = object({
+  filename: pipe(string(), trim()),
+  oldFilename: optional(pipe(string(), trim())),
+  isNew: boolean(),
+  isDeleted: boolean(),
+  isRenamed: boolean(),
+  isBinary: boolean(),
+  hunks: array(gitDiffHunkSchema),
+  linesAdded: number(),
+  linesDeleted: number(),
+});
+
+export type GitFileDiff = InferOutput<typeof gitFileDiffSchema>;
+
+export const gitDiffRequestSchema = object({
+  fromRef: pipe(string(), trim()),
+  toRef: pipe(string(), trim()),
+});
+
+export type GitDiffRequest = InferOutput<typeof gitDiffRequestSchema>;
+
+export const gitDiffResponseSchema = object({
+  files: array(gitFileDiffSchema),
+  summary: object({
+    totalFiles: number(),
+    totalAdditions: number(),
+    totalDeletions: number(),
+  }),
+});
+
+export type GitDiffResponse = InferOutput<typeof gitDiffResponseSchema>;
+
+export const gitRevisionRefSchema = object({
+  name: pipe(string(), trim()),
+  type: union([literal('branch'), literal('commit'), literal('head'), literal('working')]),
+  displayName: pipe(string(), trim()),
+  sha: optional(pipe(string(), trim())),
+});
+
+export type GitRevisionRef = InferOutput<typeof gitRevisionRefSchema>;
+
+export const gitRevisionsResponseSchema = object({
+  refs: array(gitRevisionRefSchema),
+});
+
+export type GitRevisionsResponse = InferOutput<typeof gitRevisionsResponseSchema>;
+
 export const projectModelPreferenceSchema = object({
   presetId: pipe(string(), trim()),
   modelId: pipe(string(), trim()),

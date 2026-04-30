@@ -14,6 +14,9 @@ import {
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
   filesystemTreeResponseSchema,
+  gitDiffRequestSchema,
+  gitDiffResponseSchema,
+  gitRevisionsResponseSchema,
   loadSessionRequestSchema,
   messageResponseSchema,
   prepareAgentSessionResponseSchema,
@@ -43,6 +46,9 @@ import {
   type DirectoryListingResponse,
   type DiscoverResumableSessionsRequest,
   type FilesystemTreeResponse,
+  type GitDiffRequest,
+  type GitDiffResponse,
+  type GitRevisionsResponse,
   type LoadSessionRequest,
   type MessageResponse,
   type PrepareAgentSessionRequest,
@@ -171,6 +177,25 @@ export const createProjectWorktreeRequest = async (
     body: JSON.stringify(parse(createProjectWorktreeRequestSchema, request)),
   });
   return parse(projectWorktreeResponseSchema, await response.json());
+};
+
+export const fetchGitRevisions = async (projectId: string): Promise<GitRevisionsResponse> => {
+  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/git/revisions`, {
+    method: 'GET',
+  });
+  return parse(gitRevisionsResponseSchema, await response.json());
+};
+
+export const fetchGitDiff = async (
+  projectId: string,
+  request: GitDiffRequest,
+): Promise<GitDiffResponse> => {
+  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/git/diff`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(parse(gitDiffRequestSchema, request)),
+  });
+  return parse(gitDiffResponseSchema, await response.json());
 };
 
 export const uploadAttachmentsRequest = async (

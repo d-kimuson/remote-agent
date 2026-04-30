@@ -10,6 +10,9 @@ export const sessionMessagesQueryKey = (sessionId: string) =>
 export const projectQueryKey = (projectId: string) => ['project', projectId] as const;
 export const projectSettingsQueryKey = (projectId: string) =>
   ['project-settings', projectId] as const;
+export const gitRevisionsQueryKey = (projectId: string) => ['git-revisions', projectId] as const;
+export const gitDiffQueryKey = (projectId: string, fromRef: string, toRef: string) =>
+  ['git-diff', projectId, fromRef, toRef] as const;
 export const filesystemTreeQueryKey = (root: string) => ['filesystem-tree', root] as const;
 export const resumableSessionsQueryKey = (projectId: string) =>
   ['resumable-sessions', projectId] as const;
