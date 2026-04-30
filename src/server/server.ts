@@ -5,20 +5,23 @@ import { runDueRoutines } from './routines/routine-runner.ts';
 
 type ServerOptions = {
   port?: number;
+  hostname?: string;
   clientBuildDirectory?: string;
 };
 
 export const startServer = (options?: ServerOptions) => {
-  const { port = 8989, clientBuildDirectory } = options ?? {};
+  const { port = 8989, hostname, clientBuildDirectory } = options ?? {};
   const app = createHonoApp({ clientBuildDirectory });
 
   const server = serve(
     {
       fetch: app.fetch,
       port,
+      hostname,
     },
     (info) => {
-      console.log(`Server is running on http://localhost:${info.port}`);
+      const displayHost = hostname ?? 'localhost';
+      console.log(`Server is running on http://${displayHost}:${info.port}`);
     },
   );
 

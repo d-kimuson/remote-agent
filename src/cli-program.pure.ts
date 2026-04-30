@@ -4,6 +4,8 @@ import pkg from '../package.json' with { type: 'json' };
 
 export type ServeOptions = {
   readonly serverOnly?: boolean;
+  readonly port?: string;
+  readonly tailscale?: string;
 };
 
 type CliProgramOptions = {
@@ -30,6 +32,8 @@ export const createCliProgram = (options: CliProgramOptions): Command => {
   program
     .command('serve')
     .option('--server-only', 'start without serving client build')
+    .option('--port <port>', 'local server port')
+    .option('--tailscale <port>', 'publish through Tailscale Serve on the given HTTPS port')
     .description('start the remote-agent server')
     .action(async (serveOptions: ServeOptions) => {
       await options.serve(serveOptions);

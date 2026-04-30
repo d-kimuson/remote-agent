@@ -17,6 +17,16 @@ describe('CLI program', () => {
     expect(help).not.toContain('Usage: @kimuson/remote-agent generate-api-key');
   });
 
+  test('shows serve usage with tailscale option', () => {
+    const program = createCliProgram({
+      generateApiKey: () => 'test-key',
+      serve: () => {},
+    });
+    const serveCommand = program.commands.find((command) => command.name() === 'serve');
+
+    expect(serveCommand?.helpInformation()).toContain('--tailscale <port>');
+  });
+
   test('requires an explicit command instead of serving by default', async () => {
     let serveOptions: ServeOptions | null = null;
     let help = '';
@@ -42,5 +52,24 @@ describe('CLI program', () => {
     });
     expect(serveOptions).toBeNull();
     expect(help).toContain('Usage: @kimuson/remote-agent [options] [command]');
+  });
+
+  test('passes serve port and tailscale options to the serve handler', async () => {
+    let serveOptions: ServeOptions | null = null;
+    const program = createCliProgram({
+      generateApiKey: () => 'test-key',
+      serve: (options) => {
+        serveOptions = options;
+      },
+    });
+
+    await program.parseAsync(['serve', '--port', '33333', '--tailscale', '48989'], {
+      from: 'user',
+    });
+
+    expect(serveOptions).toEqual({
+      port: '33333',
+      tailscale: '48989',
+    });
   });
 });
