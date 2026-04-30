@@ -442,7 +442,7 @@ export const RichPromptEditor: FC<{
       <div className="relative">
         <textarea
           aria-label={placeholder}
-          className="block min-h-16 w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-6 outline-none selection:bg-primary/20 sm:min-h-20 sm:px-4 sm:py-3 sm:leading-7"
+          className="block min-h-16 w-full resize-none bg-transparent px-3 py-2.5 text-base leading-6 outline-none selection:bg-primary/20 sm:min-h-20 sm:px-4 sm:py-3 md:text-sm md:leading-7"
           defaultValue={externalValue.value}
           disabled={disabled}
           autoCapitalize="off"

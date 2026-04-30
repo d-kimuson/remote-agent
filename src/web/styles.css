@@ -5,6 +5,7 @@
 
 :root {
   color-scheme: light;
+  --app-standalone-bottom-inset: 0px;
   --background: oklch(0.982 0.006 235);
   --foreground: oklch(0.22 0.028 255);
   --card: oklch(0.998 0.002 235);
@@ -125,6 +126,12 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+@media (display-mode: standalone) {
+  :root {
+    --app-standalone-bottom-inset: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -183,6 +190,7 @@
 
 .app-page {
   min-height: 100%;
+  padding-bottom: var(--app-standalone-bottom-inset);
   background:
     linear-gradient(
       180deg,
