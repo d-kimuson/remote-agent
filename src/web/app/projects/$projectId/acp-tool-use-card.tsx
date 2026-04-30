@@ -89,7 +89,7 @@ const TerminalVisual: FC<{
         {takeShort(visual.stderr)}
       </pre>
     ) : null}
-    {visual.stdout.length === 0 && visual.stderr.length === 0 ? (
+    {visual.stdout.length === 0 && visual.stderr.length === 0 && visual.pending !== true ? (
       <div className="px-3 py-2 text-[11px] text-zinc-500">出力なし</div>
     ) : null}
   </div>
@@ -208,7 +208,7 @@ const DiffVisual: FC<{
   </div>
 );
 
-const AcpToolVisualViewBlock: FC<{
+export const AcpToolVisualViewBlock: FC<{
   readonly visual: AcpToolVisualView;
 }> = ({ visual }) => {
   if (visual.kind === 'terminal') {

@@ -167,6 +167,7 @@ export type AcpToolVisualView =
       readonly stderr: string;
       readonly exitCode: number | null;
       readonly status: string | null;
+      readonly pending?: true;
     }
   | {
       readonly kind: 'file-read';
@@ -426,6 +427,7 @@ const visualTerminalFromResult = ({
       stderr: '',
       exitCode: null,
       status: null,
+      ...(output === undefined ? { pending: true } : {}),
     };
   }
 
@@ -448,6 +450,7 @@ const visualTerminalFromResult = ({
       stderr: '',
       exitCode: null,
       status: null,
+      ...(output === undefined ? { pending: true } : {}),
     };
   }
 
@@ -639,8 +642,9 @@ export const resolveAcpToolVisualView = (item: AcpToolMergeItem): AcpToolVisualV
     return diff;
   }
 
-  if (toolName === 'write' || toolName === 'write_file') {
-    return visualFileWrite(input.args);
+  const write = visualFileWrite(input.args);
+  if (write !== null) {
+    return write;
   }
 
   const parsedReadCommandFile = visualFileFromParsedReadCommand({ args: input.args, output });

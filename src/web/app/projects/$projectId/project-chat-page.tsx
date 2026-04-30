@@ -104,6 +104,8 @@ import {
   latestAvailableSlashCommands,
   vscodeFileUri,
 } from './acp-session-meta.pure.ts';
+import { AcpToolVisualViewBlock } from './acp-tool-use-card.tsx';
+import { resolveAcpToolVisualView } from './acp-tool-visual-view.pure.ts';
 import { chatMessageClipboardText } from './chat-block-copy.pure.ts';
 import { ChatRawEvents } from './chat-raw-events.tsx';
 import { isNearScrollBottom, nextUnreadMessageCount } from './chat-scroll.pure.ts';
@@ -598,57 +600,88 @@ const permissionOptionVariant = (
       ? 'default'
       : 'outline';
 
+const permissionRequestToolVisual = (request: AcpPermissionRequest) => {
+  if (request.rawInputText === null || request.rawInputText === undefined) {
+    return null;
+  }
+
+  return resolveAcpToolVisualView({
+    type: 'tool',
+    key: `permission-${request.id}`,
+    toolCallId: request.toolCallId,
+    call: {
+      type: 'toolCall',
+      toolCallId: request.toolCallId,
+      toolName: request.title ?? request.kind ?? 'permission request',
+      inputText: request.rawInputText,
+      rawText: '',
+    },
+    result: null,
+    error: null,
+  });
+};
+
 const PermissionRequestPanel: FC<{
   readonly disabled: boolean;
   readonly request: AcpPermissionRequest;
   readonly onResolve: (requestId: string, optionId: string | null) => void;
-}> = ({ disabled, request, onResolve }) => (
-  <div className={cn('flex w-full min-w-0 flex-col gap-3', CONVERSATION_COLUMN_CLASS)}>
-    <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 shadow-sm">
-      <div className="flex items-start gap-3">
-        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">承認が必要です</p>
-          <p className="mt-1 break-words text-sm text-muted-foreground">
-            {request.title ?? request.toolCallId}
-          </p>
-          {request.rawInputText !== null && request.rawInputText !== undefined ? (
-            <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background/70 px-2.5 py-2 text-xs text-muted-foreground">
-              {request.rawInputText}
-            </pre>
-          ) : null}
+}> = ({ disabled, request, onResolve }) => {
+  const visual = permissionRequestToolVisual(request);
+
+  return (
+    <div className={cn('flex w-full min-w-0 flex-col gap-3', CONVERSATION_COLUMN_CLASS)}>
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 shadow-sm">
+        <div className="flex items-start gap-3">
+          <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">承認が必要です</p>
+            {visual === null || visual.kind !== 'terminal' ? (
+              <p className="mt-1 break-words text-sm text-muted-foreground">
+                {request.title ?? request.toolCallId}
+              </p>
+            ) : null}
+            {visual !== null ? (
+              <div className="mt-3">
+                <AcpToolVisualViewBlock visual={visual} />
+              </div>
+            ) : request.rawInputText !== null && request.rawInputText !== undefined ? (
+              <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background/70 px-2.5 py-2 text-xs text-muted-foreground">
+                {request.rawInputText}
+              </pre>
+            ) : null}
+          </div>
         </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-        {request.options.map((option) => (
+        <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+          {request.options.map((option) => (
+            <Button
+              disabled={disabled}
+              key={option.id}
+              onClick={() => {
+                onResolve(request.id, option.id);
+              }}
+              size="sm"
+              type="button"
+              variant={permissionOptionVariant(option.kind)}
+            >
+              {formatAcpPermissionOptionLabel(option)}
+            </Button>
+          ))}
           <Button
             disabled={disabled}
-            key={option.id}
             onClick={() => {
-              onResolve(request.id, option.id);
+              onResolve(request.id, null);
             }}
             size="sm"
             type="button"
-            variant={permissionOptionVariant(option.kind)}
+            variant="ghost"
           >
-            {formatAcpPermissionOptionLabel(option)}
+            Cancel
           </Button>
-        ))}
-        <Button
-          disabled={disabled}
-          onClick={() => {
-            onResolve(request.id, null);
-          }}
-          size="sm"
-          type="button"
-          variant="ghost"
-        >
-          Cancel
-        </Button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const FieldControl: FC<{
   readonly className?: string;

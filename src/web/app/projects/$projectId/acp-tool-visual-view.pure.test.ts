@@ -174,6 +174,99 @@ describe('resolveAcpToolVisualView', () => {
     });
   });
 
+  test('承認待ちの exec_command raw input を terminal 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'Revert README.md and show status',
+        inputText: JSON.stringify({
+          command: 'git checkout README.md && git status README.md',
+          description: 'Revert README.md and show status',
+        }),
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'terminal',
+      command: 'git checkout README.md && git status README.md',
+      cwd: null,
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      status: null,
+      pending: true,
+    });
+  });
+
+  test('承認待ちの old_string/new_string raw input を diff 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'Edit README.md',
+        inputText: JSON.stringify({
+          file_path: '/repo/README.md',
+          old_string: '2. Open the web UI.',
+          new_string: '2. Open the web UI in your browser.',
+          replace_all: false,
+        }),
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toMatchObject({
+      kind: 'diff',
+      files: [
+        {
+          filename: '/repo/README.md',
+          linesAdded: 1,
+          linesDeleted: 1,
+        },
+      ],
+    });
+  });
+
+  test('承認待ちの Write raw input を file-read 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'Write approval-test.md',
+        inputText: JSON.stringify({
+          file_path: '/home/kaito/repos/remote-agent/docs/tmp/approval-test.md',
+          content: '# Approval Test\n\n承認UIテスト用のダミーファイル。\n',
+        }),
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'file-read',
+      path: '/home/kaito/repos/remote-agent/docs/tmp/approval-test.md',
+      text: '# Approval Test\n\n承認UIテスト用のダミーファイル。\n',
+    });
+  });
+
   test('changes unified_diff args を diff 表示に変換する', () => {
     const visual = resolveAcpToolVisualView(
       toolItem({
