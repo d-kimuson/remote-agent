@@ -34,7 +34,7 @@
     "lint:oxfmt": "pnpm fix:oxfmt --check",
     "lint:oxlint": "oxlint --ignore-path .gitignore --no-error-on-unmatched-pattern",
     "migrate:generate": "drizzle-kit generate",
-    "migrate:local": "node --experimental-strip-types src/scripts/migrate-local.ts",
+    "migrate:local": "RA_DIR=./data/.ra-dir node --experimental-strip-types src/scripts/migrate-local.ts",
     "generate:db-docs": "drizzle-docs generate ./src/server/db/schema.ts -d sqlite >> ./docs/database.md",
     "prepack": "./scripts/prepare-publish.sh",
     "smoke:pack": "pnpm build && node --experimental-strip-types src/scripts/smoke-packed-package.ts",
