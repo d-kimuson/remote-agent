@@ -2,6 +2,7 @@ import { createACPProvider } from '@mcpc-tech/acp-ai-provider';
 
 import type { ModeOption, ModelOption } from '../../../shared/acp.ts';
 
+import { resolveProviderAuthMethodId } from '../provider-auth-method.pure.ts';
 import { resolveProviderPreset } from '../repositories/provider-catalog-store.ts';
 import {
   buildModelOptionsFromResponse,
@@ -46,7 +47,7 @@ export const probeAgentModelCatalog = async (options: {
   const provider = createACPProvider({
     command: launch.command,
     args: [...launch.args],
-    authMethodId: preset.authMethodId,
+    authMethodId: resolveProviderAuthMethodId(preset),
     env: launch.env,
     session: {
       cwd: launch.cwd,

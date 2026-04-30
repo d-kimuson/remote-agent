@@ -18,6 +18,14 @@ describe('agentPresets', () => {
           id: 'pi-coding-agent',
           authMethodId: 'pi_terminal_login',
         }),
+        expect.objectContaining({
+          id: 'cursor-cli',
+          authMethodId: 'cursor_login',
+        }),
+        expect.objectContaining({
+          id: 'opencode',
+          authMethodId: 'opencode-login',
+        }),
       ]),
     );
   });

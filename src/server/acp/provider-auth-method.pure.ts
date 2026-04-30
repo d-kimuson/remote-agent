@@ -24,6 +24,14 @@ export const inferAuthMethodIdFromCommand = ({
     return 'copilot-login';
   }
 
+  if (executable === 'agent' && hasAnyArg(args, ['acp'])) {
+    return 'cursor_login';
+  }
+
+  if (executable === 'opencode' && hasAnyArg(args, ['acp'])) {
+    return 'opencode-login';
+  }
+
   if (executable === 'pi-acp') {
     return 'pi_terminal_login';
   }

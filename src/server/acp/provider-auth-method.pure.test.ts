@@ -36,6 +36,16 @@ describe('provider auth method resolution', () => {
     ).toBe('chatgpt');
   });
 
+  test('infers Cursor auth for Custom Providers that run Cursor ACP', () => {
+    expect(inferAuthMethodIdFromCommand({ command: 'agent', args: ['acp'] })).toBe('cursor_login');
+  });
+
+  test('infers OpenCode auth for Custom Providers that run OpenCode ACP', () => {
+    expect(inferAuthMethodIdFromCommand({ command: 'opencode', args: ['acp'] })).toBe(
+      'opencode-login',
+    );
+  });
+
   test('leaves unknown Custom Providers unconfigured', () => {
     expect(inferAuthMethodIdFromCommand({ command: 'custom-agent', args: ['acp'] })).toBe(
       undefined,
