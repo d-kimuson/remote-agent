@@ -32,7 +32,9 @@ export const shouldDisplayTranscriptMessage = (
   displayableEvents: readonly RawEvent[],
 ): boolean => {
   if (message.role === 'user') {
-    return message.text.trim().length > 0;
+    const attachmentCount =
+      message.rawJson.type === 'user' ? (message.rawJson.attachments ?? []).length : 0;
+    return message.text.trim().length > 0 || attachmentCount > 0;
   }
   const kind = message.kind ?? 'legacy_assistant_turn';
   if (HIDDEN_MESSAGE_KINDS.has(kind)) {

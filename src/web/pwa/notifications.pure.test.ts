@@ -3,6 +3,8 @@ import { describe, expect, test } from 'vitest';
 import {
   createAssistantNotificationPayload,
   createSessionPausedNotificationPayload,
+  isSystemNotificationEnabled,
+  parseSystemNotificationPreference,
 } from './notifications.pure.ts';
 
 describe('createAssistantNotificationPayload', () => {
@@ -78,5 +80,19 @@ describe('createSessionPausedNotificationPayload', () => {
         url: '/projects/project-1?session-id=session-1',
       },
     });
+  });
+});
+
+describe('system notification preference helpers', () => {
+  test('parses unknown or missing values as disabled', () => {
+    expect(parseSystemNotificationPreference('enabled')).toBe('enabled');
+    expect(parseSystemNotificationPreference('disabled')).toBe('disabled');
+    expect(parseSystemNotificationPreference('legacy')).toBe('disabled');
+    expect(parseSystemNotificationPreference(null)).toBe('disabled');
+  });
+
+  test('reports whether the app-level notification toggle is enabled', () => {
+    expect(isSystemNotificationEnabled('enabled')).toBe(true);
+    expect(isSystemNotificationEnabled('disabled')).toBe(false);
   });
 });

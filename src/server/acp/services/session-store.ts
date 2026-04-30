@@ -34,6 +34,7 @@ import {
   type SendMessageRequest,
   type SessionSummary,
   type SessionStatus,
+  type UserAttachment,
   type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
 } from '../../../shared/acp.ts';
@@ -183,6 +184,25 @@ const attachmentPromptMessagesFromPlan = async (
       content,
     },
   ];
+};
+
+const userAttachmentsFromPromptPlan = (plan: AttachmentPromptPlan): readonly UserAttachment[] => {
+  return plan.deliveries.reduce<readonly UserAttachment[]>((items, delivery) => {
+    if (delivery.kind !== 'image' || delivery.source === undefined) {
+      return items;
+    }
+
+    return [
+      ...items,
+      {
+        type: 'image',
+        source: delivery.source,
+        attachmentId: delivery.attachmentId,
+        name: delivery.name,
+        sizeInBytes: delivery.sizeInBytes,
+      },
+    ];
+  }, []);
 };
 
 const hasSetSessionUpdateHandler = (value: unknown): value is SessionUpdateClient => {
@@ -853,6 +873,7 @@ export const createSessionStore = ({
     kind,
     streamPartId = null,
     metadataJson = '{}',
+    attachments = [],
   }: {
     readonly role: ChatMessage['role'];
     readonly text: string;
@@ -860,6 +881,7 @@ export const createSessionStore = ({
     readonly kind?: ChatMessageKind;
     readonly streamPartId?: string | null;
     readonly metadataJson?: string;
+    readonly attachments?: readonly UserAttachment[];
   }): ChatMessage => {
     const t = new Date().toISOString();
     const resolvedKind = kind ?? (role === 'user' ? 'user' : 'legacy_assistant_turn');
@@ -870,7 +892,7 @@ export const createSessionStore = ({
             type: 'user',
             role: 'user',
             text,
-            attachments: [],
+            attachments: [...attachments],
             createdAt: t,
           }
         : resolvedKind === 'legacy_assistant_turn'
@@ -1494,27 +1516,17 @@ export const createSessionStore = ({
     });
     const effectivePrompt = attachmentPromptPlan.promptText;
     const promptMessages = await attachmentPromptMessagesFromPlan(attachmentPromptPlan);
-    const attachmentMetadataJson =
-      attachmentPromptPlan.deliveries.length === 0
-        ? '{}'
-        : JSON.stringify({
-            attachments: attachmentPromptPlan.deliveries,
-            contentBlockAdapter: {
-              embeddedContext: acpAiProviderAttachmentCapabilities.embeddedContext,
-              image: acpAiProviderAttachmentCapabilities.image,
-              resourceLink: acpAiProviderAttachmentCapabilities.resourceLink,
-            },
-          });
+    const userAttachments = userAttachmentsFromPromptPlan(attachmentPromptPlan);
 
     await persistSession(entry.session);
     await persistMessage({
       sessionId,
       message: buildMessage({
         role: 'user',
-        text: effectivePrompt,
+        text: request.prompt,
         rawEvents: [],
         kind: 'user',
-        metadataJson: attachmentMetadataJson,
+        attachments: userAttachments,
       }),
     });
 

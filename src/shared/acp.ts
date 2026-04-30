@@ -220,12 +220,34 @@ const textPartEnvelopeSchema = object({
   end: optional(unknown()),
 });
 
+export const mediaTypeSchema = pipe(string(), trim());
+
+export const imageBlockSourceSchema = object({
+  type: literal('base64'),
+  media_type: mediaTypeSchema,
+  data: string(),
+});
+
+export const imageBlockSchema = object({
+  type: literal('image'),
+  source: imageBlockSourceSchema,
+});
+
+export const userAttachmentSchema = object({
+  ...imageBlockSchema.entries,
+  attachmentId: optional(pipe(string(), trim())),
+  name: optional(pipe(string(), trim())),
+  sizeInBytes: optional(number()),
+});
+
+export type UserAttachment = InferOutput<typeof userAttachmentSchema>;
+
 export const userRawSchema = object({
   ...persistedMessageBaseSchema.entries,
   type: literal('user'),
   role: literal('user'),
   text: string(),
-  attachments: optional(array(unknown())),
+  attachments: optional(array(userAttachmentSchema)),
   promptPlan: optional(unknown()),
 });
 
@@ -538,8 +560,9 @@ export type DirectoryListingResponse = InferOutput<typeof directoryListingRespon
 export const uploadedAttachmentSchema = object({
   attachmentId: pipe(string(), trim()),
   name: pipe(string(), trim()),
-  mediaType: pipe(string(), trim()),
+  mediaType: mediaTypeSchema,
   sizeInBytes: number(),
+  source: optional(imageBlockSourceSchema),
 });
 
 export type UploadedAttachment = InferOutput<typeof uploadedAttachmentSchema>;

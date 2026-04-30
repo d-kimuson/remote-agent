@@ -128,10 +128,8 @@ describe('chat-state.pure', () => {
     ).toEqual(['draft']);
   });
 
-  test('buildPromptText trims prompt and appends attachments', () => {
-    expect(buildPromptText('  hello  ', ['a.ts', 'b.ts'])).toBe(
-      'hello\n\nAttached files:\n- a.ts\n- b.ts',
-    );
+  test('buildPromptText trims prompt without embedding attachments', () => {
+    expect(buildPromptText('  hello  ', ['a.ts', 'b.ts'])).toBe('hello');
     expect(buildPromptText('   ', ['a.ts'])).toBe('');
   });
 

@@ -47,16 +47,27 @@ const sessionStatusLabels = {
 } as const satisfies Record<SessionStatus, string>;
 
 const sessionStatusBadgeClassNames = {
-  paused: 'border-yellow-500/30 bg-yellow-500/10 text-yellow-700 dark:text-yellow-300',
-  running: 'border-green-500/30 bg-green-500/10 text-green-700 dark:text-green-300',
-  inactive: 'border-gray-400/40 bg-gray-500/10 text-gray-600 dark:text-gray-300',
+  paused: 'border-amber-500/30 bg-amber-500/12 text-amber-800 dark:text-amber-200',
+  running: 'border-emerald-500/30 bg-emerald-500/12 text-emerald-800 dark:text-emerald-200',
+  inactive: 'border-slate-400/40 bg-slate-500/10 text-slate-700 dark:text-slate-200',
 } as const satisfies Record<SessionStatus, string>;
 
 const sessionStatusRowClassNames = {
-  paused: 'border-l-yellow-500/60 hover:border-l-yellow-500/60',
-  running: 'border-l-green-500/60 hover:border-l-green-500/60',
-  inactive: 'border-l-gray-400/70 hover:border-l-gray-400/70',
+  paused:
+    'border-amber-500/25 bg-amber-500/[0.04] hover:border-amber-500/40 hover:bg-amber-500/[0.08]',
+  running:
+    'border-emerald-500/25 bg-emerald-500/[0.04] hover:border-emerald-500/40 hover:bg-emerald-500/[0.08]',
+  inactive:
+    'border-slate-400/35 bg-slate-500/[0.03] hover:border-slate-400/50 hover:bg-slate-500/[0.07] dark:border-slate-500/50 dark:bg-slate-500/[0.08]',
 } as const satisfies Record<SessionStatus, string>;
+
+const sessionStatusAccentClassNames = {
+  paused: 'bg-amber-500',
+  running: 'bg-emerald-500',
+  inactive: 'bg-slate-400 dark:bg-slate-300',
+} as const satisfies Record<SessionStatus, string>;
+
+const loadableProviderPresetIds = new Set(['codex', 'claude-code', 'pi-coding-agent']);
 
 export const sessionStatusLabel = (status: SessionStatus): string => sessionStatusLabels[status];
 
@@ -65,6 +76,12 @@ export const sessionStatusBadgeClassName = (status: SessionStatus): string =>
 
 export const sessionStatusRowClassName = (status: SessionStatus): string =>
   sessionStatusRowClassNames[status];
+
+export const sessionStatusAccentClassName = (status: SessionStatus): string =>
+  sessionStatusAccentClassNames[status];
+
+export const isLoadableProviderPresetId = (presetId: string): boolean =>
+  loadableProviderPresetIds.has(presetId);
 
 export const filterSessionsByQuery = ({
   query,

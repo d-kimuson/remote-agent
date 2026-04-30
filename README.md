@@ -1,7 +1,7 @@
 # remote-agent
 
 Run ACP-compatible coding agents from a browser, while the actual agent process stays on your
-own machine.
+own machine or server.
 
 `remote-agent` is a small web UI and Node BFF for people who want to keep Codex, Claude Code,
 Copilot CLI, Cursor Agent, or pi behind a personal server or VPN, then drive coding sessions from
@@ -74,7 +74,7 @@ node dist/cli.mjs
 ## Basic Usage
 
 1. Start `remote-agent` on the machine that has your projects and provider credentials.
-2. Open the web UI.
+2. Open the web UI in your browser.
 3. In the initial setup dialog, enable at least one Provider.
 4. Create a Project by selecting a working directory on the server.
 5. Choose a Provider, Model, and Mode.

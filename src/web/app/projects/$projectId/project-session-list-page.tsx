@@ -1,23 +1,16 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { Link, useNavigate } from '@tanstack/react-router';
-import { History, MessageSquareDashed, Plus, Search } from 'lucide-react';
+import { useSuspenseQuery } from '@tanstack/react-query';
+import { Link } from '@tanstack/react-router';
+import { MessageSquareDashed, Plus, Search } from 'lucide-react';
 import { useMemo, useState, type FC } from 'react';
 
-import type { SessionSummary, SessionsResponse } from '../../../../shared/acp.ts';
+import type { SessionSummary } from '../../../../shared/acp.ts';
 
 import { Badge } from '../../../components/ui/badge.tsx';
-import { Button, buttonVariants } from '../../../components/ui/button.tsx';
+import { buttonVariants } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
-import {
-  fetchAgentProviders,
-  fetchProject,
-  fetchResumableSessions,
-  fetchSessions,
-  loadSessionRequest,
-} from '../../../lib/api/acp.ts';
+import { fetchAgentProviders, fetchProject, fetchSessions } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
 import { resolveSessionListTitle } from './chat-state.pure.ts';
-import { LoadSessionDialog } from './load-session-dialog.tsx';
 import { ProjectMenuContent } from './project-menu-content.tsx';
 import {
   filterSessionsByQuery,
@@ -28,8 +21,7 @@ import {
   sortSessionsNewestFirst,
 } from './project-session-list.pure.ts';
 import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from './queries.ts';
-
-const loadableProviderIds = new Set(['codex', 'claude-code', 'pi-coding-agent']);
+import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
 
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat('ja-JP', {
@@ -49,7 +41,7 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
   return (
     <Link
       className={cn(
-        'app-card-hover flex items-start gap-3 rounded-lg border border-l-4 bg-card/80 px-4 py-3 transition-colors hover:border-foreground/15',
+        'app-card-hover flex items-start gap-3 rounded-lg border bg-card/80 px-4 py-3 transition-colors hover:border-foreground/15',
         sessionStatusRowClassName(session.status),
       )}
       params={{ projectId }}
@@ -74,8 +66,6 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
 };
 
 export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
-  const queryClient = useQueryClient();
-  const navigate = useNavigate({ from: '/projects/$projectId/sessions' });
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
@@ -89,16 +79,6 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
     queryFn: fetchSessions,
   });
   const [query, setQuery] = useState('');
-  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
-  const selectablePresets = useMemo(
-    () =>
-      providerData.providers
-        .filter((entry) => entry.enabled && loadableProviderIds.has(entry.preset.id))
-        .map((entry) => entry.preset),
-    [providerData.providers],
-  );
-  const [loadPresetId, setLoadPresetId] = useState<string | null>(null);
-  const [isLoadSessionDialogOpen, setIsLoadSessionDialogOpen] = useState(false);
   const projectSessions = useMemo(
     () => sessionsData.sessions.filter((session) => session.projectId === projectId),
     [projectId, sessionsData.sessions],
@@ -111,97 +91,18 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
       }),
     [projectSessions, query],
   );
-
-  const loadSessionMutation = useMutation({
-    mutationFn: loadSessionRequest,
+  const { canLoadSessions, dialog, openLoadSessionDialog } = useLoadSessionDialog({
+    projectId,
+    providers: providerData.providers,
+    workingDirectory: projectData.project.workingDirectory,
   });
-  const discoverResumableSessionsMutation = useMutation({
-    mutationFn: fetchResumableSessions,
-  });
-
-  const setSessionsData = (updater: (sessions: readonly SessionSummary[]) => SessionSummary[]) => {
-    queryClient.setQueryData<SessionsResponse>(sessionsQueryKey, (current) =>
-      current === undefined
-        ? current
-        : {
-            sessions: updater(current.sessions),
-          },
-    );
-  };
-
-  const upsertSessionInCache = (session: SessionSummary) => {
-    setSessionsData((currentSessions) =>
-      currentSessions.some((entry) => entry.sessionId === session.sessionId)
-        ? currentSessions.map((entry) => (entry.sessionId === session.sessionId ? session : entry))
-        : [session, ...currentSessions],
-    );
-  };
-
-  const handleOpenLoadSessionDialog = () => {
-    setLoadPresetId(null);
-    discoverResumableSessionsMutation.reset();
-    setIsLoadSessionDialogOpen(true);
-  };
-
-  const handleSelectLoadProvider = (presetId: string) => {
-    setLoadPresetId(presetId);
-    discoverResumableSessionsMutation.reset();
-    discoverResumableSessionsMutation.mutate({
-      projectId,
-      presetId,
-      cwd: projectData.project.workingDirectory,
-    });
-  };
-
-  const handleLoadExistingSessions = async (
-    selectedSessions: readonly {
-      readonly sessionId: string;
-      readonly title: string | null | undefined;
-      readonly updatedAt: string | null | undefined;
-    }[],
-  ) => {
-    if (loadPresetId === null || selectedSessions.length === 0) {
-      return;
-    }
-
-    setIsLoadingSessions(true);
-    try {
-      for (const session of selectedSessions) {
-        const response = await loadSessionMutation.mutateAsync({
-          projectId,
-          presetId: loadPresetId,
-          sessionId: session.sessionId,
-          cwd: projectData.project.workingDirectory,
-          title: session.title ?? null,
-          updatedAt: session.updatedAt ?? null,
-        });
-
-        upsertSessionInCache({
-          ...response.session,
-          sessionId: session.sessionId,
-        });
-      }
-
-      const firstSession = selectedSessions[0];
-      setIsLoadSessionDialogOpen(false);
-      if (firstSession !== undefined) {
-        void navigate({
-          to: '/projects/$projectId',
-          params: { projectId },
-          search: { 'session-id': firstSession.sessionId },
-          replace: true,
-        });
-      }
-      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
-    } finally {
-      setIsLoadingSessions(false);
-    }
-  };
 
   return (
     <div className="app-page">
       <ProjectMenuContent
+        canLoadSessions={canLoadSessions}
         currentSessionId={null}
+        onOpenLoadSessions={openLoadSessionDialog}
         projectId={projectId}
         sessionCount={projectSessions.length}
         sessions={projectSessions}
@@ -235,16 +136,6 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
                 <Plus className="size-4" />
                 新規セッション
               </Link>
-              <Button
-                className="w-full sm:w-72 sm:min-w-72"
-                disabled={selectablePresets.length === 0}
-                onClick={handleOpenLoadSessionDialog}
-                type="button"
-                variant="outline"
-              >
-                <History className="size-4" />
-                既存セッションを読み込む
-              </Button>
             </div>
           </div>
         </header>
@@ -262,36 +153,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
         </main>
       </div>
 
-      {isLoadSessionDialogOpen ? (
-        <LoadSessionDialog
-          capability={
-            loadPresetId === null
-              ? null
-              : (discoverResumableSessionsMutation.data?.capability ?? null)
-          }
-          error={
-            discoverResumableSessionsMutation.error instanceof Error
-              ? discoverResumableSessionsMutation.error
-              : null
-          }
-          isLoading={discoverResumableSessionsMutation.isPending}
-          isLoadingSession={loadSessionMutation.isPending || isLoadingSessions}
-          onClose={() => {
-            setIsLoadSessionDialogOpen(false);
-            setLoadPresetId(null);
-            discoverResumableSessionsMutation.reset();
-          }}
-          onLoadSessions={(sessions) => {
-            void handleLoadExistingSessions(sessions);
-          }}
-          onSelectProvider={handleSelectLoadProvider}
-          providerPresets={selectablePresets}
-          selectedProviderId={loadPresetId}
-          sessions={
-            loadPresetId === null ? [] : (discoverResumableSessionsMutation.data?.sessions ?? [])
-          }
-        />
-      ) : null}
+      {dialog}
     </div>
   );
 };

@@ -13,6 +13,7 @@ export type AttachmentPromptDelivery = {
   readonly sizeInBytes: number;
   readonly storedPath: string;
   readonly kind: 'image' | 'resource_link_fallback' | 'text_fallback';
+  readonly source?: ResolvedAttachment['source'];
 };
 
 export type AttachmentPromptPlan = {
@@ -89,6 +90,7 @@ export const buildAttachmentPromptPlan = ({
     sizeInBytes: attachment.sizeInBytes,
     storedPath: attachment.storedPath,
     kind: attachmentDeliveryKind(attachment, capabilities),
+    ...(attachment.source === undefined ? {} : { source: attachment.source }),
   })),
 });
 

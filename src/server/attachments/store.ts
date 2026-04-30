@@ -11,6 +11,7 @@ export type ResolvedAttachment = UploadedAttachment & {
 
 type AttachmentEntry = ResolvedAttachment & {
   readonly createdAt: string;
+  readonly dataBase64: string;
 };
 
 const attachmentStore = new Map<string, AttachmentEntry>();
@@ -31,11 +32,22 @@ const toStoredFilename = (attachmentId: string, name: string): string => {
 };
 
 const toUploadedAttachment = (entry: AttachmentEntry): UploadedAttachment => {
-  return {
+  const base = {
     attachmentId: entry.attachmentId,
     name: entry.name,
     mediaType: entry.mediaType,
     sizeInBytes: entry.sizeInBytes,
+  };
+  if (!entry.mediaType.startsWith('image/')) {
+    return base;
+  }
+  return {
+    ...base,
+    source: {
+      type: 'base64',
+      media_type: entry.mediaType,
+      data: entry.dataBase64,
+    },
   };
 };
 
@@ -55,8 +67,9 @@ export const ingestAttachments = async (
     const name = normalizeAttachmentName(file.name);
     const mediaType = file.type.trim().length > 0 ? file.type : 'application/octet-stream';
     const storedPath = path.join(uploadsDirectory, toStoredFilename(attachmentId, name));
+    const data = Buffer.from(await file.arrayBuffer());
 
-    await writeFile(storedPath, Buffer.from(await file.arrayBuffer()));
+    await writeFile(storedPath, data);
 
     const entry: AttachmentEntry = {
       attachmentId,
@@ -64,6 +77,7 @@ export const ingestAttachments = async (
       mediaType,
       sizeInBytes: file.size,
       storedPath,
+      dataBase64: data.toString('base64'),
       createdAt: new Date().toISOString(),
     };
 
@@ -85,13 +99,25 @@ export const resolveAttachments = (
       throw new Error(`Unknown attachment: ${attachmentId}`);
     }
 
-    attachments.push({
+    const base = {
       attachmentId: entry.attachmentId,
       name: entry.name,
       mediaType: entry.mediaType,
       sizeInBytes: entry.sizeInBytes,
       storedPath: entry.storedPath,
-    });
+    };
+    attachments.push(
+      entry.mediaType.startsWith('image/')
+        ? {
+            ...base,
+            source: {
+              type: 'base64',
+              media_type: entry.mediaType,
+              data: entry.dataBase64,
+            },
+          }
+        : base,
+    );
   }
 
   return attachments;
@@ -104,5 +130,14 @@ export const listStoredAttachments = (): readonly ResolvedAttachment[] => {
     mediaType: entry.mediaType,
     sizeInBytes: entry.sizeInBytes,
     storedPath: entry.storedPath,
+    ...(entry.mediaType.startsWith('image/')
+      ? {
+          source: {
+            type: 'base64',
+            media_type: entry.mediaType,
+            data: entry.dataBase64,
+          },
+        }
+      : {}),
   }));
 };

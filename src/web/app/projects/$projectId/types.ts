@@ -3,6 +3,7 @@ import type {
   ChatMessageKind,
   PersistedMessageRaw,
   RawEvent,
+  UserAttachment,
 } from '../../../../shared/acp.ts';
 
 export type { ChatMessage } from '../../../../shared/acp.ts';
@@ -13,13 +14,20 @@ export const createChatMessage = (
   role: ChatMessage['role'],
   text: string,
   rawEvents: readonly RawEvent[] = [],
-  options?: { readonly kind?: ChatMessageKind },
+  options?: { readonly kind?: ChatMessageKind; readonly attachments?: readonly UserAttachment[] },
 ): ChatMessage => {
   const t = new Date().toISOString();
   const resolvedKind = options?.kind ?? (role === 'user' ? 'user' : 'legacy_assistant_turn');
   const rawJson: PersistedMessageRaw =
     role === 'user'
-      ? { schemaVersion: 1, type: 'user', role: 'user', text, attachments: [], createdAt: t }
+      ? {
+          schemaVersion: 1,
+          type: 'user',
+          role: 'user',
+          text,
+          attachments: [...(options?.attachments ?? [])],
+          createdAt: t,
+        }
       : resolvedKind === 'legacy_assistant_turn'
         ? {
             schemaVersion: 1,

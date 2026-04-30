@@ -1,7 +1,29 @@
 export const notificationIconPath = '/pwa-192.png';
 export const notificationBadgePath = '/badge-96.png';
+export const systemNotificationPreferenceStorageKey = 'remote-agent:system-notifications';
 
 const notificationBodyLimit = 160;
+
+export type SystemNotificationPreference = 'enabled' | 'disabled';
+
+export const defaultSystemNotificationPreference =
+  'disabled' satisfies SystemNotificationPreference;
+
+export const parseSystemNotificationPreference = (
+  value: string | null,
+): SystemNotificationPreference => {
+  switch (value) {
+    case 'enabled':
+    case 'disabled':
+      return value;
+    case null:
+    default:
+      return defaultSystemNotificationPreference;
+  }
+};
+
+export const isSystemNotificationEnabled = (preference: SystemNotificationPreference): boolean =>
+  preference === 'enabled';
 
 export type AssistantNotificationInput = {
   readonly projectId: string;

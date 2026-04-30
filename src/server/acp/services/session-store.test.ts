@@ -8,6 +8,7 @@ import { afterEach, describe, expect, test } from 'vitest';
 
 import type { AgentPreset } from '../../../shared/acp.ts';
 
+import { ingestAttachments } from '../../attachments/store.ts';
 import { agentProviderCatalogsTable, sessionMessagesTable } from '../../db/schema.ts';
 import { createDatabase, createMemoryDatabase } from '../../db/sqlite.ts';
 import { createSessionStore } from './session-store.ts';
@@ -482,6 +483,83 @@ describe('createSessionStore', () => {
     const restoredMessages = await restoredStore.listMessages('session-msgs');
 
     expect(restoredMessages.map((message) => message.text)).toEqual(['ping', 'pong']);
+  });
+
+  test('persists image attachments on the user message as base64 image blocks', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    let observedPrompt = '';
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-image-attachment',
+            modes: { currentModeId: '', availableModes: [] },
+            models: { currentModelId: '', availableModels: [] },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: (_provider, prompt) => {
+        observedPrompt = prompt;
+        return Promise.resolve({
+          text: 'ok',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        });
+      },
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    const [attachment] = await ingestAttachments([
+      new File([new Uint8Array([1, 2, 3])], 'screen.png', { type: 'image/png' }),
+    ]);
+    if (attachment === undefined) {
+      throw new Error('expected uploaded attachment');
+    }
+
+    await store.sendPrompt('session-image-attachment', {
+      prompt: 'describe this',
+      attachmentIds: [attachment.attachmentId],
+    });
+
+    const message = (await store.listMessages('session-image-attachment')).find(
+      (entry) => entry.role === 'user',
+    );
+
+    expect(observedPrompt).toContain('Attached files:');
+    expect(message?.text).toBe('describe this');
+    if (message?.rawJson.type !== 'user') {
+      throw new Error('expected user message');
+    }
+    expect(message.rawJson.attachments).toEqual([
+      {
+        type: 'image',
+        source: {
+          type: 'base64',
+          media_type: 'image/png',
+          data: Buffer.from([1, 2, 3]).toString('base64'),
+        },
+        attachmentId: attachment.attachmentId,
+        name: 'screen.png',
+        sizeInBytes: 3,
+      },
+    ]);
   });
 
   test('marks active session as running only while a prompt response is pending', async () => {

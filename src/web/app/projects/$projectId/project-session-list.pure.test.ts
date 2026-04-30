@@ -4,6 +4,8 @@ import type { SessionSummary } from '../../../../shared/acp.ts';
 
 import {
   filterSessionsByQuery,
+  isLoadableProviderPresetId,
+  sessionStatusAccentClassName,
   sessionStatusBadgeClassName,
   sessionStatusLabel,
   sessionStatusRowClassName,
@@ -122,11 +124,21 @@ describe('project-session-list.pure', () => {
     expect(sessionStatusLabel('running')).toBe('Running');
     expect(sessionStatusLabel('inactive')).toBe('Inactive');
 
-    expect(sessionStatusBadgeClassName('paused')).toContain('yellow');
-    expect(sessionStatusBadgeClassName('running')).toContain('green');
-    expect(sessionStatusBadgeClassName('inactive')).toContain('gray');
-    expect(sessionStatusRowClassName('paused')).toContain('yellow');
-    expect(sessionStatusRowClassName('running')).toContain('green');
-    expect(sessionStatusRowClassName('inactive')).toContain('gray');
+    expect(sessionStatusBadgeClassName('paused')).toContain('amber');
+    expect(sessionStatusBadgeClassName('running')).toContain('emerald');
+    expect(sessionStatusBadgeClassName('inactive')).toContain('slate');
+    expect(sessionStatusRowClassName('paused')).toContain('amber');
+    expect(sessionStatusRowClassName('running')).toContain('emerald');
+    expect(sessionStatusRowClassName('inactive')).toContain('slate');
+    expect(sessionStatusAccentClassName('paused')).toContain('amber');
+    expect(sessionStatusAccentClassName('running')).toContain('emerald');
+    expect(sessionStatusAccentClassName('inactive')).toContain('slate');
+  });
+
+  test('recognizes provider ids that support loading existing sessions', () => {
+    expect(isLoadableProviderPresetId('codex')).toBe(true);
+    expect(isLoadableProviderPresetId('claude-code')).toBe(true);
+    expect(isLoadableProviderPresetId('pi-coding-agent')).toBe(true);
+    expect(isLoadableProviderPresetId('copilot-cli')).toBe(false);
   });
 });

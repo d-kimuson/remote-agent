@@ -43,6 +43,7 @@
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.30.0",
     "@zed-industries/codex-acp": "0.11.1",
+    "nanoid": "5.1.9",
     "pi-acp": "0.0.26"
   },
   "devDependencies": {

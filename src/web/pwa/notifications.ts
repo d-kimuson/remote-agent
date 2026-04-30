@@ -1,9 +1,14 @@
 import {
   createAssistantNotificationPayload,
   createSessionPausedNotificationPayload,
+  defaultSystemNotificationPreference,
+  isSystemNotificationEnabled,
+  parseSystemNotificationPreference,
+  systemNotificationPreferenceStorageKey,
   type AssistantNotificationInput,
   type AssistantNotificationPayload,
   type SessionPausedNotificationInput,
+  type SystemNotificationPreference,
 } from './notifications.pure.ts';
 
 export type NotificationPermissionState = NotificationPermission | 'unsupported';
@@ -30,8 +35,39 @@ export const requestNotificationPermission = async (): Promise<NotificationPermi
   return Notification.requestPermission();
 };
 
+export const readSystemNotificationPreference = (): SystemNotificationPreference => {
+  if (typeof window === 'undefined') {
+    return defaultSystemNotificationPreference;
+  }
+
+  try {
+    return parseSystemNotificationPreference(
+      window.localStorage.getItem(systemNotificationPreferenceStorageKey),
+    );
+  } catch {
+    return defaultSystemNotificationPreference;
+  }
+};
+
+export const persistSystemNotificationPreference = (
+  preference: SystemNotificationPreference,
+): void => {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(systemNotificationPreferenceStorageKey, preference);
+  } catch {
+    // Ignore storage failures so the current tab can keep working.
+  }
+};
+
+export const isSystemNotificationEnabledInApp = (): boolean =>
+  isSystemNotificationEnabled(readSystemNotificationPreference());
+
 const showNotification = async (payload: AssistantNotificationPayload): Promise<boolean> => {
-  if (getNotificationPermissionState() !== 'granted') {
+  if (getNotificationPermissionState() !== 'granted' || !isSystemNotificationEnabledInApp()) {
     return false;
   }
 

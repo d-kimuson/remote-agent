@@ -1,12 +1,13 @@
 import type { FC } from 'react';
 
 import { Link } from '@tanstack/react-router';
-import { CalendarClock, FolderKanban, MessageSquare, Plus, Settings } from 'lucide-react';
+import { CalendarClock, FolderKanban, History, MessageSquare, Plus, Settings } from 'lucide-react';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
 
 import { AppMenuPortal, useCloseAppMenu } from '../../../components/app-menu.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
+import { Button } from '../../../components/ui/button.tsx';
 import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 import { cn } from '../../../lib/utils.ts';
 import { resolveSessionListTitle } from './chat-state.pure.ts';
@@ -30,11 +31,20 @@ const formatDateTime = (iso: string): string =>
   }).format(new Date(iso));
 
 export const ProjectMenuContent: FC<{
+  readonly canLoadSessions: boolean;
   readonly projectId: string;
   readonly currentSessionId: string | null;
+  readonly onOpenLoadSessions: () => void;
   readonly sessions: readonly SessionSummary[];
   readonly sessionCount: number;
-}> = ({ currentSessionId, projectId, sessions, sessionCount }) => {
+}> = ({
+  canLoadSessions,
+  currentSessionId,
+  onOpenLoadSessions,
+  projectId,
+  sessions,
+  sessionCount,
+}) => {
   const closeAppMenu = useCloseAppMenu();
   const sortedSessions = sortSessionsNewestFirst(sessions);
 
@@ -78,17 +88,33 @@ export const ProjectMenuContent: FC<{
             <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">
               RECENT SESSIONS
             </p>
-            <Link
-              aria-label="新規セッション"
-              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              onClick={closeAppMenu}
-              params={{ projectId }}
-              search={{}}
-              title="新規セッション"
-              to="/projects/$projectId"
-            >
-              <Plus className="size-4" />
-            </Link>
+            <div className="flex items-center gap-1">
+              <Button
+                aria-label="既存セッションを読み込む"
+                disabled={!canLoadSessions}
+                onClick={() => {
+                  closeAppMenu();
+                  onOpenLoadSessions();
+                }}
+                size="icon-sm"
+                title="既存セッションを読み込む"
+                type="button"
+                variant="ghost"
+              >
+                <History className="size-4" />
+              </Button>
+              <Link
+                aria-label="新規セッション"
+                className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                onClick={closeAppMenu}
+                params={{ projectId }}
+                search={{}}
+                title="新規セッション"
+                to="/projects/$projectId"
+              >
+                <Plus className="size-4" />
+              </Link>
+            </div>
           </div>
           <ScrollArea className="min-h-0 flex-1">
             <div className="space-y-2 pr-2">

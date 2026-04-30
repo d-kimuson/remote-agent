@@ -48,6 +48,7 @@ import {
   type SessionsResponse,
   type SlashCommand,
   type UploadedAttachment,
+  type UserAttachment,
 } from '../../../../shared/acp.ts';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -305,6 +306,62 @@ const finalSpeechTextFromEvent = (event: SpeechRecognitionEvent): string =>
     .filter((text) => text.length > 0)
     .join(' ');
 
+const dataUrlFromImageAttachment = (attachment: UserAttachment): string =>
+  `data:${attachment.source.media_type};base64,${attachment.source.data}`;
+
+const userAttachmentsFromUploaded = (
+  attachments: readonly UploadedAttachment[],
+): readonly UserAttachment[] => {
+  return attachments.reduce<readonly UserAttachment[]>((items, attachment) => {
+    if (attachment.source === undefined) {
+      return items;
+    }
+
+    return [
+      ...items,
+      {
+        type: 'image',
+        source: attachment.source,
+        attachmentId: attachment.attachmentId,
+        name: attachment.name,
+        sizeInBytes: attachment.sizeInBytes,
+      },
+    ];
+  }, []);
+};
+
+const UserAttachmentPreview: FC<{ readonly attachments: readonly UserAttachment[] }> = ({
+  attachments,
+}) => {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 grid grid-cols-[repeat(auto-fit,minmax(9rem,14rem))] gap-2">
+      {attachments.map((attachment, index) => {
+        const key =
+          attachment.attachmentId ?? `${attachment.source.media_type}-${index.toString()}`;
+        return (
+          <figure className="min-w-0 overflow-hidden rounded-lg border bg-background" key={key}>
+            <img
+              alt={attachment.name ?? 'Attached image'}
+              className="aspect-video w-full bg-muted object-cover"
+              loading="lazy"
+              src={dataUrlFromImageAttachment(attachment)}
+            />
+            {attachment.name === undefined ? null : (
+              <figcaption className="truncate px-2 py-1.5 text-xs text-muted-foreground">
+                {attachment.name}
+              </figcaption>
+            )}
+          </figure>
+        );
+      })}
+    </div>
+  );
+};
+
 const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMessage }> = ({
   cwd,
   message,
@@ -322,10 +379,13 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
     );
   }
   if (message.role === 'user') {
+    const text = message.rawJson.type === 'user' ? message.rawJson.text : message.text;
+    const attachments = message.rawJson.type === 'user' ? (message.rawJson.attachments ?? []) : [];
     return (
-      <ChatMarkdown>
-        {message.rawJson.type === 'user' ? message.rawJson.text : message.text}
-      </ChatMarkdown>
+      <div>
+        {text.trim().length === 0 ? null : <ChatMarkdown>{text}</ChatMarkdown>}
+        <UserAttachmentPreview attachments={attachments} />
+      </div>
     );
   }
   const k: ChatMessageKind = message.kind ?? 'legacy_assistant_turn';
@@ -1924,9 +1984,12 @@ export const ProjectChatPage: FC<{
     }
 
     const previousPrompt = promptValue;
-    const userMessage = createChatMessage('user', nextPrompt, [], { kind: 'user' });
-    const initialTranscriptKey = activeTranscriptKey;
     const requestAttachmentIds = attachedFiles.map((attachment) => attachment.attachmentId);
+    const userMessage = createChatMessage('user', nextPrompt, [], {
+      kind: 'user',
+      attachments: userAttachmentsFromUploaded(attachedFiles),
+    });
+    const initialTranscriptKey = activeTranscriptKey;
     let requestAwaitingTranscriptKeys: readonly string[] = [initialTranscriptKey];
 
     shouldStickToBottomRef.current = true;

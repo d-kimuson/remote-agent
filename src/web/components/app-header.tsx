@@ -96,7 +96,7 @@ const NotificationButton: FC = () => {
                 No notifications.
               </div>
             ) : null}
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {visibleNotifications.map((notification) => {
                 const isUnread = notification.readAt === null;
                 return (
@@ -111,7 +111,7 @@ const NotificationButton: FC = () => {
                   >
                     <article
                       className={[
-                        'rounded-md border px-3 py-2.5 transition-colors hover:bg-muted/55',
+                        'overflow-hidden rounded-xl border px-3 py-3 shadow-sm transition-colors hover:bg-muted/55',
                         isUnread
                           ? 'border-primary/30 bg-primary/[0.08]'
                           : 'border-border bg-background/70',

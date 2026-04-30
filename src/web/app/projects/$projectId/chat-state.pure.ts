@@ -128,18 +128,12 @@ export const resolveSessionListTitle = (
   return session.presetId ?? 'Session';
 };
 
-export const buildPromptText = (prompt: string, attachedFiles: readonly string[]): string => {
+export const buildPromptText = (prompt: string, _attachedFiles: readonly string[]): string => {
   const trimmedPrompt = prompt.trim();
   if (trimmedPrompt.length === 0) {
     return '';
   }
-
-  const attachmentBlock =
-    attachedFiles.length === 0
-      ? ''
-      : `\n\nAttached files:\n${attachedFiles.map((path) => `- ${path}`).join('\n')}`;
-
-  return `${trimmedPrompt}${attachmentBlock}`;
+  return trimmedPrompt;
 };
 
 export const attachmentContentBlockLabel = (attachment: UploadedAttachment): string =>
