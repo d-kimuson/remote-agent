@@ -104,11 +104,11 @@ export const ProjectMenuContent: FC<{
                   <Link
                     aria-current={isCurrentSession ? 'page' : undefined}
                     className={cn(
-                      'block rounded-lg border border-l-4 border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70',
-                      isCurrentSession
-                        ? 'border-sidebar-primary bg-sidebar-primary/15 ring-1 ring-sidebar-primary/35'
-                        : '',
+                      'block rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70',
                       sessionStatusRowClassName(session.status),
+                      isCurrentSession
+                        ? 'border-sidebar-primary bg-sidebar-primary/18 shadow-sm ring-2 ring-sidebar-primary/45 hover:border-sidebar-primary hover:bg-sidebar-primary/22'
+                        : '',
                     )}
                     key={session.sessionId}
                     onClick={closeAppMenu}
@@ -120,9 +120,16 @@ export const ProjectMenuContent: FC<{
                       <p className="min-w-0 flex-1 truncate text-sm font-medium">
                         {resolveSessionListTitle(session, null, { maxChars: 72 })}
                       </p>
-                      <Badge className="shrink-0" variant="outline">
-                        {session.presetId ?? 'custom'}
-                      </Badge>
+                      <div className="flex shrink-0 items-center gap-1">
+                        {isCurrentSession ? (
+                          <Badge className="border-sidebar-primary/40 bg-sidebar-primary/15 text-sidebar-primary">
+                            Viewing
+                          </Badge>
+                        ) : null}
+                        <Badge className="shrink-0" variant="outline">
+                          {session.presetId ?? 'custom'}
+                        </Badge>
+                      </div>
                     </div>
                     <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">
                       {session.cwd}

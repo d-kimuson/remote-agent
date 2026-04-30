@@ -51,10 +51,18 @@ export const resolveAcpToolCardTitle = (ev: {
   readonly error: Extract<RawEvent, { type: 'toolError' }> | null;
 }): string => {
   const outer = ev.call?.toolName ?? ev.result?.toolName ?? ev.error?.toolName ?? 'tool';
-  if (isAcpProviderDynamicToolName(outer) && ev.call !== null) {
-    const inner = tryProviderAgentInputToolName(ev.call.inputText);
-    if (inner !== null) {
-      return inner;
+  if (isAcpProviderDynamicToolName(outer)) {
+    const candidates = [
+      ev.call?.inputText,
+      ev.call?.rawText,
+      ev.result?.rawText,
+      ev.error?.rawText,
+    ].filter((text) => text !== undefined);
+    for (const candidate of candidates) {
+      const inner = tryProviderAgentInputToolName(candidate);
+      if (inner !== null) {
+        return inner;
+      }
     }
   }
   return outer;

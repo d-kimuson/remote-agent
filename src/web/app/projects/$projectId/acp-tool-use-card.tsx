@@ -21,6 +21,7 @@ import { resolveAcpToolCardTitle } from './acp-tool-display-title.pure.ts';
 import { resolveAcpToolVisualView, type AcpToolVisualView } from './acp-tool-visual-view.pure.ts';
 import { toolBlockClipboardText } from './chat-block-copy.pure.ts';
 import { CopyBlockButton } from './copy-block-button.tsx';
+import { DiffViewer } from './diff-viewer.tsx';
 
 const MAX_LEN = 32_000;
 const take = (s: string) => (s.length > MAX_LEN ? `${s.slice(0, MAX_LEN)}…` : s);
@@ -197,6 +198,16 @@ const TodosVisual: FC<{
   );
 };
 
+const DiffVisual: FC<{
+  readonly visual: Extract<AcpToolVisualView, { kind: 'diff' }>;
+}> = ({ visual }) => (
+  <div className="space-y-2">
+    {visual.files.map((file) => (
+      <DiffViewer fileDiff={file} key={file.filename} />
+    ))}
+  </div>
+);
+
 const AcpToolVisualViewBlock: FC<{
   readonly visual: AcpToolVisualView;
 }> = ({ visual }) => {
@@ -208,6 +219,9 @@ const AcpToolVisualViewBlock: FC<{
   }
   if (visual.kind === 'search-results') {
     return <SearchResultsVisual visual={visual} />;
+  }
+  if (visual.kind === 'diff') {
+    return <DiffVisual visual={visual} />;
   }
   return <TodosVisual visual={visual} />;
 };

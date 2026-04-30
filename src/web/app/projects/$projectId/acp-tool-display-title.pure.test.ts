@@ -50,6 +50,32 @@ describe('resolveAcpToolCardTitle', () => {
     ).toBe('pwd');
   });
 
+  test('result-only dynamic ツール名の raw part 形式では input.toolName を出す', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: null,
+        result: {
+          type: 'toolResult',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          outputText: 'README.md\n',
+          rawText: JSON.stringify({
+            type: 'tool-result',
+            toolCallId: 'toolu_1',
+            toolName: 'acp.acp_provider_agent_dynamic_tool',
+            input: {
+              toolCallId: 'toolu_1',
+              toolName: 'Find `*.md`',
+              args: { pattern: '*.md' },
+            },
+            output: 'README.md\n',
+          }),
+        },
+        error: null,
+      }),
+    ).toBe('Find `*.md`');
+  });
+
   test('内訳が取れないときは外側の toolName', () => {
     expect(
       resolveAcpToolCardTitle({
