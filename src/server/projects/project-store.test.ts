@@ -129,6 +129,30 @@ describe('createProjectStore', () => {
     ).toEqual(expect.any(String));
   });
 
+  test('stores project worktree setup script without trimming shell content', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
+    const projectDirectory = path.join(sandboxDirectory, 'workspace-setup-script');
+    await mkdir(projectDirectory, { recursive: true });
+
+    const database = createDatabase(path.join(sandboxDirectory, 'remote-agent.sqlite'));
+    disposableClients.push(database.client);
+
+    const store = createProjectStore(database);
+    const project = await store.createProject({
+      name: 'Workspace Setup Script',
+      workingDirectory: projectDirectory,
+    });
+    const script = '  echo setup > .remote-agent-setup\n';
+
+    const settings = await store.updateProjectSettings(project.id, {
+      worktreeSetupScript: script,
+    });
+    const restoredProject = await store.getProject(project.id);
+
+    expect(settings.worktreeSetupScript).toBe(script);
+    expect(restoredProject.worktreeSetupScript).toBe(script);
+  });
+
   test('stores last-used mode preferences per project and preset', async () => {
     const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const projectDirectory = await mkdtemp(path.join(sandboxDirectory, 'workspace-'));

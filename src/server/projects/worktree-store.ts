@@ -29,6 +29,7 @@ type IncludeParseResult =
     };
 
 type GitRunner = (cwd: string, args: readonly string[]) => Promise<void>;
+type SetupScriptRunner = (cwd: string, script: string) => Promise<void>;
 
 const hasParentTraversal = (value: string): boolean => {
   return value.split(/[\\/]+/).includes('..');
@@ -129,6 +130,29 @@ const runGit: GitRunner = async (cwd, args) => {
   });
 };
 
+const runSetupScript: SetupScriptRunner = async (cwd, script) => {
+  if (script.trim().length === 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('/bin/sh', ['-c', script], { cwd, shell: false, stdio: 'pipe' });
+    const stderrChunks: string[] = [];
+
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk.toString('utf8'));
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`worktree setup script failed: ${stderrChunks.join('')}`));
+    });
+  });
+};
+
 const fileExists = async (filePath: string): Promise<boolean> => {
   try {
     await lstat(filePath);
@@ -207,6 +231,7 @@ export const createWorktreeForProject = async (
   project: Project,
   request: CreateProjectWorktreeRequest,
   gitRunner: GitRunner = runGit,
+  setupScriptRunner: SetupScriptRunner = runSetupScript,
 ): Promise<ProjectWorktree> => {
   const nameResult = validateWorktreeName(request.name);
   if (nameResult.kind === 'error') {
@@ -248,6 +273,8 @@ export const createWorktreeForProject = async (
       path.join(worktreeDirectory, includePath),
     );
   }
+
+  await setupScriptRunner(worktreeDirectory, project.worktreeSetupScript ?? '');
 
   return parse(projectWorktreeSchema, {
     projectId: project.id,

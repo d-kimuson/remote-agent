@@ -64,6 +64,7 @@ import {
   type UpdateCustomAgentProviderRequest,
   type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
+  type UpdateProjectSettingsRequest,
   type UpdateRoutineRequest,
   updateCustomAgentProviderRequestSchema,
 } from '../../../shared/acp.ts';
@@ -107,6 +108,18 @@ export const fetchProject = async (projectId: string): Promise<ProjectResponse> 
 export const fetchProjectSettings = async (projectId: string): Promise<ProjectSettingsResponse> => {
   const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
     method: 'GET',
+  });
+  return parse(projectSettingsResponseSchema, await response.json());
+};
+
+export const updateProjectSettingsRequest = async (
+  projectId: string,
+  request: UpdateProjectSettingsRequest,
+): Promise<ProjectSettingsResponse> => {
+  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/settings`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
   });
   return parse(projectSettingsResponseSchema, await response.json());
 };

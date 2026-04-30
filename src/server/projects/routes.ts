@@ -9,6 +9,7 @@ import {
   projectSettingsResponseSchema,
   projectWorktreeResponseSchema,
   projectsResponseSchema,
+  updateProjectSettingsRequestSchema,
   updateProjectModelPreferenceRequestSchema,
   updateProjectModePreferenceRequestSchema,
 } from '../../shared/acp.ts';
@@ -18,6 +19,7 @@ import {
   getProject,
   getProjectSettings,
   listProjects,
+  updateProjectSettings,
   updateProjectModelPreference,
   updateProjectModePreference,
 } from './project-store.ts';
@@ -121,6 +123,33 @@ export const projectRoutes = new Hono()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to read project settings';
         return c.json({ error: message }, 404);
+      }
+    },
+  )
+  .patch(
+    '/:projectId/settings',
+    describeRoute({
+      summary: 'Update project settings',
+      responses: {
+        200: jsonResponse('Project settings', projectSettingsResponseSchema),
+        400: jsonResponse('Project settings update error', errorResponseSchema),
+        404: jsonResponse('Project not found', errorResponseSchema),
+      },
+    }),
+    vValidator('json', updateProjectSettingsRequestSchema, validationErrorHook),
+    async (c) => {
+      try {
+        const response = parse(projectSettingsResponseSchema, {
+          settings: await updateProjectSettings(c.req.param('projectId'), c.req.valid('json')),
+        });
+        return c.json(response);
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'failed to update project settings';
+        if (message.startsWith('Unknown project:')) {
+          return c.json({ error: message }, 404);
+        }
+        return c.json({ error: message }, 400);
       }
     },
   )

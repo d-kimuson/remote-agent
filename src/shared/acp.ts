@@ -577,6 +577,7 @@ export const projectSchema = object({
   id: pipe(string(), trim()),
   name: pipe(string(), trim()),
   workingDirectory: pipe(string(), trim()),
+  worktreeSetupScript: optional(string()),
 });
 
 export type Project = InferOutput<typeof projectSchema>;
@@ -648,6 +649,7 @@ export const projectSettingsSchema = object({
   projectId: pipe(string(), trim()),
   modelPreferences: array(projectModelPreferenceSchema),
   modePreferences: array(projectModePreferenceSchema),
+  worktreeSetupScript: string(),
 });
 
 export type ProjectSettings = InferOutput<typeof projectSettingsSchema>;
@@ -657,6 +659,12 @@ export const projectSettingsResponseSchema = object({
 });
 
 export type ProjectSettingsResponse = InferOutput<typeof projectSettingsResponseSchema>;
+
+export const updateProjectSettingsRequestSchema = object({
+  worktreeSetupScript: string(),
+});
+
+export type UpdateProjectSettingsRequest = InferOutput<typeof updateProjectSettingsRequestSchema>;
 
 export const updateProjectModelPreferenceRequestSchema = object({
   presetId: pipe(string(), trim()),

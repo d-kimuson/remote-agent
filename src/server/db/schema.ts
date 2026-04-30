@@ -12,6 +12,7 @@ export const projectsTable = sqliteTable(
     id: text('id').primaryKey(),
     name: text('name').notNull(),
     workingDirectory: text('working_directory').notNull().unique(),
+    worktreeSetupScript: text('worktree_setup_script').notNull().default(''),
     createdAt: text('created_at').notNull(),
   },
   (table) => [index('idx_projects_created_at').on(table.createdAt)],

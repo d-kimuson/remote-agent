@@ -12,6 +12,7 @@ import {
   type ProjectModePreference,
   type ProjectModelPreference,
   type ProjectSettings,
+  type UpdateProjectSettingsRequest,
   type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
 } from '../../shared/acp.ts';
@@ -62,6 +63,7 @@ const mapProjectRecord = (record: typeof projectsTable.$inferSelect): Project =>
     id: record.id,
     name: record.name,
     workingDirectory: record.workingDirectory,
+    worktreeSetupScript: record.worktreeSetupScript,
   });
 };
 
@@ -122,12 +124,14 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
       id: uniqueProjectId(projects, request.name),
       name: request.name,
       workingDirectory,
+      worktreeSetupScript: '',
     });
 
     await database.db.insert(projectsTable).values({
       id: nextProject.id,
       name: nextProject.name,
       workingDirectory: nextProject.workingDirectory,
+      worktreeSetupScript: '',
       createdAt: new Date().toISOString(),
     });
 
@@ -135,7 +139,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
   };
 
   const getProjectSettings = async (projectId: string): Promise<ProjectSettings> => {
-    await getProject(projectId);
+    const project = await getProject(projectId);
     const modelRecords = await database.db
       .select()
       .from(projectModelPreferencesTable)
@@ -167,7 +171,23 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
       projectId,
       modelPreferences,
       modePreferences,
+      worktreeSetupScript: project.worktreeSetupScript ?? '',
     });
+  };
+
+  const updateProjectSettings = async (
+    projectId: string,
+    request: UpdateProjectSettingsRequest,
+  ): Promise<ProjectSettings> => {
+    await getProject(projectId);
+    await database.db
+      .update(projectsTable)
+      .set({
+        worktreeSetupScript: request.worktreeSetupScript,
+      })
+      .where(eq(projectsTable.id, projectId));
+
+    return getProjectSettings(projectId);
   };
 
   const updateProjectModelPreference = async (
@@ -296,6 +316,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     getProject,
     createProject,
     getProjectSettings,
+    updateProjectSettings,
     updateProjectModelPreference,
     updateProjectModePreference,
   };
@@ -326,6 +347,13 @@ export const createProject = async (request: CreateProjectRequest): Promise<Proj
 
 export const getProjectSettings = async (projectId: string): Promise<ProjectSettings> => {
   return getProjectStore().getProjectSettings(projectId);
+};
+
+export const updateProjectSettings = async (
+  projectId: string,
+  request: UpdateProjectSettingsRequest,
+): Promise<ProjectSettings> => {
+  return getProjectStore().updateProjectSettings(projectId, request);
 };
 
 export const updateProjectModelPreference = async (

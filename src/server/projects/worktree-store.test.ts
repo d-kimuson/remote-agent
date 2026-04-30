@@ -42,6 +42,7 @@ const createProjectRepo = async (): Promise<Project> => {
     id: 'repo',
     name: 'Repo',
     workingDirectory: repositoryDirectory,
+    worktreeSetupScript: '',
   };
 };
 
@@ -105,6 +106,25 @@ describe('createWorktreeForProject', () => {
     );
     await expect(readFile(path.join(worktree.path, 'config', 'local.json'), 'utf8')).resolves.toBe(
       '{"from":"source"}',
+    );
+  });
+
+  test('runs the project setup script inside the created worktree after include copies', async () => {
+    const project = {
+      ...(await createProjectRepo()),
+      worktreeSetupScript:
+        'test -f .env && printf "%s\\n" "$PWD" > setup-cwd.txt && cat .env > setup-env.txt',
+    } satisfies Project;
+    await writeFile(path.join(project.workingDirectory, '.env'), 'included-env\n');
+    await writeFile(path.join(project.workingDirectory, '.worktreeinclude'), '.env\n');
+
+    const worktree = await createWorktreeForProject(project, { name: 'feature-setup' });
+
+    await expect(readFile(path.join(worktree.path, 'setup-cwd.txt'), 'utf8')).resolves.toBe(
+      `${worktree.path}\n`,
+    );
+    await expect(readFile(path.join(worktree.path, 'setup-env.txt'), 'utf8')).resolves.toBe(
+      'included-env\n',
     );
   });
 });

@@ -227,6 +227,13 @@ const ensureRuntimeSchemaCompatibility = (client: DatabaseSync): void => {
   if (tableExists(client, 'sessions') && !columnExists(client, 'sessions', 'config_options_json')) {
     client.exec("ALTER TABLE sessions ADD COLUMN config_options_json text NOT NULL DEFAULT '[]';");
   }
+
+  if (
+    tableExists(client, 'projects') &&
+    !columnExists(client, 'projects', 'worktree_setup_script')
+  ) {
+    client.exec("ALTER TABLE projects ADD COLUMN worktree_setup_script text NOT NULL DEFAULT '';");
+  }
 };
 
 export const createDatabase = (storagePath: string) => {

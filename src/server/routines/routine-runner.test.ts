@@ -29,6 +29,7 @@ const emptyProjectSettings: ProjectSettings = {
   projectId: 'project-1',
   modelPreferences: [],
   modePreferences: [],
+  worktreeSetupScript: '',
 };
 
 describe('createRoutineRunner', () => {
@@ -135,6 +136,7 @@ describe('createRoutineRunner', () => {
     const settings: ProjectSettings = {
       projectId: 'project-1',
       modelPreferences: [],
+      worktreeSetupScript: '',
       modePreferences: [
         {
           presetId: 'codex',
