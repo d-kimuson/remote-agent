@@ -142,6 +142,15 @@ const changesArgsSchema = object({
   changes: record(string(), fileChangeSchema),
 });
 
+const contentFileChangeSchema = object({
+  type: string(),
+  content: string(),
+});
+
+const contentChangesArgsSchema = object({
+  changes: record(string(), contentFileChangeSchema),
+});
+
 const fileNameDiffSchema = object({
   fileName: string(),
   diff: string(),
@@ -522,7 +531,21 @@ const visualFileRead = ({
     return null;
   }
 
-  return { kind: 'file-read', path, text };
+  return { kind: 'file-read', path, text: normalizeLineNumberedContent(text) };
+};
+
+const numberedContentLinePattern = /^\d+\.\s?/;
+
+const normalizeLineNumberedContent = (text: string): string => {
+  const lines = text.split('\n');
+  const nonEmptyLines = lines.filter((line) => line.trim().length > 0);
+  if (
+    nonEmptyLines.length === 0 ||
+    !nonEmptyLines.every((line) => numberedContentLinePattern.test(line))
+  ) {
+    return text;
+  }
+  return lines.map((line) => line.replace(numberedContentLinePattern, '')).join('\n');
 };
 
 const visualFileFromParsedReadCommand = ({
@@ -639,6 +662,24 @@ const visualDiff = (args: unknown): Extract<AcpToolVisualView, { kind: 'diff' }>
         unifiedDiff: change.unified_diff,
         changeType: change.type,
       }),
+    );
+    return files.length > 0 ? { kind: 'diff', files } : null;
+  }
+
+  const parsedContentChangesArgs = safeParse(contentChangesArgsSchema, args);
+  if (parsedContentChangesArgs.success) {
+    const files = Object.entries(parsedContentChangesArgs.output.changes).map(
+      ([filename, change]) => {
+        const oldString =
+          change.type === 'delete' || change.type === 'remove' ? change.content : '';
+        const newString =
+          change.type === 'delete' || change.type === 'remove' ? '' : change.content;
+        return {
+          ...buildFileDiffFromStrings({ filename, oldString, newString }),
+          isNew: change.type === 'create' || change.type === 'add',
+          isDeleted: change.type === 'delete' || change.type === 'remove',
+        };
+      },
     );
     return files.length > 0 ? { kind: 'diff', files } : null;
   }

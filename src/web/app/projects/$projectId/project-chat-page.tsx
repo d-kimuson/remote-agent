@@ -191,11 +191,48 @@ const formatDateTime = (iso: string): string =>
     minute: '2-digit',
   }).format(new Date(iso));
 
-const formatUsagePercent = ({ size, used }: { readonly used: number; readonly size: number }) => {
+const usagePercentValue = ({ size, used }: { readonly used: number; readonly size: number }) => {
   if (size <= 0) {
-    return 'unknown';
+    return null;
   }
-  return `${String(Math.round((Math.max(0, used) / size) * 100))}%`;
+  return Math.min(100, Math.max(0, Math.round((Math.max(0, used) / size) * 100)));
+};
+
+const UsageProgress: FC<{
+  readonly cost?: { readonly amount: number; readonly currency: string } | null;
+  readonly size: number;
+  readonly used: number;
+}> = ({ cost, size, used }) => {
+  const percent = usagePercentValue({ size, used });
+  const percentLabel = percent === null ? 'unknown' : `${String(percent)}%`;
+  return (
+    <div className="flex min-w-0 items-center gap-2 rounded-md border border-emerald-500/25 bg-emerald-500/5 px-2.5 py-1.5 text-xs">
+      <BarChart3 className="size-3.5 shrink-0 text-emerald-700 dark:text-emerald-300" />
+      <span className="shrink-0 font-medium text-emerald-700 dark:text-emerald-300">Usage</span>
+      <div
+        aria-label={`Context usage ${percentLabel}`}
+        aria-valuemax={100}
+        aria-valuemin={0}
+        aria-valuenow={percent ?? undefined}
+        className="h-1.5 min-w-16 flex-1 overflow-hidden rounded-full bg-emerald-950/10 dark:bg-emerald-50/10"
+        role="progressbar"
+      >
+        <div
+          className="h-full rounded-full bg-emerald-600 transition-[width] dark:bg-emerald-400"
+          style={{ width: `${String(percent ?? 0)}%` }}
+        />
+      </div>
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{percentLabel}</span>
+      <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
+        {used.toLocaleString()} / {size.toLocaleString()}
+      </span>
+      {cost === null || cost === undefined ? null : (
+        <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
+          {cost.amount.toLocaleString()} {cost.currency}
+        </span>
+      )}
+    </div>
+  );
 };
 
 const AcpSessionMetaMessage: FC<{ readonly cwd: string; readonly message: ChatMessage }> = ({
@@ -204,26 +241,7 @@ const AcpSessionMetaMessage: FC<{ readonly cwd: string; readonly message: ChatMe
 }) => {
   const update = acpSessionUpdateFromMessage(message);
   if (update?.sessionUpdate === 'usage_update') {
-    return (
-      <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs">
-        <div className="mb-1 flex items-center gap-1.5 font-medium text-emerald-700 dark:text-emerald-300">
-          <BarChart3 className="size-3.5" />
-          Usage
-        </div>
-        <div className="grid gap-1 text-muted-foreground sm:grid-cols-3">
-          <span>
-            Context: {update.used.toLocaleString()} / {update.size.toLocaleString()}
-          </span>
-          <span>Used: {formatUsagePercent(update)}</span>
-          <span>
-            Cost:{' '}
-            {update.cost === null || update.cost === undefined
-              ? 'unknown'
-              : `${update.cost.amount.toLocaleString()} ${update.cost.currency}`}
-          </span>
-        </div>
-      </div>
-    );
+    return <UsageProgress cost={update.cost} size={update.size} used={update.used} />;
   }
 
   if (update?.sessionUpdate === 'available_commands_update') {
@@ -692,7 +710,11 @@ const PermissionRequestPanel: FC<{
   readonly request: AcpPermissionRequest;
   readonly onResolve: (requestId: string, optionId: string | null) => void;
 }> = ({ disabled, request, onResolve }) => {
-  const visual = permissionRequestToolVisual(request);
+  const visualCandidate = permissionRequestToolVisual(request);
+  const visual =
+    visualCandidate?.kind === 'terminal' && visualCandidate.command.trim().length === 0
+      ? null
+      : visualCandidate;
 
   return (
     <div className={cn('flex w-full min-w-0 flex-col gap-3', CONVERSATION_COLUMN_CLASS)}>
@@ -708,7 +730,12 @@ const PermissionRequestPanel: FC<{
             ) : null}
             {visual !== null ? (
               <div className="mt-3">
-                <AcpToolVisualViewBlock visual={visual} />
+                <AcpToolVisualViewBlock
+                  defaultOpen={visual.kind === 'diff' || visual.kind === 'file-read'}
+                  detailText={request.rawInputText ?? request.title ?? request.toolCallId}
+                  title={request.title ?? request.kind ?? request.toolCallId}
+                  visual={visual}
+                />
               </div>
             ) : request.rawInputText !== null && request.rawInputText !== undefined ? (
               <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap break-words rounded-md border border-border/50 bg-background/70 px-2.5 py-2 text-xs text-muted-foreground">
@@ -764,6 +791,9 @@ const FieldControl: FC<{
 );
 
 const MODEL_SELECT_CONTENT_CLASS = 'w-[min(90vw,32rem)] min-w-[min(90vw,32rem)]';
+const FORM_SELECT_FIELD_CLASS = 'min-w-0 flex-[0_1_auto]';
+const FORM_SELECT_ROW_CLASS = 'inline-flex max-w-full items-center gap-1.5';
+const FORM_SELECT_TRIGGER_CLASS = 'max-w-full min-w-0';
 
 /** useSuspenseQuery 必須のため、下書き時のみマウントしてカタログを state に反映する。 */
 const DraftAgentModelCatalogLoader: FC<{
@@ -2468,16 +2498,20 @@ export const ProjectChatPage: FC<{
                     );
                   })}
 
-                  {activePermissionRequests.map((request) => (
-                    <PermissionRequestPanel
-                      disabled={resolvePermissionMutation.isPending}
-                      key={request.id}
-                      onResolve={(requestId, optionId) => {
-                        void handleResolvePermission(requestId, optionId);
-                      }}
-                      request={request}
-                    />
-                  ))}
+                  {activePermissionRequests.length > 0 ? (
+                    <div className="space-y-1">
+                      {activePermissionRequests.map((request) => (
+                        <PermissionRequestPanel
+                          disabled={resolvePermissionMutation.isPending}
+                          key={request.id}
+                          onResolve={(requestId, optionId) => {
+                            void handleResolvePermission(requestId, optionId);
+                          }}
+                          request={request}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
 
                   {shouldShowThinking ? (
                     <div
@@ -2521,23 +2555,12 @@ export const ProjectChatPage: FC<{
             <div className="bg-transparent px-1 pt-0 pb-0.5 md:px-2 md:pb-1">
               <div className="overflow-visible">
                 {latestUsage === null ? null : (
-                  <div className="mb-1 rounded-md border border-emerald-500/25 bg-emerald-500/5 px-3 py-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground">
-                      <span className="font-medium text-emerald-700 dark:text-emerald-300">
-                        Usage
-                      </span>
-                      <span>
-                        Context: {latestUsage.used.toLocaleString()} /{' '}
-                        {latestUsage.size.toLocaleString()}
-                      </span>
-                      <span>Used: {formatUsagePercent(latestUsage)}</span>
-                      <span>
-                        Cost:{' '}
-                        {latestUsage.cost === null || latestUsage.cost === undefined
-                          ? 'unknown'
-                          : `${latestUsage.cost.amount.toLocaleString()} ${latestUsage.cost.currency}`}
-                      </span>
-                    </div>
+                  <div className="mb-1">
+                    <UsageProgress
+                      cost={latestUsage.cost}
+                      size={latestUsage.size}
+                      used={latestUsage.used}
+                    />
                   </div>
                 )}
                 {attachedFiles.length > 0 ? (
@@ -2698,12 +2721,12 @@ export const ProjectChatPage: FC<{
                 />
 
                 <div className="flex min-h-9 flex-col gap-1 bg-transparent px-1.5 pt-1 pb-0 sm:px-2">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <div className="flex min-w-0 flex-1 items-center gap-1.5 xl:flex-none">
+                  <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                       {shouldUseDraftSession ? (
                         <>
                           <FieldControl
-                            className="w-[5.75rem] shrink xl:w-44"
+                            className={FORM_SELECT_FIELD_CLASS}
                             htmlFor="draft-provider-select"
                             label="Provider"
                           >
@@ -2715,7 +2738,10 @@ export const ProjectChatPage: FC<{
                               }}
                               value={activePresetId}
                             >
-                              <SelectTrigger className="w-full" id="draft-provider-select">
+                              <SelectTrigger
+                                className={FORM_SELECT_TRIGGER_CLASS}
+                                id="draft-provider-select"
+                              >
                                 <SelectValue placeholder="Provider" />
                               </SelectTrigger>
                               <SelectContent>
@@ -2728,7 +2754,7 @@ export const ProjectChatPage: FC<{
                             </Select>
                           </FieldControl>
                           <FieldControl
-                            className="w-[7.25rem] shrink xl:w-64 2xl:w-72"
+                            className={FORM_SELECT_FIELD_CLASS}
                             htmlFor="draft-model-select"
                             label={draftModelSelectLabel}
                           >
@@ -2741,9 +2767,9 @@ export const ProjectChatPage: FC<{
                               }}
                               value={draftModelSelectValue}
                             >
-                              <div className="flex items-center gap-1.5">
+                              <div className={FORM_SELECT_ROW_CLASS}>
                                 <SelectTrigger
-                                  className="min-w-0 flex-1"
+                                  className={FORM_SELECT_TRIGGER_CLASS}
                                   disabled={!draftModelSourceHasList}
                                   id="draft-model-select"
                                   title={
@@ -2792,7 +2818,7 @@ export const ProjectChatPage: FC<{
                             </Select>
                           </FieldControl>
                           <FieldControl
-                            className="w-[5.75rem] shrink xl:w-52"
+                            className={FORM_SELECT_FIELD_CLASS}
                             htmlFor="draft-mode-select"
                             label={draftModeSelectLabel}
                           >
@@ -2805,9 +2831,9 @@ export const ProjectChatPage: FC<{
                               }}
                               value={draftModeSelectValue}
                             >
-                              <div className="flex items-center gap-1.5">
+                              <div className={FORM_SELECT_ROW_CLASS}>
                                 <SelectTrigger
-                                  className="min-w-0 flex-1"
+                                  className={FORM_SELECT_TRIGGER_CLASS}
                                   disabled={!draftModeSourceHasList}
                                   id="draft-mode-select"
                                   title={
@@ -2858,7 +2884,7 @@ export const ProjectChatPage: FC<{
                       ) : selectedSession !== null ? (
                         <>
                           <FieldControl
-                            className="w-[8.75rem] shrink xl:w-64 2xl:w-72"
+                            className={FORM_SELECT_FIELD_CLASS}
                             htmlFor="session-model-select"
                             label={sessionModelSelectLabel}
                           >
@@ -2870,8 +2896,11 @@ export const ProjectChatPage: FC<{
                               }}
                               value={sessionModelSelectValue}
                             >
-                              <div className="flex items-center gap-1.5">
-                                <SelectTrigger className="min-w-0 flex-1" id="session-model-select">
+                              <div className={FORM_SELECT_ROW_CLASS}>
+                                <SelectTrigger
+                                  className={FORM_SELECT_TRIGGER_CLASS}
+                                  id="session-model-select"
+                                >
                                   <SelectValue placeholder={sessionModelSelectLabel}>
                                     {(value) =>
                                       formatAcpSelectValueLabel({
@@ -2909,7 +2938,7 @@ export const ProjectChatPage: FC<{
                           </FieldControl>
                           {selectedSessionModeOptions.length > 0 ? (
                             <FieldControl
-                              className="w-[6.75rem] shrink xl:w-52"
+                              className={FORM_SELECT_FIELD_CLASS}
                               htmlFor="session-mode-select"
                               label={sessionModeSelectLabel}
                             >
@@ -2921,9 +2950,9 @@ export const ProjectChatPage: FC<{
                                 }}
                                 value={sessionModeSelectValue}
                               >
-                                <div className="flex items-center gap-1.5">
+                                <div className={FORM_SELECT_ROW_CLASS}>
                                   <SelectTrigger
-                                    className="min-w-0 flex-1"
+                                    className={FORM_SELECT_TRIGGER_CLASS}
                                     id="session-mode-select"
                                   >
                                     <SelectValue placeholder={sessionModeSelectLabel}>
@@ -2964,7 +2993,7 @@ export const ProjectChatPage: FC<{
                             );
                             return (
                               <FieldControl
-                                className="w-[7.25rem] shrink xl:w-52"
+                                className={FORM_SELECT_FIELD_CLASS}
                                 htmlFor={`session-config-select-${option.id}`}
                                 key={option.id}
                                 label={option.name}
@@ -2981,9 +3010,9 @@ export const ProjectChatPage: FC<{
                                   }}
                                   value={option.currentValue}
                                 >
-                                  <div className="flex items-center gap-1.5">
+                                  <div className={FORM_SELECT_ROW_CLASS}>
                                     <SelectTrigger
-                                      className="min-w-0 flex-1"
+                                      className={FORM_SELECT_TRIGGER_CLASS}
                                       id={`session-config-select-${option.id}`}
                                     >
                                       <SelectValue placeholder={option.name}>
@@ -3015,7 +3044,7 @@ export const ProjectChatPage: FC<{
                     {isSelectedSessionRunning && sessionId !== null ? (
                       <Button
                         aria-label="Cancel running turn"
-                        className="shrink-0"
+                        className="ml-auto shrink-0"
                         disabled={cancelSessionMutation.isPending}
                         onClick={() => {
                           void handleCancelSession(sessionId);
@@ -3036,7 +3065,7 @@ export const ProjectChatPage: FC<{
                         aria-label={
                           isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
                         }
-                        className="shrink-0"
+                        className="ml-auto shrink-0"
                         disabled={!canSend}
                         onClick={() => {
                           void handleSendPrompt();

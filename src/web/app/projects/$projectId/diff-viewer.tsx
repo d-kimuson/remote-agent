@@ -1,5 +1,5 @@
-import { ChevronDown, ChevronRight, Copy } from 'lucide-react';
-import { memo, useState, type FC } from 'react';
+import { ChevronDown, Copy } from 'lucide-react';
+import { memo, useState, type FC, type ReactNode } from 'react';
 
 import type { DiffHunk, DiffLine, FileDiff } from './diff-viewer.pure.ts';
 
@@ -9,6 +9,10 @@ import { cn } from '../../../lib/utils.ts';
 type DiffViewerProps = {
   readonly fileDiff: FileDiff;
   readonly className?: string;
+  readonly defaultCollapsed?: boolean;
+  readonly headerTitle?: string;
+  readonly headerTone?: 'default' | 'muted';
+  readonly headerTrailing?: ReactNode;
 };
 
 type DiffHunkProps = {
@@ -136,9 +140,19 @@ const DiffBody: FC<{
 
 const FileHeader: FC<{
   readonly fileDiff: FileDiff;
+  readonly headerTitle?: string;
+  readonly headerTone?: 'default' | 'muted';
+  readonly headerTrailing?: ReactNode;
   readonly isCollapsed: boolean;
   readonly onToggleCollapse: () => void;
-}> = ({ fileDiff, isCollapsed, onToggleCollapse }) => {
+}> = ({
+  fileDiff,
+  headerTitle,
+  headerTone = 'default',
+  headerTrailing,
+  isCollapsed,
+  onToggleCollapse,
+}) => {
   const fileStatus = fileDiff.isNew
     ? { label: 'A', className: 'text-green-600 dark:text-green-400' }
     : fileDiff.isDeleted
@@ -148,50 +162,65 @@ const FileHeader: FC<{
         : { label: 'M', className: 'text-gray-600 dark:text-gray-400' };
 
   return (
-    <div className="sticky top-0 z-20 w-full bg-gray-50 px-3 py-1.5 transition-colors hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700">
-      <button
-        aria-expanded={!isCollapsed}
-        className="w-full text-left"
-        onClick={onToggleCollapse}
-        type="button"
-      >
-        <div className="flex w-full items-center gap-2 pr-8">
-          {isCollapsed ? (
-            <ChevronRight className="h-4 w-4 shrink-0 text-gray-500" />
-          ) : (
-            <ChevronDown className="h-4 w-4 shrink-0 text-gray-500" />
-          )}
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gray-100 font-mono text-xs dark:bg-gray-700">
-            <span className={fileStatus.className}>{fileStatus.label}</span>
+    <div
+      className={cn(
+        'sticky top-0 z-20 w-full transition-colors',
+        headerTone === 'muted'
+          ? 'bg-muted/30 px-2 py-1 hover:bg-muted/50'
+          : 'bg-gray-50 px-3 py-1.5 hover:bg-gray-100 dark:bg-gray-800 dark:hover:bg-gray-700',
+      )}
+    >
+      <div className="flex items-center gap-1">
+        <button
+          aria-expanded={!isCollapsed}
+          className="min-w-0 flex-1 rounded px-1 py-0.5 text-left transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+          onClick={onToggleCollapse}
+          type="button"
+        >
+          <div className="flex w-full items-center gap-2">
+            <ChevronDown
+              className={cn(
+                'size-4 shrink-0 transition-transform',
+                headerTone === 'muted' ? 'text-muted-foreground' : 'text-gray-500',
+                isCollapsed ? '' : 'rotate-180',
+              )}
+            />
+            <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-muted font-mono text-[10px]">
+              <span className={fileStatus.className}>{fileStatus.label}</span>
+            </div>
+            <span
+              className={cn(
+                'min-w-0 flex-1 truncate text-left text-xs font-medium',
+                headerTone === 'muted' ? 'text-foreground' : 'font-mono text-black dark:text-white',
+              )}
+              title={headerTitle ?? fileDiff.filename}
+            >
+              {headerTitle ?? fileDiff.filename}
+            </span>
+            <div className="flex shrink-0 items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              {fileDiff.linesAdded > 0 ? (
+                <span className="text-green-600 dark:text-green-400">+{fileDiff.linesAdded}</span>
+              ) : null}
+              {fileDiff.linesDeleted > 0 ? (
+                <span className="text-red-600 dark:text-red-400">-{fileDiff.linesDeleted}</span>
+              ) : null}
+            </div>
           </div>
-          <span
-            className="min-w-0 flex-1 truncate text-left font-mono text-xs font-medium text-black dark:text-white"
-            title={fileDiff.filename}
-          >
-            {fileDiff.filename}
-          </span>
-          <div className="flex shrink-0 items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
-            {fileDiff.linesAdded > 0 ? (
-              <span className="text-green-600 dark:text-green-400">+{fileDiff.linesAdded}</span>
-            ) : null}
-            {fileDiff.linesDeleted > 0 ? (
-              <span className="text-red-600 dark:text-red-400">-{fileDiff.linesDeleted}</span>
-            ) : null}
-          </div>
-        </div>
-      </button>
-      <Button
-        className="absolute top-1/2 right-3 h-5 w-5 -translate-y-1/2 p-1 hover:bg-gray-200 dark:hover:bg-gray-600"
-        onClick={(event) => {
-          event.stopPropagation();
-          void navigator.clipboard.writeText(fileDiff.filename);
-        }}
-        size="sm"
-        type="button"
-        variant="ghost"
-      >
-        <Copy className="h-3 w-3 text-gray-500 dark:text-gray-400" />
-      </Button>
+        </button>
+        {headerTrailing !== undefined ? <div className="shrink-0">{headerTrailing}</div> : null}
+        <Button
+          className="h-6 w-6 shrink-0 p-1 hover:bg-gray-200 dark:hover:bg-gray-600"
+          onClick={(event) => {
+            event.stopPropagation();
+            void navigator.clipboard.writeText(fileDiff.filename);
+          }}
+          size="sm"
+          type="button"
+          variant="ghost"
+        >
+          <Copy className="h-3 w-3 text-gray-500 dark:text-gray-400" />
+        </Button>
+      </div>
       {fileDiff.isBinary ? (
         <div className="mt-2 text-left text-xs text-gray-500 dark:text-gray-400">
           Binary file (content not shown)
@@ -201,32 +230,49 @@ const FileHeader: FC<{
   );
 };
 
-export const DiffViewer: FC<DiffViewerProps> = memo(({ fileDiff, className }) => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const toggleCollapse = () => {
-    setIsCollapsed((value) => !value);
-  };
+export const DiffViewer: FC<DiffViewerProps> = memo(
+  ({ fileDiff, className, defaultCollapsed, headerTitle, headerTone, headerTrailing }) => {
+    const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed ?? false);
+    const toggleCollapse = () => {
+      setIsCollapsed((value) => !value);
+    };
 
-  return (
-    <div
-      className={cn(
-        'overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700',
-        className,
-      )}
-    >
-      <FileHeader fileDiff={fileDiff} isCollapsed={isCollapsed} onToggleCollapse={toggleCollapse} />
-      {!isCollapsed && fileDiff.isBinary ? (
-        <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
-          Binary file cannot be displayed
-        </div>
-      ) : null}
-      {!isCollapsed && !fileDiff.isBinary ? (
-        <div className="border-t border-gray-200 dark:border-gray-700">
-          <DiffBody hunks={fileDiff.hunks} />
-        </div>
-      ) : null}
-    </div>
-  );
-});
+    return (
+      <div
+        className={cn(
+          'overflow-hidden rounded-lg border',
+          headerTone === 'muted'
+            ? 'border-border/70 bg-background'
+            : 'border-gray-200 dark:border-gray-700',
+          className,
+        )}
+      >
+        <FileHeader
+          fileDiff={fileDiff}
+          headerTitle={headerTitle}
+          headerTone={headerTone}
+          headerTrailing={headerTrailing}
+          isCollapsed={isCollapsed}
+          onToggleCollapse={toggleCollapse}
+        />
+        {!isCollapsed && fileDiff.isBinary ? (
+          <div className="py-8 text-center text-sm text-gray-500 dark:text-gray-400">
+            Binary file cannot be displayed
+          </div>
+        ) : null}
+        {!isCollapsed && !fileDiff.isBinary ? (
+          <div
+            className={cn(
+              'border-t',
+              headerTone === 'muted' ? 'border-border/60' : 'border-gray-200 dark:border-gray-700',
+            )}
+          >
+            <DiffBody hunks={fileDiff.hunks} />
+          </div>
+        ) : null}
+      </div>
+    );
+  },
+);
 
 DiffViewer.displayName = 'DiffViewer';

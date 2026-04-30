@@ -495,6 +495,42 @@ describe('resolveAcpToolVisualView', () => {
     });
   });
 
+  test('changes content delete args を diff 表示に変換する', () => {
+    const visual = resolveAcpToolVisualView(
+      toolItem({
+        input: {
+          toolCallId: 'call-1',
+          toolName: 'Edit /repo/.codex-edit-tool-smoke.txt',
+          args: {
+            changes: {
+              '/repo/.codex-edit-tool-smoke.txt': {
+                type: 'delete',
+                content: 'temporary edit-tool smoke test\n',
+              },
+            },
+          },
+        },
+        output: {
+          stdout: 'Success. Updated the following files:\nD .codex-edit-tool-smoke.txt\n',
+          success: true,
+          status: 'completed',
+        },
+      }),
+    );
+
+    expect(visual).toMatchObject({
+      kind: 'diff',
+      files: [
+        {
+          filename: '/repo/.codex-edit-tool-smoke.txt',
+          isDeleted: true,
+          linesAdded: 1,
+          linesDeleted: 2,
+        },
+      ],
+    });
+  });
+
   test('pi edit path/edits args を diff 表示に変換する', () => {
     const visual = resolveAcpToolVisualView(
       toolItem({
@@ -626,6 +662,24 @@ describe('resolveAcpToolVisualView', () => {
 
   test('Viewing toolName と path args/content output を file-read 表示に変換する', () => {
     const toolCallId = 'call-1';
+    const part = {
+      type: 'tool-result',
+      toolCallId,
+      toolName: 'acp.acp_provider_agent_dynamic_tool',
+      input: {
+        toolCallId,
+        toolName: 'Viewing /home/kaito/repos/remote-agent/README.md',
+        args: {
+          path: '/home/kaito/repos/remote-agent/README.md',
+          view_range: [1, 120],
+        },
+      },
+      output: {
+        content: '1. # remote-agent\n2. \n3. body\n',
+        detailedContent: 'diff --git ...',
+      },
+      providerExecuted: true,
+    };
     const visual = resolveAcpToolVisualView({
       type: 'tool',
       key: `tool-${toolCallId}`,
@@ -635,25 +689,8 @@ describe('resolveAcpToolVisualView', () => {
         type: 'toolResult',
         toolCallId,
         toolName: 'acp.acp_provider_agent_dynamic_tool',
-        outputText: '',
-        rawText: JSON.stringify({
-          type: 'tool-result',
-          toolCallId,
-          toolName: 'acp.acp_provider_agent_dynamic_tool',
-          input: {
-            toolCallId,
-            toolName: 'Viewing /home/kaito/repos/remote-agent/README.md',
-            args: {
-              path: '/home/kaito/repos/remote-agent/README.md',
-              view_range: [1, 120],
-            },
-          },
-          output: {
-            content: '1. # remote-agent\n2. \n3. body\n',
-            detailedContent: 'diff --git ...',
-          },
-          providerExecuted: true,
-        }),
+        outputText: JSON.stringify(part),
+        rawText: JSON.stringify(part),
       },
       error: null,
     });
@@ -661,7 +698,7 @@ describe('resolveAcpToolVisualView', () => {
     expect(visual).toEqual({
       kind: 'file-read',
       path: '/home/kaito/repos/remote-agent/README.md',
-      text: '1. # remote-agent\n2. \n3. body\n',
+      text: '# remote-agent\n\nbody\n',
     });
   });
 
