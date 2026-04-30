@@ -129,7 +129,7 @@ describe('createProjectStore', () => {
     ).toEqual(expect.any(String));
   });
 
-  test('stores project worktree setup script without trimming shell content', async () => {
+  test('stores editable project settings without trimming shell content', async () => {
     const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const projectDirectory = path.join(sandboxDirectory, 'workspace-setup-script');
     await mkdir(projectDirectory, { recursive: true });
@@ -145,11 +145,13 @@ describe('createProjectStore', () => {
     const script = '  echo setup > .remote-agent-setup\n';
 
     const settings = await store.updateProjectSettings(project.id, {
+      name: 'Renamed Workspace',
       worktreeSetupScript: script,
     });
     const restoredProject = await store.getProject(project.id);
 
     expect(settings.worktreeSetupScript).toBe(script);
+    expect(restoredProject.name).toBe('Renamed Workspace');
     expect(restoredProject.worktreeSetupScript).toBe(script);
   });
 

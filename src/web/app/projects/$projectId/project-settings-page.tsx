@@ -1,10 +1,9 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { Folder, History, Loader2, Save, Settings } from 'lucide-react';
+import { History, Loader2, Save, Settings } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { toast } from 'sonner';
 
-import { Badge } from '../../../components/ui/badge.tsx';
 import { Button, buttonVariants } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
@@ -16,10 +15,12 @@ import {
   fetchSessions,
   updateProjectSettingsRequest,
 } from '../../../lib/api/acp.ts';
+import { SettingsPage } from '../../settings/settings-page.tsx';
 import { ProjectMenuContent } from './project-menu-content.tsx';
 import {
   agentProvidersQueryKey,
   projectQueryKey,
+  projectsQueryKey,
   projectSettingsQueryKey,
   sessionsQueryKey,
 } from './queries.ts';
@@ -51,20 +52,26 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
     providers: providerData.providers,
     workingDirectory: projectData.project.workingDirectory,
   });
+  const [projectName, setProjectName] = useState(projectData.project.name);
   const [worktreeSetupScript, setWorktreeSetupScript] = useState(
     settingsData.settings.worktreeSetupScript,
   );
   const updateSettingsMutation = useMutation({
     mutationFn: () =>
       updateProjectSettingsRequest(projectId, {
+        name: projectName,
         worktreeSetupScript,
       }),
     onSuccess: (response) => {
       queryClient.setQueryData(projectSettingsQueryKey(projectId), response);
+      void queryClient.invalidateQueries({ queryKey: projectQueryKey(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectsQueryKey });
       toast.success('Project settings saved');
     },
   });
-  const settingsChanged = worktreeSetupScript !== settingsData.settings.worktreeSetupScript;
+  const settingsChanged =
+    projectName !== projectData.project.name ||
+    worktreeSetupScript !== settingsData.settings.worktreeSetupScript;
 
   return (
     <div className="app-page">
@@ -78,7 +85,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
       />
       {dialog}
 
-      <div className="mx-auto flex max-w-4xl flex-col gap-6 px-4 py-6 md:px-6">
+      <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 md:px-6">
         <header className="flex flex-col gap-3 border-b pb-5">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Settings className="size-4" />
@@ -104,7 +111,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
           </div>
         </header>
 
-        <main className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_240px]">
+        <main className="space-y-6">
           <section className="app-panel rounded-lg border p-5">
             <form
               className="space-y-5"
@@ -113,25 +120,23 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
                 updateSettingsMutation.mutate();
               }}
             >
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="project-name">Project name</Label>
-                  <Input id="project-name" readOnly value={projectData.project.name} />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="project-id">Project ID</Label>
-                  <Input className="font-mono" id="project-id" readOnly value={projectId} />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="project-name">Project name</Label>
+                <Input
+                  disabled={updateSettingsMutation.isPending}
+                  id="project-name"
+                  onChange={(event) => {
+                    setProjectName(event.currentTarget.value);
+                  }}
+                  value={projectName}
+                />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="project-working-directory">Working directory</Label>
-                <Input
-                  className="font-mono"
-                  id="project-working-directory"
-                  readOnly
-                  value={projectData.project.workingDirectory}
-                />
+                <Label>Working directory</Label>
+                <p className="break-all rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
+                  {projectData.project.workingDirectory}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -158,7 +163,11 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
 
               <div className="flex justify-end">
                 <Button
-                  disabled={!settingsChanged || updateSettingsMutation.isPending}
+                  disabled={
+                    !settingsChanged ||
+                    projectName.trim().length === 0 ||
+                    updateSettingsMutation.isPending
+                  }
                   type="submit"
                 >
                   {updateSettingsMutation.isPending ? (
@@ -172,19 +181,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
             </form>
           </section>
 
-          <aside className="app-panel flex flex-col gap-3 rounded-lg border p-4">
-            <div className="flex items-center gap-2">
-              <Folder className="size-4 text-muted-foreground" />
-              <h2 className="text-sm font-semibold">Project</h2>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Badge variant="secondary">{projectSessions.length} sessions</Badge>
-              <Badge variant="outline">
-                {settingsData.settings.modelPreferences.length} models
-              </Badge>
-              <Badge variant="outline">{settingsData.settings.modePreferences.length} modes</Badge>
-            </div>
-          </aside>
+          <SettingsPage />
         </main>
       </div>
     </div>

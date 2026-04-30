@@ -1,15 +1,7 @@
 import type { FC } from 'react';
 
 import { Link } from '@tanstack/react-router';
-import {
-  CalendarClock,
-  FolderKanban,
-  History,
-  MessageSquare,
-  Plus,
-  Settings,
-  SlidersHorizontal,
-} from 'lucide-react';
+import { CalendarClock, FolderKanban, History, MessageSquare, Plus, Settings } from 'lucide-react';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
 
@@ -88,15 +80,11 @@ export const ProjectMenuContent: FC<{
             to="/projects/$projectId/settings"
           >
             <Settings className="size-4" />
-            プロジェクト設定
+            設定
           </Link>
           <Link className={menuLinkClassName} onClick={closeAppMenu} to="/projects">
             <FolderKanban className="size-4" />
             プロジェクト
-          </Link>
-          <Link className={menuLinkClassName} onClick={closeAppMenu} to="/settings">
-            <SlidersHorizontal className="size-4" />
-            アプリ設定
           </Link>
         </div>
 

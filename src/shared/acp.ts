@@ -661,6 +661,7 @@ export const projectSettingsResponseSchema = object({
 export type ProjectSettingsResponse = InferOutput<typeof projectSettingsResponseSchema>;
 
 export const updateProjectSettingsRequestSchema = object({
+  name: pipe(string(), trim()),
   worktreeSetupScript: string(),
 });
 

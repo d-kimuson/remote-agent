@@ -183,6 +183,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
     await database.db
       .update(projectsTable)
       .set({
+        name: request.name,
         worktreeSetupScript: request.worktreeSetupScript,
       })
       .where(eq(projectsTable.id, projectId));
