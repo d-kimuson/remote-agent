@@ -1,9 +1,10 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { useNavigate } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
   BarChart3,
   FileSymlink,
+  History,
   Info,
   Loader2,
   Mic,
@@ -52,6 +53,7 @@ import {
   type UserAttachment,
 } from '../../../../shared/acp.ts';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
+import { Badge } from '../../../components/ui/badge.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
@@ -135,7 +137,12 @@ import {
 import { CopyBlockButton } from './copy-block-button.tsx';
 import { shouldShowMessageCopyButton } from './message-copy-display.pure.ts';
 import { ProjectMenuContent } from './project-menu-content.tsx';
-import { sortSessionsNewestFirst } from './project-session-list.pure.ts';
+import {
+  sessionStatusBadgeClassName,
+  sessionStatusLabel,
+  sessionTimestamp,
+  sortSessionsNewestFirst,
+} from './project-session-list.pure.ts';
 import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
@@ -955,6 +962,7 @@ export const ProjectChatPage: FC<{
   const previousVisibleMessageCountRef = useRef(0);
   const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [messagesBelowScroll, setMessagesBelowScroll] = useState(0);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
@@ -1587,7 +1595,7 @@ export const ProjectChatPage: FC<{
   const shouldShowScrollBanner =
     !isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking);
   const scrollBannerMessageCount =
-    unreadMessageCount > 0 ? unreadMessageCount : Math.max(1, visibleTranscript.length);
+    unreadMessageCount > 0 ? unreadMessageCount : Math.max(1, messagesBelowScroll);
   const scrollBannerLabel = `${scrollBannerMessageCount.toString()}件のメッセージ`;
   useEffect(() => {
     if (!shouldUseDraftSession || !isAssistantRequestPending) {
@@ -2323,6 +2331,17 @@ export const ProjectChatPage: FC<{
     if (nextIsFollowing) {
       setUnreadMessageCount(0);
     }
+
+    // Calculate messages below scroll position
+    const scrollableHeight = target.scrollHeight - target.clientHeight;
+    if (scrollableHeight <= 0) {
+      setMessagesBelowScroll(0);
+    } else {
+      const scrollPercentage = target.scrollTop / scrollableHeight;
+      setMessagesBelowScroll(
+        Math.max(0, Math.round(visibleTranscript.length * (1 - scrollPercentage))),
+      );
+    }
   };
 
   const handleJumpToLatest = () => {
@@ -2351,6 +2370,7 @@ export const ProjectChatPage: FC<{
       shouldStickToBottomRef.current = true;
       setIsChatFollowingTail(true);
       setUnreadMessageCount(0);
+      setMessagesBelowScroll(0);
       previousVisibleMessageCountRef.current = visibleTranscript.length;
     }
     if (!shouldStickToBottomRef.current) {
@@ -2484,12 +2504,53 @@ export const ProjectChatPage: FC<{
                 >
                   {isTranscriptHydrating ? <LoadingConversation /> : null}
                   {!isTranscriptHydrating && transcript.length === 0 && !shouldShowThinking ? (
-                    <div className="mx-auto max-w-md rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
-                      <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
-                      <p className="text-sm font-medium text-foreground/90">No messages</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        下の欄に入力して会話を始められます
-                      </p>
+                    <div className="mx-auto flex max-w-md flex-col items-center">
+                      <div className="w-full rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
+                        <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
+                        <p className="text-sm font-medium text-foreground/90">
+                          新しいチャットを開始
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          下の欄に入力して会話を始めましょう
+                        </p>
+                      </div>
+                      {projectSessions.length > 0 ? (
+                        <div className="mt-6 w-full">
+                          <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-[0.1em] text-muted-foreground">
+                            <History className="size-3.5" />
+                            最近のセッション
+                          </h3>
+                          <div className="space-y-2">
+                            {projectSessions.slice(0, 3).map((session) => {
+                              const timestamp = sessionTimestamp(session);
+                              return (
+                                <Link
+                                  className="block rounded-lg border border-border/50 bg-card/50 px-3 py-2.5 text-left transition-colors hover:bg-card/80"
+                                  key={session.sessionId}
+                                  params={{ projectId }}
+                                  search={{ 'session-id': session.sessionId }}
+                                  to="/projects/$projectId"
+                                >
+                                  <p className="truncate text-sm font-medium">
+                                    {resolveSessionListTitle(session, null, { maxChars: 72 })}
+                                  </p>
+                                  <div className="mt-1 flex items-center justify-between gap-2">
+                                    <time className="text-xs text-muted-foreground">
+                                      {formatDateTime(timestamp)}
+                                    </time>
+                                    <Badge
+                                      className={sessionStatusBadgeClassName(session.status)}
+                                      variant="outline"
+                                    >
+                                      {sessionStatusLabel(session.status)}
+                                    </Badge>
+                                  </div>
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   {!isTranscriptHydrating &&

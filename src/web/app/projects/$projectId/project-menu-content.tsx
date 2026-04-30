@@ -135,10 +135,10 @@ export const ProjectMenuContent: FC<{
                   <Link
                     aria-current={isCurrentSession ? 'page' : undefined}
                     className={cn(
-                      'block rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70',
+                      'block relative overflow-hidden rounded-lg border border-sidebar-border bg-sidebar-accent/35 px-3 py-2 transition-colors hover:border-sidebar-foreground/20 hover:bg-sidebar-accent/70',
                       sessionStatusRowClassName(session.status),
                       isCurrentSession
-                        ? 'border-sidebar-primary bg-sidebar-primary/18 shadow-sm ring-2 ring-sidebar-primary/45 hover:border-sidebar-primary hover:bg-sidebar-primary/22'
+                        ? 'border-sidebar-primary/50 bg-sidebar-primary/22 shadow-sm hover:border-sidebar-primary hover:bg-sidebar-primary/28'
                         : '',
                     )}
                     key={session.sessionId}
@@ -147,6 +147,9 @@ export const ProjectMenuContent: FC<{
                     search={{ 'session-id': session.sessionId }}
                     to="/projects/$projectId"
                   >
+                    {isCurrentSession ? (
+                      <div className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-sidebar-primary" />
+                    ) : null}
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 flex-1 truncate text-sm font-medium">
                         {resolveSessionListTitle(session, null, { maxChars: 72 })}
