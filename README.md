@@ -20,25 +20,58 @@
 
 ## Installation
 
-### Quick Start (Tailscale, Recommended)
+### Quick Start (PWA with Tailscale, Recommended)
 
-`remote-agent` needs a secure path between the server and client. Tailscale is the recommended
-setup.
+`remote-agent` works best when installed as a PWA from a secure Tailscale URL. PWA installation is
+strongly recommended for notifications and the mobile experience.
+
+To install and use the PWA, the client must access `remote-agent` through HTTPS. The recommended
+setup is Tailscale MagicDNS with HTTPS certificates:
 
 - https://tailscale.com/docs/how-to/quickstart
 - https://tailscale.com/docs/how-to/set-up-https-certificates
 
-Make sure the agent you want to use is already available on the server machine, then start the
-`remote-agent` server:
+Make sure the agent you want to use is already available on the server machine, then start
+`remote-agent` with the Tailscale setup helper:
+
+```bash
+npx -y @kimuson/remote-agent@latest serve --tailscale 48989
+```
+
+This command starts the `remote-agent` SPA/PWA and API server on an available local port, configures
+Tailscale Serve for `https://<magic-dns-name>:48989`, then prints the URL and a QR code.
+
+Tailscale Serve may need to update HTTPS certificate settings. If the command asks for your sudo
+password, enter it to continue. After setup completes, open the printed URL or scan the QR code from
+the client device, then install the PWA from the browser.
+
+## Manual Setup
+
+The `serve` command starts both the client SPA/PWA and the API server:
 
 ```bash
 npx -y @kimuson/remote-agent@latest serve
 ```
 
-By default, the server starts both the client SPA/PWA and the API server. Open the URL assigned by
-Tailscale to start using `remote-agent` from another device.
+By default, the server listens on HTTP. If you do not use `--tailscale`, you are responsible for
+providing secure communication between the client and the server. This can be a VPN, a reverse
+proxy, or a tunnel such as Cloudflare Tunnel in front of the local `remote-agent` server.
 
-<!-- FIXME: Add other usage patterns -->
+Running `remote-agent` on a public hostname is not the recommended default. If you do expose it, set
+an API key and only share the URL with trusted users. You can generate an API key with:
+
+```bash
+npx -y @kimuson/remote-agent@latest generate-api-key
+```
+
+Then pass it to the server:
+
+```bash
+RA_API_KEY=<generated-api-key> RA_ALLOWED_IPS=203.0.113.10,198.51.100.20 npx -y @kimuson/remote-agent@latest serve
+```
+
+Then clients must send the API key as a bearer token for `/api/*` requests. You can also restrict
+accepted client IPs with `RA_ALLOWED_IPS`.
 
 ## Features
 
