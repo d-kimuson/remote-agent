@@ -1,5 +1,7 @@
 import type { ChatMessage, ChatMessageKind, RawEvent } from '../../../../shared/acp';
 
+import { planRawEventsForRender } from './acp-event-plan.pure.ts';
+
 /**
  * 会話行として出さない（区切り・集計専用で本文に価値が薄い）メッセージ種別。
  * 直後の legacy ターンに集約された rawEvents 側では別途 `filterDisplayableRawEvents` する。
@@ -44,4 +46,17 @@ export const shouldDisplayTranscriptMessage = (
     return true;
   }
   return displayableEvents.length > 0;
+};
+
+export const isToolOnlyTranscriptMessage = (
+  message: ChatMessage,
+  displayableEvents: readonly RawEvent[],
+): boolean => {
+  if (message.role !== 'assistant' || message.text.trim().length > 0) {
+    return false;
+  }
+  if (displayableEvents.length === 0) {
+    return false;
+  }
+  return planRawEventsForRender(displayableEvents).every((item) => item.type === 'tool');
 };

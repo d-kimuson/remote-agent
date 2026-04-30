@@ -142,6 +142,11 @@ const changesArgsSchema = object({
   changes: record(string(), fileChangeSchema),
 });
 
+const fileNameDiffSchema = object({
+  fileName: string(),
+  diff: string(),
+});
+
 const searchResultSchema = object({
   filenames: array(string()),
   durationMs: optional(number()),
@@ -239,6 +244,16 @@ const parseCallInput = (
     const parsedInputText = safeParse(toolCallInputTextSchema, inputText.value);
     if (parsedInputText.success) {
       return parsedInputText.output;
+    }
+
+    if (typeof inputText.value === 'string') {
+      const command = stripInlineCode(inputText.value);
+      if (command !== null) {
+        return {
+          toolName: call.toolName,
+          args: { command },
+        };
+      }
     }
 
     return {
@@ -598,6 +613,22 @@ const visualTodos = (args: unknown): Extract<AcpToolVisualView, { kind: 'todos' 
 };
 
 const visualDiff = (args: unknown): Extract<AcpToolVisualView, { kind: 'diff' }> | null => {
+  const parsedFileNameDiff = safeParse(fileNameDiffSchema, args);
+  if (parsedFileNameDiff.success) {
+    return {
+      kind: 'diff',
+      files: [
+        buildFileDiffFromUnifiedDiff({
+          filename: parsedFileNameDiff.output.fileName,
+          unifiedDiff: parsedFileNameDiff.output.diff,
+          changeType: parsedFileNameDiff.output.diff.includes('\ncreate file mode ')
+            ? 'create'
+            : undefined,
+        }),
+      ],
+    };
+  }
+
   const parsedChangesArgs = safeParse(changesArgsSchema, args);
   if (parsedChangesArgs.success) {
     const files = Object.entries(parsedChangesArgs.output.changes).map(([filename, change]) =>
@@ -669,6 +700,10 @@ const isReadToolName = (toolName: string): boolean =>
   toolName === 'read' ||
   toolName === 'read_file' ||
   toolName === 'read file' ||
+  toolName === 'view' ||
+  toolName === 'viewing' ||
+  toolName.startsWith('view ') ||
+  toolName.startsWith('viewing ') ||
   toolName.startsWith('read ');
 
 export const resolveAcpToolVisualView = (item: AcpToolMergeItem): AcpToolVisualView | null => {

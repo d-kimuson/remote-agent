@@ -50,6 +50,28 @@ describe('resolveAcpToolCardTitle', () => {
     ).toBe('pwd');
   });
 
+  test('bash 以外の dynamic ツール名では command をタイトルに含めない', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            toolCallId: 'toolu_1',
+            toolName: 'List /home/kaito/repos/remote-agent',
+            args: {
+              command: 'rg --files | head -n 20',
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('List /home/kaito/repos/remote-agent');
+  });
+
   test('bash dynamic ツール名では command をタイトルに含める', () => {
     expect(
       resolveAcpToolCardTitle({

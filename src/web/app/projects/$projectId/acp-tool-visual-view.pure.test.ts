@@ -264,6 +264,50 @@ describe('resolveAcpToolVisualView', () => {
     });
   });
 
+  test('permission request の fileName/diff raw input を diff 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'Create debug-scratch.txt',
+        inputText: JSON.stringify({
+          fileName: '/home/kaito/.copilot/session-state/session/files/debug-scratch.txt',
+          diff: [
+            '',
+            'diff --git a/home/kaito/.copilot/session-state/session/files/debug-scratch.txt b/home/kaito/.copilot/session-state/session/files/debug-scratch.txt',
+            'create file mode 100644',
+            'index 0000000..0000000',
+            '--- a/dev/null',
+            '+++ b/home/kaito/.copilot/session-state/session/files/debug-scratch.txt',
+            '@@ -1,0 +1,2 @@',
+            '+debug scratch',
+            '+',
+            '',
+          ].join('\n'),
+        }),
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toMatchObject({
+      kind: 'diff',
+      files: [
+        {
+          filename: '/home/kaito/.copilot/session-state/session/files/debug-scratch.txt',
+          isNew: true,
+          linesAdded: 2,
+          linesDeleted: 0,
+        },
+      ],
+    });
+  });
+
   test('承認待ちの exec_command raw input を terminal 表示に変換する', () => {
     const toolCallId = 'call-1';
     const visual = resolveAcpToolVisualView({
@@ -316,6 +360,35 @@ describe('resolveAcpToolVisualView', () => {
     expect(visual).toEqual({
       kind: 'terminal',
       command: 'echo "second bash approval test" && pwd && date',
+      cwd: null,
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      status: null,
+      pending: true,
+    });
+  });
+
+  test('承認待ちの JSON string command input を terminal 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'Preview Request',
+        inputText: JSON.stringify('`pwd`'),
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'terminal',
+      command: 'pwd',
       cwd: null,
       stdout: '',
       stderr: '',
@@ -548,6 +621,47 @@ describe('resolveAcpToolVisualView', () => {
       truncated: false,
       durationMs: null,
       numFiles: 2,
+    });
+  });
+
+  test('Viewing toolName と path args/content output を file-read 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: null,
+      result: {
+        type: 'toolResult',
+        toolCallId,
+        toolName: 'acp.acp_provider_agent_dynamic_tool',
+        outputText: '',
+        rawText: JSON.stringify({
+          type: 'tool-result',
+          toolCallId,
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          input: {
+            toolCallId,
+            toolName: 'Viewing /home/kaito/repos/remote-agent/README.md',
+            args: {
+              path: '/home/kaito/repos/remote-agent/README.md',
+              view_range: [1, 120],
+            },
+          },
+          output: {
+            content: '1. # remote-agent\n2. \n3. body\n',
+            detailedContent: 'diff --git ...',
+          },
+          providerExecuted: true,
+        }),
+      },
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'file-read',
+      path: '/home/kaito/repos/remote-agent/README.md',
+      text: '1. # remote-agent\n2. \n3. body\n',
     });
   });
 

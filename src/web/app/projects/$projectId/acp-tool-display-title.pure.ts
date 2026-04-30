@@ -30,7 +30,7 @@ const truncateTitleCommand = (command: string): string =>
   command.length > 72 ? `${command.slice(0, 64)}...` : command;
 
 const displayToolName = (toolName: string, args: unknown): string => {
-  if (!isRecord(args)) {
+  if (toolName !== 'bash' || !isRecord(args)) {
     return toolName;
   }
 

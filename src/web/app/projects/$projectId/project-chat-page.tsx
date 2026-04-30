@@ -93,7 +93,10 @@ import {
 import { cn } from '../../../lib/utils.ts';
 import { markAppNotificationsReadForSession } from '../../../pwa/notification-center.ts';
 import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
-import { formatAcpPermissionOptionLabel } from './acp-permission-display.pure.ts';
+import {
+  formatAcpPermissionOptionLabel,
+  permissionRequestVisualInputText,
+} from './acp-permission-display.pure.ts';
 import {
   formatAcpSelectOptionLabel,
   formatAcpSelectValueLabel,
@@ -144,6 +147,7 @@ import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from './rich-prompt-editor.tsx';
 import {
   filterDisplayableRawEvents,
+  isToolOnlyTranscriptMessage,
   shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
 import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
@@ -662,7 +666,8 @@ const permissionOptionVariant = (
       : 'outline';
 
 const permissionRequestToolVisual = (request: AcpPermissionRequest) => {
-  if (request.rawInputText === null || request.rawInputText === undefined) {
+  const inputText = permissionRequestVisualInputText(request);
+  if (inputText === null) {
     return null;
   }
 
@@ -674,7 +679,7 @@ const permissionRequestToolVisual = (request: AcpPermissionRequest) => {
       type: 'toolCall',
       toolCallId: request.toolCallId,
       toolName: request.title ?? request.kind ?? 'permission request',
-      inputText: request.rawInputText,
+      inputText,
       rawText: '',
     },
     result: null,
@@ -2401,13 +2406,24 @@ export const ProjectChatPage: FC<{
                     </div>
                   ) : null}
 
-                  {visibleTranscript.map((message) => {
+                  {visibleTranscript.map((message, index) => {
                     const isUser = message.role === 'user';
+                    const displayEvents = filterDisplayableRawEvents(message.rawEvents);
+                    const isToolOnly = isToolOnlyTranscriptMessage(message, displayEvents);
+                    const previousMessage = visibleTranscript[index - 1];
+                    const previousDisplayEvents =
+                      previousMessage === undefined
+                        ? []
+                        : filterDisplayableRawEvents(previousMessage.rawEvents);
+                    const isAfterToolOnly =
+                      previousMessage !== undefined &&
+                      isToolOnlyTranscriptMessage(previousMessage, previousDisplayEvents);
                     return (
                       <div
                         className={cn(
                           'group/message flex w-full',
                           isUser ? 'justify-end' : 'justify-start',
+                          isToolOnly && isAfterToolOnly ? '-mt-3 md:-mt-4' : '',
                         )}
                         key={message.id}
                       >
@@ -2422,6 +2438,7 @@ export const ProjectChatPage: FC<{
                             className={cn(
                               'flex w-full items-center gap-1',
                               isUser ? 'justify-end' : 'justify-start',
+                              isToolOnly ? 'sr-only' : '',
                             )}
                           >
                             <time

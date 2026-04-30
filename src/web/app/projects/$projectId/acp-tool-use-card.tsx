@@ -74,11 +74,6 @@ const TerminalVisual: FC<{
         </span>
       ) : null}
     </div>
-    {visual.cwd !== null ? (
-      <div className="border-b border-zinc-800 px-3 py-1 font-mono text-[10px] text-zinc-500">
-        {visual.cwd}
-      </div>
-    ) : null}
     {visual.stdout.length > 0 ? (
       <pre className="max-h-96 overflow-auto px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap break-words text-zinc-100">
         {takeShort(visual.stdout)}
@@ -245,7 +240,7 @@ export const AcpToolUseCard: FC<{
     <Card
       size="sm"
       className={cn(
-        '!gap-0 !py-0 mb-1.5 rounded-lg border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30',
+        '!gap-0 !py-0 rounded-lg border border-blue-200/80 bg-blue-50/50 text-card-foreground ring-blue-200/30 dark:border-blue-800/60 dark:bg-blue-950/25 dark:ring-blue-900/30',
         className,
       )}
     >
@@ -288,7 +283,7 @@ export const AcpToolUseCard: FC<{
         </div>
       </div>
       {open ? (
-        <CardContent className="space-y-2.5 border-0 px-2.5 py-2.5 sm:px-3">
+        <CardContent className="space-y-2 border-0 px-2.5 py-2 sm:px-3">
           {visual !== null ? (
             <div className="flex items-center gap-2">
               <h4 className="flex min-w-0 flex-1 items-center gap-1 text-xs font-medium text-muted-foreground">

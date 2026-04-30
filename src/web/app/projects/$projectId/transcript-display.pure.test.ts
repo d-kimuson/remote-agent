@@ -4,6 +4,7 @@ import type { ChatMessage, RawEvent } from '../../../../shared/acp';
 
 import {
   filterDisplayableRawEvents,
+  isToolOnlyTranscriptMessage,
   shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
 
@@ -77,5 +78,39 @@ describe('shouldDisplayTranscriptMessage', () => {
     expect(shouldDisplayTranscriptMessage(baseMeta({ text: '', rawEvents: [ev] }), [ev])).toBe(
       true,
     );
+  });
+});
+
+describe('isToolOnlyTranscriptMessage', () => {
+  test('本文なしでツールイベントのみの assistant を true にする', () => {
+    const ev: RawEvent = {
+      type: 'toolCall',
+      toolCallId: '1',
+      toolName: 'read',
+      inputText: '{}',
+      rawText: '{}',
+    };
+    expect(isToolOnlyTranscriptMessage(baseMeta({ text: '', rawEvents: [ev] }), [ev])).toBe(true);
+  });
+
+  test('本文または非ツールイベントを含む assistant は false にする', () => {
+    const tool: RawEvent = {
+      type: 'toolCall',
+      toolCallId: '1',
+      toolName: 'read',
+      inputText: '{}',
+      rawText: '{}',
+    };
+    const reasoning: RawEvent = { type: 'reasoning', text: 'thinking', rawText: 'thinking' };
+
+    expect(isToolOnlyTranscriptMessage(baseMeta({ text: 'done', rawEvents: [tool] }), [tool])).toBe(
+      false,
+    );
+    expect(
+      isToolOnlyTranscriptMessage(baseMeta({ text: '', rawEvents: [tool, reasoning] }), [
+        tool,
+        reasoning,
+      ]),
+    ).toBe(false);
   });
 });
