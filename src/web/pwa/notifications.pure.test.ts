@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import {
   createAssistantNotificationPayload,
+  createPermissionRequestNotificationPayload,
   createSessionPausedNotificationPayload,
   isSystemNotificationEnabled,
   parseSystemNotificationPreference,
@@ -74,6 +75,30 @@ describe('createSessionPausedNotificationPayload', () => {
       title: 'Remote Agent • Agent paused',
       body: 'Implement notifications is ready',
       tag: 'session-paused:session-1',
+      data: {
+        projectId: 'project-1',
+        sessionId: 'session-1',
+        url: '/projects/project-1?session-id=session-1',
+      },
+    });
+  });
+});
+
+describe('createPermissionRequestNotificationPayload', () => {
+  test('creates a routeable permission-request notification', () => {
+    const payload = createPermissionRequestNotificationPayload({
+      projectId: 'project-1',
+      projectName: 'Remote Agent',
+      sessionId: 'session-1',
+      requestTitle: 'Allow shell command',
+      timestamp: 1_746_000_000_000,
+      url: '/projects/project-1?session-id=session-1',
+    });
+
+    expect(payload).toMatchObject({
+      title: 'Remote Agent • Permission request',
+      body: 'Allow shell command',
+      tag: 'permission-request:session-1',
       data: {
         projectId: 'project-1',
         sessionId: 'session-1',

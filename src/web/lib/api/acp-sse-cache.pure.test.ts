@@ -1,8 +1,13 @@
 import { describe, expect, test } from 'vitest';
 
-import type { AcpSseEvent, ChatMessage, SessionMessagesResponse } from '../../../shared/acp.ts';
+import type {
+  AcpPermissionRequest,
+  AcpSseEvent,
+  ChatMessage,
+  SessionMessagesResponse,
+} from '../../../shared/acp.ts';
 
-import { applySessionStreamDeltaToMessages } from './acp-sse-cache.pure.ts';
+import { applySessionStreamDeltaToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
 
 const baseTextDelta = {
   type: 'session_text_delta',
@@ -195,5 +200,33 @@ describe('applySessionStreamDeltaToMessages', () => {
         },
       ],
     });
+  });
+});
+
+describe('newPermissionRequests', () => {
+  const request = {
+    id: 'request-1',
+    sessionId: 'session-1',
+    toolCallId: 'tool-1',
+    title: 'Allow shell command',
+    kind: 'tool',
+    rawInputText: null,
+    options: [{ id: 'allow', kind: 'allow_once', name: 'Allow' }],
+    createdAt: '2026-04-30T00:00:00.000Z',
+  } satisfies AcpPermissionRequest;
+
+  test('returns only unseen permission requests', () => {
+    expect(
+      newPermissionRequests({
+        current: [
+          request,
+          {
+            ...request,
+            id: 'request-2',
+          },
+        ],
+        knownRequestIds: new Set(['request-1']),
+      }).map((entry) => entry.id),
+    ).toEqual(['request-2']);
   });
 });

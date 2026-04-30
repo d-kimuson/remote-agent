@@ -15,7 +15,7 @@ import {
 import { fetchProjects } from '@/web/lib/api/acp';
 import {
   markAllAppNotificationsRead,
-  markAppNotificationRead,
+  markAppNotificationsReadForSession,
   notificationDisplayLimit,
   useNotificationCenter,
 } from '@/web/pwa/notification-center';
@@ -104,7 +104,7 @@ const NotificationButton: FC = () => {
                     className="block"
                     key={notification.id}
                     onClick={() => {
-                      markAppNotificationRead(notification.id);
+                      markAppNotificationsReadForSession(notification.sessionId);
                       setIsOpen(false);
                     }}
                     to={notification.url}

@@ -1,5 +1,6 @@
 import {
   createAssistantNotificationPayload,
+  createPermissionRequestNotificationPayload,
   createSessionPausedNotificationPayload,
   defaultSystemNotificationPreference,
   isSystemNotificationEnabled,
@@ -7,6 +8,7 @@ import {
   systemNotificationPreferenceStorageKey,
   type AssistantNotificationInput,
   type AssistantNotificationPayload,
+  type PermissionRequestNotificationInput,
   type SessionPausedNotificationInput,
   type SystemNotificationPreference,
 } from './notifications.pure.ts';
@@ -93,6 +95,12 @@ export const showSessionPausedNotification = async (
   input: SessionPausedNotificationInput,
 ): Promise<boolean> => {
   return showNotification(createSessionPausedNotificationPayload(input));
+};
+
+export const showPermissionRequestNotification = async (
+  input: PermissionRequestNotificationInput,
+): Promise<boolean> => {
+  return showNotification(createPermissionRequestNotificationPayload(input));
 };
 
 export const showNotificationPreview = async (

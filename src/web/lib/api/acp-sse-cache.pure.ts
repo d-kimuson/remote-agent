@@ -1,4 +1,9 @@
-import type { AcpSseEvent, ChatMessage, SessionMessagesResponse } from '../../../shared/acp.ts';
+import type {
+  AcpPermissionRequest,
+  AcpSseEvent,
+  ChatMessage,
+  SessionMessagesResponse,
+} from '../../../shared/acp.ts';
 
 type SessionStreamDeltaEvent = Extract<
   AcpSseEvent,
@@ -73,3 +78,12 @@ export const applySessionStreamDeltaToMessages = (
     ),
   };
 };
+
+export const newPermissionRequests = ({
+  current,
+  knownRequestIds,
+}: {
+  readonly current: readonly AcpPermissionRequest[];
+  readonly knownRequestIds: ReadonlySet<string>;
+}): readonly AcpPermissionRequest[] =>
+  current.filter((request) => !knownRequestIds.has(request.id));

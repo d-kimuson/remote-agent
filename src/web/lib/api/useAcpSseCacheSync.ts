@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 
 import {
   type AcpSseEvent,
+  type AcpPermissionRequest,
+  type AcpPermissionRequestsResponse,
   parseAcpSseEventJson,
   type ProjectsResponse,
   type SessionMessagesResponse,
@@ -18,12 +20,18 @@ import {
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from '../../app/projects/$projectId/queries.ts';
-import { addSessionPausedAppNotification } from '../../pwa/notification-center.ts';
-import { showSessionPausedNotification } from '../../pwa/notifications.ts';
+import {
+  addPermissionRequestAppNotification,
+  addSessionPausedAppNotification,
+} from '../../pwa/notification-center.ts';
+import {
+  showPermissionRequestNotification,
+  showSessionPausedNotification,
+} from '../../pwa/notifications.ts';
 import { playTaskCompletionSound } from '../../pwa/task-completion-sound.ts';
 import { dispatchAcpSseBrowserEvent } from './acp-sse-browser-event.ts';
-import { applySessionStreamDeltaToMessages } from './acp-sse-cache.pure.ts';
-import { fetchProjects, fetchSessions } from './acp.ts';
+import { applySessionStreamDeltaToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
+import { fetchAcpPermissionRequests, fetchProjects, fetchSessions } from './acp.ts';
 import { acpSseUrl } from './client.ts';
 
 /** ACP のストリーミングで SSE が連打されるため、invalidate の間隔を空ける */
@@ -97,6 +105,29 @@ const sessionUrlFrom = (session: SessionSummary): string => {
     : `/projects/${session.projectId}?${searchParams.toString()}`;
 };
 
+const sessionTitleFromId = (sessions: readonly SessionSummary[], sessionId: string): string => {
+  const session = sessions.find((entry) => entry.sessionId === sessionId);
+  if (session !== undefined) {
+    return sessionTitleFrom(session);
+  }
+
+  return sessionId;
+};
+
+const sessionUrlFromId = (sessions: readonly SessionSummary[], sessionId: string): string => {
+  const session = sessions.find((entry) => entry.sessionId === sessionId);
+  if (session !== undefined) {
+    return sessionUrlFrom(session);
+  }
+
+  return `/projects?${new URLSearchParams({ 'session-id': sessionId }).toString()}`;
+};
+
+const projectIdFromSessionId = (
+  sessions: readonly SessionSummary[],
+  sessionId: string,
+): string | null => sessions.find((session) => session.sessionId === sessionId)?.projectId ?? null;
+
 const projectNameFrom = async (
   queryClient: QueryClient,
   projectId: string | null | undefined,
@@ -156,6 +187,41 @@ const notifyPausedSessions = async (
   }
 };
 
+const notifyPermissionRequests = async (
+  queryClient: QueryClient,
+  sessions: readonly SessionSummary[],
+  requests: readonly AcpPermissionRequest[],
+): Promise<void> => {
+  for (const request of requests) {
+    const timestamp = Date.now();
+    const projectId = projectIdFromSessionId(sessions, request.sessionId);
+    const projectName = await projectNameFrom(queryClient, projectId);
+    const sessionTitle = sessionTitleFromId(sessions, request.sessionId);
+    const requestTitle = request.title ?? request.kind ?? 'Permission request';
+    const url = sessionUrlFromId(sessions, request.sessionId);
+    addPermissionRequestAppNotification({
+      projectId: projectId ?? 'unknown',
+      projectName,
+      sessionId: request.sessionId,
+      sessionTitle,
+      requestTitle,
+      timestamp,
+      url,
+    });
+    toast.warning('Permission request', {
+      description: requestTitle,
+    });
+    void showPermissionRequestNotification({
+      projectId: projectId ?? 'unknown',
+      projectName,
+      sessionId: request.sessionId,
+      requestTitle,
+      timestamp,
+      url,
+    });
+  }
+};
+
 const flushPending = async (
   queryClient: QueryClient,
   pending: {
@@ -167,6 +233,7 @@ const flushPending = async (
     permissionRequestsUpdated: boolean;
   },
   knownStatuses: Map<string, SessionStatus>,
+  knownPermissionRequestIds: Set<string>,
 ): Promise<void> => {
   const work = {
     needSessionsList: pending.needSessionsList,
@@ -217,7 +284,31 @@ const flushPending = async (
     }
   }
   if (work.permissionRequestsUpdated) {
-    void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
+    const previousRequests = queryClient.getQueryData<AcpPermissionRequestsResponse>(
+      acpPermissionRequestsQueryKey,
+    );
+    for (const request of previousRequests?.requests ?? []) {
+      knownPermissionRequestIds.add(request.id);
+    }
+    const response = await queryClient.fetchQuery({
+      queryKey: acpPermissionRequestsQueryKey,
+      queryFn: fetchAcpPermissionRequests,
+    });
+    const freshRequests = newPermissionRequests({
+      current: response.requests,
+      knownRequestIds: knownPermissionRequestIds,
+    });
+    for (const request of response.requests) {
+      knownPermissionRequestIds.add(request.id);
+    }
+    if (freshRequests.length > 0) {
+      const sessions =
+        freshSessions ??
+        queryClient.getQueryData<SessionsResponse>(sessionsQueryKey)?.sessions ??
+        (await queryClient.fetchQuery({ queryKey: sessionsQueryKey, queryFn: fetchSessions }))
+          .sessions;
+      await notifyPermissionRequests(queryClient, sessions, freshRequests);
+    }
   }
   if (freshSessions !== null && work.pausedSessionIds.size > 0) {
     await notifyPausedSessions(queryClient, freshSessions, work.pausedSessionIds);
@@ -228,6 +319,7 @@ export const useAcpSseCacheSync = (): void => {
   const queryClient = useQueryClient();
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const knownStatusesRef = useRef(new Map<string, SessionStatus>());
+  const knownPermissionRequestIdsRef = useRef(new Set<string>());
 
   useEffect(() => {
     const knownStatuses = knownStatusesRef.current;
@@ -254,7 +346,12 @@ export const useAcpSseCacheSync = (): void => {
       }
       timerRef.current = setTimeout(() => {
         timerRef.current = undefined;
-        void flushPending(queryClient, pending, knownStatuses);
+        void flushPending(
+          queryClient,
+          pending,
+          knownStatuses,
+          knownPermissionRequestIdsRef.current,
+        );
       }, ACP_SSE_INVALIDATE_DEBOUNCE_MS);
     };
 
@@ -292,7 +389,12 @@ export const useAcpSseCacheSync = (): void => {
         pending.catalogUpdates.size > 0 ||
         pending.permissionRequestsUpdated;
       if (hasWork) {
-        void flushPending(queryClient, pending, knownStatuses);
+        void flushPending(
+          queryClient,
+          pending,
+          knownStatuses,
+          knownPermissionRequestIdsRef.current,
+        );
       }
     };
   }, [queryClient]);

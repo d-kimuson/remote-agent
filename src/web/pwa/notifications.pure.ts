@@ -43,6 +43,15 @@ export type SessionPausedNotificationInput = {
   readonly timestamp: number;
 };
 
+export type PermissionRequestNotificationInput = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly sessionId: string;
+  readonly requestTitle: string;
+  readonly url: string;
+  readonly timestamp: number;
+};
+
 export type AssistantNotificationPayload = {
   readonly title: string;
   readonly body: string;
@@ -58,6 +67,8 @@ export type AssistantNotificationPayload = {
 };
 
 export type SessionPausedNotificationPayload = AssistantNotificationPayload;
+
+export type PermissionRequestNotificationPayload = AssistantNotificationPayload;
 
 const normalizeNotificationBody = (text: string): string => text.trim().replaceAll(/\s+/g, ' ');
 
@@ -98,6 +109,26 @@ export const createSessionPausedNotificationPayload = (
     title: `${input.projectName} • Agent paused`,
     body: normalizedTitle.length > 0 ? `${normalizedTitle} is ready` : 'Session is ready',
     tag: `session-paused:${input.sessionId}`,
+    icon: notificationIconPath,
+    badge: notificationBadgePath,
+    data: {
+      projectId: input.projectId,
+      sessionId: input.sessionId,
+      url: input.url,
+    },
+    timestamp: input.timestamp,
+  };
+};
+
+export const createPermissionRequestNotificationPayload = (
+  input: PermissionRequestNotificationInput,
+): PermissionRequestNotificationPayload => {
+  const normalizedTitle = truncateNotificationBody(normalizeNotificationBody(input.requestTitle));
+
+  return {
+    title: `${input.projectName} • Permission request`,
+    body: normalizedTitle.length > 0 ? normalizedTitle : 'Agent needs permission',
+    tag: `permission-request:${input.sessionId}`,
     icon: notificationIconPath,
     badge: notificationBadgePath,
     data: {

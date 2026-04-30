@@ -91,6 +91,7 @@ import {
   uploadAttachmentsRequest,
 } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
+import { markAppNotificationsReadForSession } from '../../../pwa/notification-center.ts';
 import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
 import { formatAcpPermissionOptionLabel } from './acp-permission-display.pure.ts';
 import {
@@ -981,6 +982,13 @@ export const ProjectChatPage: FC<{
         sessionsData.sessions.find((s) => s.sessionId === sessionId) ??
         null);
   const shouldUseDraftSession = sessionId === null;
+
+  useEffect(() => {
+    if (sessionId !== null) {
+      markAppNotificationsReadForSession(sessionId);
+    }
+  }, [sessionId]);
+
   const activePresetId = draftPresetId.length > 0 ? draftPresetId : preferredPresetId;
   const draftSession = useMemo(
     () =>

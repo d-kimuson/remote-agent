@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 
-export type AppNotificationKind = 'session_paused';
+export type AppNotificationKind = 'session_paused' | 'permission_request';
 
 export type AppNotification = {
   readonly id: string;
@@ -26,6 +26,16 @@ export type SessionPausedAppNotificationInput = {
   readonly projectName: string;
   readonly sessionId: string;
   readonly sessionTitle: string;
+  readonly url: string;
+  readonly timestamp: number;
+};
+
+export type PermissionRequestAppNotificationInput = {
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly sessionId: string;
+  readonly sessionTitle: string;
+  readonly requestTitle: string;
   readonly url: string;
   readonly timestamp: number;
 };
@@ -59,6 +69,11 @@ export const subscribeNotificationCenter = (listener: () => void): (() => void) 
 
 export const getNotificationCenterSnapshot = (): NotificationCenterSnapshot => snapshot;
 
+export const resetNotificationCenterForTest = (): void => {
+  notifications = [];
+  emitChange();
+};
+
 export const addSessionPausedAppNotification = (
   input: SessionPausedAppNotificationInput,
 ): AppNotification => {
@@ -82,6 +97,29 @@ export const addSessionPausedAppNotification = (
   return notification;
 };
 
+export const addPermissionRequestAppNotification = (
+  input: PermissionRequestAppNotificationInput,
+): AppNotification => {
+  const notification = {
+    id: `permission-request:${input.sessionId}:${String(input.timestamp)}`,
+    kind: 'permission_request',
+    projectId: input.projectId,
+    projectName: input.projectName,
+    sessionId: input.sessionId,
+    sessionTitle: input.sessionTitle,
+    title: 'Permission request',
+    body: input.requestTitle.length > 0 ? input.requestTitle : 'Agent needs permission',
+    url: input.url,
+    createdAt: input.timestamp,
+    readAt: null,
+  } satisfies AppNotification;
+
+  notifications = [notification, ...notifications].slice(0, notificationLimit);
+  emitChange();
+
+  return notification;
+};
+
 export const markAllAppNotificationsRead = (): void => {
   const now = Date.now();
   notifications = notifications.map((notification) =>
@@ -94,6 +132,16 @@ export const markAppNotificationRead = (notificationId: string): void => {
   const now = Date.now();
   notifications = notifications.map((notification) =>
     notification.id === notificationId && notification.readAt === null
+      ? { ...notification, readAt: now }
+      : notification,
+  );
+  emitChange();
+};
+
+export const markAppNotificationsReadForSession = (sessionId: string): void => {
+  const now = Date.now();
+  notifications = notifications.map((notification) =>
+    notification.sessionId === sessionId && notification.readAt === null
       ? { ...notification, readAt: now }
       : notification,
   );
