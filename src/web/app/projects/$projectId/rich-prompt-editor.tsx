@@ -19,6 +19,7 @@ import {
   applyRichPromptFormat,
   filterSlashCommands,
   replaceSlashCommandQuery,
+  richPromptFormatShortcutFromInput,
   type RichPromptEditResult,
   type RichPromptFormat,
   type RichPromptSelection,
@@ -215,15 +216,14 @@ export const RichPromptEditor: FC<{
       return;
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'b') {
+    const formatShortcut = richPromptFormatShortcutFromInput({
+      key: event.key,
+      ctrlKey: event.ctrlKey,
+      metaKey: event.metaKey,
+    });
+    if (formatShortcut !== null) {
       event.preventDefault();
-      applyFormat('bold');
-      return;
-    }
-
-    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'i') {
-      event.preventDefault();
-      applyFormat('italic');
+      applyFormat(formatShortcut);
       return;
     }
   };

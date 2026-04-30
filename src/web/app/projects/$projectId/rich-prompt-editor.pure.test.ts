@@ -6,6 +6,7 @@ import {
   filterSlashCommands,
   replaceRichPromptSelection,
   replaceSlashCommandQuery,
+  richPromptFormatShortcutFromInput,
   slashCommandQueryFromPrompt,
 } from './rich-prompt-editor.pure.ts';
 
@@ -60,6 +61,26 @@ describe('rich-prompt-editor.pure', () => {
         format: 'quote',
       }).value,
     ).toBe('> first\n> second\nthird');
+  });
+
+  test('keeps Ctrl+b available to the browser instead of inserting bold marks', () => {
+    expect(
+      richPromptFormatShortcutFromInput({
+        key: 'b',
+        ctrlKey: true,
+        metaKey: false,
+      }),
+    ).toBeNull();
+  });
+
+  test('keeps the italic shortcut enabled', () => {
+    expect(
+      richPromptFormatShortcutFromInput({
+        key: 'i',
+        ctrlKey: true,
+        metaKey: false,
+      }),
+    ).toBe('italic');
   });
 
   test('replaces the selected range and moves the caret after the inserted text', () => {

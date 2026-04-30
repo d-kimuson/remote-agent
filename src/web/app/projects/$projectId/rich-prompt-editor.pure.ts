@@ -2,6 +2,12 @@ import type { SlashCommand } from '../../../../shared/acp.ts';
 
 export type RichPromptFormat = 'bold' | 'italic' | 'code' | 'bulletList' | 'quote';
 
+export type RichPromptShortcutInput = {
+  readonly key: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+};
+
 export type RichPromptSelection = {
   readonly start: number;
   readonly end: number;
@@ -109,6 +115,22 @@ export const applyRichPromptFormat = ({
 
   const exhaustive: never = format;
   return exhaustive;
+};
+
+export const richPromptFormatShortcutFromInput = ({
+  ctrlKey,
+  key,
+  metaKey,
+}: RichPromptShortcutInput): RichPromptFormat | null => {
+  if (!metaKey && !ctrlKey) {
+    return null;
+  }
+
+  if (key.toLowerCase() === 'i') {
+    return 'italic';
+  }
+
+  return null;
 };
 
 export const replaceRichPromptSelection = ({
