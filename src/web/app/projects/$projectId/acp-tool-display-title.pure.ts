@@ -29,7 +29,24 @@ const commandField = (record: Record<string, unknown>): string | null => {
 const truncateTitleCommand = (command: string): string =>
   command.length > 72 ? `${command.slice(0, 64)}...` : command;
 
+const isPathTitleToolName = (toolName: string): boolean =>
+  toolName === 'edit' || toolName === 'read';
+
+const pathTitle = (toolName: string, args: unknown): string | null => {
+  if (!isPathTitleToolName(toolName) || !isRecord(args)) {
+    return null;
+  }
+
+  const path = stringField(args, 'path');
+  return path === null ? null : `${toolName}: ${path}`;
+};
+
 const displayToolName = (toolName: string, args: unknown): string => {
+  const titleWithPath = pathTitle(toolName, args);
+  if (titleWithPath !== null) {
+    return titleWithPath;
+  }
+
   if (toolName !== 'bash' || !isRecord(args)) {
     return toolName;
   }

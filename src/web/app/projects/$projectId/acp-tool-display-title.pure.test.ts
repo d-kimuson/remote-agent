@@ -72,6 +72,56 @@ describe('resolveAcpToolCardTitle', () => {
     ).toBe('List /home/kaito/repos/remote-agent');
   });
 
+  test('edit 完全一致の dynamic ツール名では path をタイトルに含める', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            toolCallId: 'toolu_1',
+            toolName: 'edit',
+            args: {
+              path: 'README.md',
+              edits: [
+                {
+                  oldText: 'old',
+                  newText: 'new',
+                },
+              ],
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('edit: README.md');
+  });
+
+  test('read 完全一致の dynamic ツール名では path をタイトルに含める', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            toolCallId: 'toolu_1',
+            toolName: 'read',
+            args: {
+              path: 'README.md',
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('read: README.md');
+  });
+
   test('bash dynamic ツール名では command をタイトルに含める', () => {
     expect(
       resolveAcpToolCardTitle({
