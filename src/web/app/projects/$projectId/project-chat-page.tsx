@@ -2781,6 +2781,7 @@ export const ProjectChatPage: FC<{
                   }}
                   onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
+                  projectId={projectId}
                   slashCommands={effectiveSlashCommands}
                 />
 

@@ -4,7 +4,9 @@ import {
   appendRichPromptText,
   applyRichPromptFormat,
   filterSlashCommands,
+  fileCompletionQueryFromPrompt,
   replaceRichPromptSelection,
+  replaceFileCompletionQuery,
   replaceSlashCommandQuery,
   richPromptFormatShortcutFromInput,
   slashCommandQueryFromPrompt,
@@ -136,6 +138,58 @@ describe('rich-prompt-editor.pure', () => {
     ).toEqual({
       value: '/review ',
       selection: { start: 8, end: 8 },
+    });
+  });
+
+  test('detects active @ file completion queries', () => {
+    expect(fileCompletionQueryFromPrompt({ value: '@', selection: { start: 1, end: 1 } })).toEqual({
+      basePath: '',
+      filterTerm: '',
+      query: '',
+    });
+    expect(
+      fileCompletionQueryFromPrompt({ value: 'read @src/app', selection: { start: 13, end: 13 } }),
+    ).toEqual({
+      basePath: 'src/',
+      filterTerm: 'app',
+      query: 'src/app',
+    });
+    expect(
+      fileCompletionQueryFromPrompt({
+        value: 'read @src/app then',
+        selection: { start: 18, end: 18 },
+      }),
+    ).toBeNull();
+    expect(
+      fileCompletionQueryFromPrompt({
+        value: 'read @src',
+        selection: { start: 6, end: 9 },
+      }),
+    ).toBeNull();
+  });
+
+  test('replaces active @ file completion queries', () => {
+    expect(
+      replaceFileCompletionQuery({
+        value: 'read @sr',
+        selection: { start: 8, end: 8 },
+        entry: { name: 'src', path: 'src', type: 'directory' },
+        close: false,
+      }),
+    ).toEqual({
+      value: 'read @src/',
+      selection: { start: 10, end: 10 },
+    });
+    expect(
+      replaceFileCompletionQuery({
+        value: 'open @src/mai',
+        selection: { start: 13, end: 13 },
+        entry: { name: 'main.tsx', path: 'src/main.tsx', type: 'file' },
+        close: true,
+      }),
+    ).toEqual({
+      value: 'open @src/main.tsx ',
+      selection: { start: 19, end: 19 },
     });
   });
 });

@@ -13,6 +13,7 @@ import {
   createProjectWorktreeRequestSchema,
   directoryListingResponseSchema,
   discoverResumableSessionsRequestSchema,
+  fileCompletionResponseSchema,
   filesystemTreeResponseSchema,
   gitDiffRequestSchema,
   gitDiffResponseSchema,
@@ -45,6 +46,7 @@ import {
   type CreateSessionRequest,
   type DirectoryListingResponse,
   type DiscoverResumableSessionsRequest,
+  type FileCompletionResponse,
   type FilesystemTreeResponse,
   type GitDiffRequest,
   type GitDiffResponse,
@@ -99,6 +101,19 @@ export const fetchDirectoryListing = async (
     },
   });
   return parse(directoryListingResponseSchema, await response.json());
+};
+
+export const fetchFileCompletion = async ({
+  basePath,
+  projectId,
+}: {
+  readonly projectId: string;
+  readonly basePath: string;
+}): Promise<FileCompletionResponse> => {
+  const response = await honoClient.filesystem['file-completion'].$get({
+    query: { projectId, basePath },
+  });
+  return parse(fileCompletionResponseSchema, await response.json());
 };
 
 export const fetchProjects = async (): Promise<ProjectsResponse> => {

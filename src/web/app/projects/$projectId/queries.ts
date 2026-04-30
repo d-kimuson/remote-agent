@@ -14,6 +14,8 @@ export const gitRevisionsQueryKey = (projectId: string) => ['git-revisions', pro
 export const gitDiffQueryKey = (projectId: string, fromRef: string, toRef: string) =>
   ['git-diff', projectId, fromRef, toRef] as const;
 export const filesystemTreeQueryKey = (root: string) => ['filesystem-tree', root] as const;
+export const fileCompletionQueryKey = (projectId: string, basePath: string) =>
+  ['file-completion', projectId, basePath] as const;
 export const resumableSessionsQueryKey = (projectId: string) =>
   ['resumable-sessions', projectId] as const;
 

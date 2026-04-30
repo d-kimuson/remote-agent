@@ -557,6 +557,22 @@ export const directoryListingResponseSchema = object({
 
 export type DirectoryListingResponse = InferOutput<typeof directoryListingResponseSchema>;
 
+export const fileCompletionEntrySchema = object({
+  name: pipe(string(), trim()),
+  path: pipe(string(), trim()),
+  type: union([literal('directory'), literal('file')]),
+});
+
+export type FileCompletionEntry = InferOutput<typeof fileCompletionEntrySchema>;
+
+export const fileCompletionResponseSchema = object({
+  entries: array(fileCompletionEntrySchema),
+  basePath: pipe(string(), trim()),
+  projectPath: pipe(string(), trim()),
+});
+
+export type FileCompletionResponse = InferOutput<typeof fileCompletionResponseSchema>;
+
 export const uploadedAttachmentSchema = object({
   attachmentId: pipe(string(), trim()),
   name: pipe(string(), trim()),

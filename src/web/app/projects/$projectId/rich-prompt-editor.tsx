@@ -1,6 +1,18 @@
-import { Bold, Code2, Italic, List, Quote, type LucideIcon } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  Bold,
+  Check,
+  Code2,
+  File,
+  Folder,
+  Italic,
+  List,
+  Quote,
+  type LucideIcon,
+} from 'lucide-react';
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -11,16 +23,21 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { SlashCommand } from '../../../../shared/acp.ts';
+import type { FileCompletionEntry, SlashCommand } from '../../../../shared/acp.ts';
 
 import { Button } from '../../../components/ui/button.tsx';
+import { fetchFileCompletion } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
+import { fileCompletionQueryKey } from './queries.ts';
 import {
   applyRichPromptFormat,
+  fileCompletionQueryFromPrompt,
   filterSlashCommands,
+  replaceFileCompletionQuery,
   replaceSlashCommandQuery,
   richPromptFormatShortcutFromInput,
   type RichPromptEditResult,
+  type FileCompletionQuery,
   type RichPromptFormat,
   type RichPromptSelection,
   slashCommandQueryFromPrompt,
@@ -50,6 +67,7 @@ export const RichPromptEditor: FC<{
   readonly onSubmit: (value: string) => void;
   readonly onValueReaderReady: (readValue: () => string) => void;
   readonly placeholder: string;
+  readonly projectId?: string;
   readonly slashCommands?: readonly SlashCommand[];
   readonly toolbarTrailing?: ReactNode;
 }> = ({
@@ -59,13 +77,22 @@ export const RichPromptEditor: FC<{
   onSubmit,
   onValueReaderReady,
   placeholder,
+  projectId,
   slashCommands = [],
   toolbarTrailing,
 }) => {
+  const queryClient = useQueryClient();
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  const fileCompletionListRef = useRef<HTMLDivElement>(null);
   const valueRef = useRef(externalValue.value);
   const [slashCommandQuery, setSlashCommandQuery] = useState<string | null>(null);
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const [fileCompletionQuery, setFileCompletionQuery] = useState<FileCompletionQuery | null>(null);
+  const [fileCompletionData, setFileCompletionData] = useState<{
+    readonly basePath: string;
+    readonly entries: readonly FileCompletionEntry[];
+  } | null>(null);
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
 
   const filteredSlashCommands = useMemo(
     () =>
@@ -74,6 +101,65 @@ export const RichPromptEditor: FC<{
         : filterSlashCommands({ commands: slashCommands, query: slashCommandQuery }).slice(0, 8),
     [slashCommandQuery, slashCommands],
   );
+
+  useEffect(() => {
+    if (projectId === undefined || fileCompletionQuery === null) {
+      setFileCompletionData(null);
+      return;
+    }
+
+    let ignore = false;
+    const basePath = fileCompletionQuery.basePath;
+    void queryClient
+      .fetchQuery({
+        queryKey: fileCompletionQueryKey(projectId, basePath),
+        queryFn: () => fetchFileCompletion({ projectId, basePath }),
+        staleTime: 1000 * 60 * 5,
+      })
+      .then((data) => {
+        if (!ignore) {
+          setFileCompletionData({ basePath, entries: data.entries });
+        }
+      })
+      .catch(() => {
+        if (!ignore) {
+          setFileCompletionData({ basePath, entries: [] });
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [fileCompletionQuery, projectId, queryClient]);
+
+  const filteredFileEntries = useMemo(() => {
+    if (
+      fileCompletionQuery === null ||
+      fileCompletionData === null ||
+      fileCompletionData.basePath !== fileCompletionQuery.basePath
+    ) {
+      return [];
+    }
+
+    const normalizedFilter = fileCompletionQuery.filterTerm.toLowerCase();
+    return normalizedFilter.length === 0
+      ? fileCompletionData.entries
+      : fileCompletionData.entries.filter((entry) =>
+          entry.name.toLowerCase().includes(normalizedFilter),
+        );
+  }, [fileCompletionData, fileCompletionQuery]);
+
+  useLayoutEffect(() => {
+    if (filteredFileEntries.length === 0) {
+      return;
+    }
+
+    const list = fileCompletionListRef.current;
+    const selected = list?.querySelector('[aria-selected="true"]');
+    if (selected instanceof HTMLElement) {
+      selected.scrollIntoView({ block: 'nearest' });
+    }
+  }, [filteredFileEntries, selectedFileIndex]);
 
   useLayoutEffect(() => {
     const editor = editorRef.current;
@@ -87,6 +173,9 @@ export const RichPromptEditor: FC<{
     }
     setSlashCommandQuery(null);
     setSelectedCommandIndex(0);
+    setFileCompletionQuery(null);
+    setFileCompletionData(null);
+    setSelectedFileIndex(0);
   }, [externalValue]);
 
   const applyEditResult = useCallback((result: RichPromptEditResult) => {
@@ -101,7 +190,9 @@ export const RichPromptEditor: FC<{
     editor.focus();
     editor.setSelectionRange(result.selection.start, result.selection.end);
     setSlashCommandQuery(slashCommandQueryFromPrompt(result));
+    setFileCompletionQuery(fileCompletionQueryFromPrompt(result));
     setSelectedCommandIndex(0);
+    setSelectedFileIndex(0);
   }, []);
 
   const readCurrentValue = useCallback((): string => {
@@ -126,7 +217,7 @@ export const RichPromptEditor: FC<{
     };
   }, [readCurrentValue]);
 
-  const refreshSlashCommandQuery = useCallback(() => {
+  const refreshCompletionQueries = useCallback(() => {
     const editor = editorRef.current;
     const value = readCurrentValue();
     const selection =
@@ -135,7 +226,9 @@ export const RichPromptEditor: FC<{
         : { start: editor.selectionStart, end: editor.selectionEnd };
 
     setSlashCommandQuery(slashCommandQueryFromPrompt({ value, selection }));
+    setFileCompletionQuery(fileCompletionQueryFromPrompt({ value, selection }));
     setSelectedCommandIndex(0);
+    setSelectedFileIndex(0);
   }, [readCurrentValue]);
 
   const applyFormat = useCallback(
@@ -164,14 +257,64 @@ export const RichPromptEditor: FC<{
     [applyEditResult, readCurrentSelection, readCurrentValue],
   );
 
+  const insertFileCompletion = useCallback(
+    (entry: FileCompletionEntry, close: boolean) => {
+      applyEditResult(
+        replaceFileCompletionQuery({
+          value: readCurrentValue(),
+          selection: readCurrentSelection(),
+          entry,
+          close,
+        }),
+      );
+    },
+    [applyEditResult, readCurrentSelection, readCurrentValue],
+  );
+
   const handleChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
     valueRef.current = event.currentTarget.value;
-    refreshSlashCommandQuery();
+    refreshCompletionQueries();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) {
       return;
+    }
+
+    if (filteredFileEntries.length > 0) {
+      const isCommandNavigation = event.metaKey || event.ctrlKey;
+      const isNextCommand = isCommandNavigation && event.key.toLowerCase() === 'n';
+      const isPreviousCommand = isCommandNavigation && event.key.toLowerCase() === 'p';
+
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setFileCompletionQuery(null);
+        setSelectedFileIndex(0);
+        return;
+      }
+
+      if (event.key === 'ArrowDown' || isNextCommand) {
+        event.preventDefault();
+        setSelectedFileIndex((current) => (current + 1) % filteredFileEntries.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp' || isPreviousCommand) {
+        event.preventDefault();
+        setSelectedFileIndex(
+          (current) => (current + filteredFileEntries.length - 1) % filteredFileEntries.length,
+        );
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        const entry = filteredFileEntries[selectedFileIndex] ?? filteredFileEntries[0];
+        if (entry !== undefined) {
+          insertFileCompletion(entry, event.key === 'Enter' || entry.type === 'file');
+        }
+        return;
+      }
     }
 
     if (filteredSlashCommands.length > 0) {
@@ -233,7 +376,7 @@ export const RichPromptEditor: FC<{
       (event.metaKey || event.ctrlKey) && ['n', 'p'].includes(event.key.toLowerCase());
     const isModifierKey = ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key);
     if (
-      filteredSlashCommands.length > 0 &&
+      (filteredSlashCommands.length > 0 || filteredFileEntries.length > 0) &&
       (['ArrowDown', 'ArrowUp', 'Enter', 'Escape', 'Tab'].includes(event.key) ||
         isModifierKey ||
         isCommandNavigation)
@@ -241,7 +384,7 @@ export const RichPromptEditor: FC<{
       return;
     }
 
-    refreshSlashCommandQuery();
+    refreshCompletionQueries();
   };
 
   return (
@@ -289,10 +432,11 @@ export const RichPromptEditor: FC<{
           onBlur={() => {
             window.setTimeout(() => {
               setSlashCommandQuery(null);
+              setFileCompletionQuery(null);
             }, 100);
           }}
           onChange={handleChange}
-          onClick={refreshSlashCommandQuery}
+          onClick={refreshCompletionQueries}
           onKeyDown={handleKeyDown}
           onKeyUp={handleKeyUp}
           placeholder={placeholder}
@@ -300,6 +444,63 @@ export const RichPromptEditor: FC<{
           rows={3}
           spellCheck={false}
         />
+        {filteredFileEntries.length === 0 ? null : (
+          <div
+            className="absolute right-2 bottom-full left-2 z-[60] mb-2 max-h-64 overflow-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-lg"
+            ref={fileCompletionListRef}
+            role="listbox"
+          >
+            <div className="flex items-center gap-2 border-b px-2 py-1.5 text-xs font-medium text-muted-foreground">
+              <File className="size-3.5" />
+              <span>Files & Directories</span>
+              {fileCompletionQuery?.basePath === undefined ||
+              fileCompletionQuery.basePath.length === 0 ? null : (
+                <span className="min-w-0 truncate font-mono">
+                  in {fileCompletionQuery.basePath}
+                </span>
+              )}
+            </div>
+            {filteredFileEntries.map((entry, index) => {
+              const Icon = entry.type === 'directory' ? Folder : File;
+              return (
+                <button
+                  aria-selected={index === selectedFileIndex}
+                  className={cn(
+                    'flex w-full min-w-0 items-center gap-2 rounded-sm px-2 py-2 text-left font-mono text-sm transition-colors',
+                    index === selectedFileIndex ? 'bg-accent text-accent-foreground' : '',
+                  )}
+                  key={entry.path}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                  }}
+                  onMouseEnter={() => {
+                    setSelectedFileIndex(index);
+                  }}
+                  onClick={() => {
+                    insertFileCompletion(entry, entry.type === 'file');
+                  }}
+                  role="option"
+                  title={entry.path}
+                  type="button"
+                >
+                  <Icon
+                    className={cn(
+                      'size-4 shrink-0',
+                      entry.type === 'directory' ? 'text-primary' : 'text-muted-foreground',
+                    )}
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    {entry.name}
+                    {entry.type === 'directory' ? '/' : ''}
+                  </span>
+                  {index === selectedFileIndex ? (
+                    <Check className="size-3.5 shrink-0 text-muted-foreground" />
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {filteredSlashCommands.length === 0 ? null : (
           <div className="absolute right-2 bottom-full left-2 z-[60] mb-2 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-lg">
             {filteredSlashCommands.map((command, index) => (

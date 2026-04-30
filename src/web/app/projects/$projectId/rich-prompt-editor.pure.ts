@@ -1,4 +1,4 @@
-import type { SlashCommand } from '../../../../shared/acp.ts';
+import type { FileCompletionEntry, SlashCommand } from '../../../../shared/acp.ts';
 
 export type RichPromptFormat = 'bold' | 'italic' | 'code' | 'bulletList' | 'quote';
 
@@ -16,6 +16,12 @@ export type RichPromptSelection = {
 export type RichPromptEditResult = {
   readonly value: string;
   readonly selection: RichPromptSelection;
+};
+
+export type FileCompletionQuery = {
+  readonly query: string;
+  readonly basePath: string;
+  readonly filterTerm: string;
 };
 
 const normalizeSelection = ({ end, start }: RichPromptSelection): RichPromptSelection =>
@@ -221,6 +227,75 @@ export const replaceSlashCommandQuery = ({
     selection.end,
   )}`;
   const nextOffset = activeLineStart + commandName.length + 2;
+
+  return {
+    value: nextValue,
+    selection: {
+      start: nextOffset,
+      end: nextOffset,
+    },
+  };
+};
+
+export const fileCompletionQueryFromPrompt = ({
+  selection,
+  value,
+}: {
+  readonly value: string;
+  readonly selection: RichPromptSelection;
+}): FileCompletionQuery | null => {
+  if (selection.start !== selection.end) {
+    return null;
+  }
+
+  const beforeCaret = value.slice(0, selection.start);
+  const atIndex = beforeCaret.lastIndexOf('@');
+  if (atIndex === -1) {
+    return null;
+  }
+
+  const query = beforeCaret.slice(atIndex + 1);
+  if (/\s/.test(query)) {
+    return null;
+  }
+
+  const lastSlashIndex = query.lastIndexOf('/');
+  if (lastSlashIndex === -1) {
+    return {
+      query,
+      basePath: '',
+      filterTerm: query,
+    };
+  }
+
+  return {
+    query,
+    basePath: query.slice(0, lastSlashIndex + 1),
+    filterTerm: query.slice(lastSlashIndex + 1),
+  };
+};
+
+export const replaceFileCompletionQuery = ({
+  close,
+  entry,
+  selection,
+  value,
+}: {
+  readonly value: string;
+  readonly selection: RichPromptSelection;
+  readonly entry: FileCompletionEntry;
+  readonly close: boolean;
+}): RichPromptEditResult => {
+  const beforeCaret = value.slice(0, selection.start);
+  const atIndex = beforeCaret.lastIndexOf('@');
+  if (atIndex === -1) {
+    return { value, selection };
+  }
+
+  const suffix = entry.type === 'directory' && !close ? '/' : ' ';
+  const replacement = `@${entry.path}${suffix}`;
+  const nextValue = `${value.slice(0, atIndex)}${replacement}${value.slice(selection.end)}`;
+  const nextOffset = atIndex + replacement.length;
 
   return {
     value: nextValue,
