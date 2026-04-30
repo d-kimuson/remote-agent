@@ -22,6 +22,15 @@ const envSchema = v.object({
         .filter((entry) => entry.length > 0),
     ),
   ),
+  RA_ALLOWED_ORIGINS: v.pipe(
+    v.optional(v.string(), ''),
+    v.transform((value) =>
+      value
+        .split(',')
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ),
 });
 
 export type Env = v.InferOutput<typeof envSchema>;
