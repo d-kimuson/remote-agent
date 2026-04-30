@@ -2742,6 +2742,7 @@ export const ProjectChatPage: FC<{
                   toolbarTrailing={
                     <>
                       <ReviewDialogButton
+                        cwd={activeTranscriptCwd}
                         disabled={isEditorDisabled}
                         onInsertReview={handleInsertReviewPrompt}
                         projectId={projectId}

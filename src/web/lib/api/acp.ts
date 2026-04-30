@@ -52,6 +52,7 @@ import {
   type FilesystemTreeResponse,
   type GitDiffRequest,
   type GitDiffResponse,
+  type GitRevisionsRequest,
   type GitRevisionsResponse,
   type LoadSessionRequest,
   type MessageResponse,
@@ -197,10 +198,21 @@ export const createProjectWorktreeRequest = async (
   return parse(projectWorktreeResponseSchema, await response.json());
 };
 
-export const fetchGitRevisions = async (projectId: string): Promise<GitRevisionsResponse> => {
-  const response = await apiFetch(`/api/projects/${encodeURIComponent(projectId)}/git/revisions`, {
-    method: 'GET',
-  });
+export const fetchGitRevisions = async (
+  projectId: string,
+  request: GitRevisionsRequest,
+): Promise<GitRevisionsResponse> => {
+  const params = new URLSearchParams();
+  if (request.cwd !== null && request.cwd !== undefined && request.cwd.length > 0) {
+    params.set('cwd', request.cwd);
+  }
+  const query = params.size === 0 ? '' : `?${params.toString()}`;
+  const response = await apiFetch(
+    `/api/projects/${encodeURIComponent(projectId)}/git/revisions${query}`,
+    {
+      method: 'GET',
+    },
+  );
   return parse(gitRevisionsResponseSchema, await response.json());
 };
 

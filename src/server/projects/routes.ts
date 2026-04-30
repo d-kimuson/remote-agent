@@ -14,6 +14,7 @@ import {
   updateProjectModePreferenceRequestSchema,
   gitDiffRequestSchema,
   gitDiffResponseSchema,
+  gitRevisionsRequestSchema,
   gitRevisionsResponseSchema,
 } from '../../shared/acp.ts';
 import { errorResponseSchema, jsonResponse, validationErrorHook } from '../hono-utils.ts';
@@ -119,11 +120,12 @@ export const projectRoutes = new Hono()
         404: jsonResponse('Project not found', errorResponseSchema),
       },
     }),
+    vValidator('query', gitRevisionsRequestSchema, validationErrorHook),
     async (c) => {
       try {
         const response = parse(
           gitRevisionsResponseSchema,
-          await getGitRevisions(c.req.param('projectId')),
+          await getGitRevisions(c.req.param('projectId'), c.req.valid('query')),
         );
         return c.json(response);
       } catch (error) {

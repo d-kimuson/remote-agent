@@ -682,6 +682,7 @@ export type GitFileDiff = InferOutput<typeof gitFileDiffSchema>;
 export const gitDiffRequestSchema = object({
   fromRef: pipe(string(), trim()),
   toRef: pipe(string(), trim()),
+  cwd: nullable(optional(pipe(string(), trim()))),
 });
 
 export type GitDiffRequest = InferOutput<typeof gitDiffRequestSchema>;
@@ -711,6 +712,12 @@ export const gitRevisionsResponseSchema = object({
 });
 
 export type GitRevisionsResponse = InferOutput<typeof gitRevisionsResponseSchema>;
+
+export const gitRevisionsRequestSchema = object({
+  cwd: nullable(optional(pipe(string(), trim()))),
+});
+
+export type GitRevisionsRequest = InferOutput<typeof gitRevisionsRequestSchema>;
 
 export const projectModelPreferenceSchema = object({
   presetId: pipe(string(), trim()),

@@ -45,45 +45,52 @@ const RefIcon: FC<{ readonly type: GitRevisionRef['type'] }> = ({ type }) => {
   return <GitBranch className="size-3.5" />;
 };
 
+const RefDisplay: FC<{ readonly refItem: GitRevisionRef }> = ({ refItem }) => (
+  <span className="flex min-w-0 items-center gap-2">
+    <RefIcon type={refItem.type} />
+    <span className="truncate">{refItem.displayName}</span>
+    {refItem.sha === undefined ? null : (
+      <span className="font-mono text-[10px] text-muted-foreground">{refItem.sha.slice(0, 7)}</span>
+    )}
+  </span>
+);
+
 const RefSelector: FC<{
   readonly label: string;
   readonly value: string;
   readonly refs: readonly GitRevisionRef[];
   readonly onValueChange: (value: string) => void;
-}> = ({ label, value, refs, onValueChange }) => (
-  <div className="space-y-1">
-    <Label className="text-xs" htmlFor={`review-${label}`}>
-      {label}
-    </Label>
-    <Select
-      onValueChange={(nextValue) => {
-        if (nextValue !== null) {
-          onValueChange(nextValue);
-        }
-      }}
-      value={value}
-    >
-      <SelectTrigger className="h-8 w-full text-xs" id={`review-${label}`}>
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
-        {refs.map((ref) => (
-          <SelectItem className="text-xs" key={ref.name} value={ref.name}>
-            <span className="flex min-w-0 items-center gap-2">
-              <RefIcon type={ref.type} />
-              <span className="truncate">{ref.displayName}</span>
-              {ref.sha === undefined ? null : (
-                <span className="font-mono text-[10px] text-muted-foreground">
-                  {ref.sha.slice(0, 7)}
-                </span>
-              )}
-            </span>
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  </div>
-);
+}> = ({ label, value, refs, onValueChange }) => {
+  const selectedRef = refs.find((ref) => ref.name === value);
+  return (
+    <div className="space-y-1">
+      <Label className="text-xs" htmlFor={`review-${label}`}>
+        {label}
+      </Label>
+      <Select
+        onValueChange={(nextValue) => {
+          if (nextValue !== null) {
+            onValueChange(nextValue);
+          }
+        }}
+        value={value}
+      >
+        <SelectTrigger className="h-8 w-full text-xs" id={`review-${label}`}>
+          <SelectValue>
+            {selectedRef === undefined ? value : <RefDisplay refItem={selectedRef} />}
+          </SelectValue>
+        </SelectTrigger>
+        <SelectContent>
+          {refs.map((ref) => (
+            <SelectItem className="text-xs" key={ref.name} value={ref.name}>
+              <RefDisplay refItem={ref} />
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+};
 
 const DiffSummary: FC<{
   readonly filesChanged: number;
@@ -106,10 +113,11 @@ const DiffSummary: FC<{
 
 const ReviewDialogContent: FC<{
   readonly projectId: string;
+  readonly cwd: string;
   readonly reviewSessionId: string;
   readonly onInsertReview: (markdown: string) => void;
   readonly onClose: () => void;
-}> = ({ projectId, reviewSessionId, onInsertReview, onClose }) => {
+}> = ({ projectId, cwd, reviewSessionId, onInsertReview, onClose }) => {
   const [compareFrom, setCompareFrom] = useState(defaultCompareFrom);
   const [compareTo, setCompareTo] = useState(defaultCompareTo);
   const { comments, addComment, clearComments, removeComment } = useReviewComments(reviewSessionId);
@@ -120,7 +128,7 @@ const ReviewDialogContent: FC<{
     isPending: isRevisionsPending,
     mutate: loadRevisions,
   } = useMutation({
-    mutationFn: () => fetchGitRevisions(projectId),
+    mutationFn: () => fetchGitRevisions(projectId, { cwd }),
   });
 
   const {
@@ -129,7 +137,7 @@ const ReviewDialogContent: FC<{
     isPending: isDiffPending,
     mutate: loadGitDiff,
   } = useMutation({
-    mutationFn: () => fetchGitDiff(projectId, { fromRef: compareFrom, toRef: compareTo }),
+    mutationFn: () => fetchGitDiff(projectId, { fromRef: compareFrom, toRef: compareTo, cwd }),
   });
 
   const loadDiff = useCallback(() => {
@@ -290,10 +298,11 @@ const ReviewDialogContent: FC<{
 
 export const ReviewDialogButton: FC<{
   readonly projectId: string;
+  readonly cwd: string;
   readonly reviewSessionId: string;
   readonly disabled?: boolean;
   readonly onInsertReview: (markdown: string) => void;
-}> = ({ projectId, reviewSessionId, disabled, onInsertReview }) => {
+}> = ({ projectId, cwd, reviewSessionId, disabled, onInsertReview }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -327,6 +336,7 @@ export const ReviewDialogButton: FC<{
         {isOpen ? (
           <ReviewDialogContent
             key={reviewSessionId}
+            cwd={cwd}
             onClose={() => {
               setIsOpen(false);
             }}

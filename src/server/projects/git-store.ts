@@ -3,13 +3,16 @@ import { readFile } from 'node:fs/promises';
 import { parse } from 'valibot';
 
 import {
+  gitRevisionsRequestSchema,
   gitDiffResponseSchema,
   gitRevisionsResponseSchema,
   type GitDiffRequest,
   type GitDiffResponse,
+  type GitRevisionsRequest,
   type GitRevisionRef,
   type GitRevisionsResponse,
 } from '../../shared/acp.ts';
+import { resolveProjectGitCwd } from './git-cwd.pure.ts';
 import {
   createUntrackedFileDiff,
   parseGitDiffOutput,
@@ -121,9 +124,26 @@ const untrackedFileDiffs = async (cwd: string) => {
   return diffs.flatMap((diff) => (diff === null ? [] : [diff]));
 };
 
-export const getGitRevisions = async (projectId: string): Promise<GitRevisionsResponse> => {
+const resolveGitOperationCwd = async (
+  projectId: string,
+  requestedCwd?: string | null,
+): Promise<string> => {
   const project = await getProject(projectId);
-  const cwd = project.workingDirectory;
+  const repositoryDirectory =
+    (await maybeGitOutput(project.workingDirectory, ['rev-parse', '--show-toplevel']))?.trim() ??
+    project.workingDirectory;
+  return resolveProjectGitCwd({
+    projectDirectory: project.workingDirectory,
+    repositoryDirectory,
+    requestedCwd,
+  });
+};
+
+export const getGitRevisions = async (
+  projectId: string,
+  request: GitRevisionsRequest = parse(gitRevisionsRequestSchema, {}),
+): Promise<GitRevisionsResponse> => {
+  const cwd = await resolveGitOperationCwd(projectId, request.cwd);
   const head = (await maybeGitOutput(cwd, ['rev-parse', 'HEAD']))?.trim();
   const currentBranch = (await maybeGitOutput(cwd, ['branch', '--show-current']))?.trim();
   const commitRefs = parseCommitRefs(
@@ -157,8 +177,7 @@ export const getGitDiff = async (
   projectId: string,
   request: GitDiffRequest,
 ): Promise<GitDiffResponse> => {
-  const project = await getProject(projectId);
-  const cwd = project.workingDirectory;
+  const cwd = await resolveGitOperationCwd(projectId, request.cwd);
   const fromRef = extractDiffRef(request.fromRef);
   const toRef = extractDiffRef(request.toRef);
 
