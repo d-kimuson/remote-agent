@@ -25,6 +25,21 @@ const currentProjectIdFromPath = (pathname: string): string | null => {
   return match?.[1] ?? null;
 };
 
+type ProjectPathTarget = 'chat' | 'routines' | 'sessions' | 'settings';
+
+const projectPathTargetFromPath = (pathname: string): ProjectPathTarget => {
+  if (pathname.endsWith('/sessions')) {
+    return 'sessions';
+  }
+  if (pathname.endsWith('/routines')) {
+    return 'routines';
+  }
+  if (pathname.endsWith('/settings')) {
+    return 'settings';
+  }
+  return 'chat';
+};
+
 const compactPath = (path: string): string => {
   const home = '/home/kaito';
   const withHome = path.startsWith(`${home}/`) ? `~/${path.slice(home.length + 1)}` : path;
@@ -153,7 +168,7 @@ export const AppHeader: FC<{
     queryFn: fetchProjects,
   });
   const projects = data.projects;
-  const projectPathSuffix = location.pathname.endsWith('/sessions') ? 'sessions' : 'chat';
+  const projectPathTarget = projectPathTargetFromPath(location.pathname);
 
   return (
     <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
@@ -181,9 +196,13 @@ export const AppHeader: FC<{
                 }
                 void navigate({
                   to:
-                    projectPathSuffix === 'sessions'
+                    projectPathTarget === 'sessions'
                       ? '/projects/$projectId/sessions'
-                      : '/projects/$projectId',
+                      : projectPathTarget === 'routines'
+                        ? '/projects/$projectId/routines'
+                        : projectPathTarget === 'settings'
+                          ? '/projects/$projectId/settings'
+                          : '/projects/$projectId',
                   params: { projectId: nextProjectId },
                 });
               }}
