@@ -434,6 +434,13 @@ export const cancelSessionRequest = async (sessionId: string): Promise<CancelSes
   return parse(cancelSessionResponseSchema, await response.json());
 };
 
+export const stopSessionRequest = async (sessionId: string): Promise<SessionResponse> => {
+  const response = await apiFetch(`/api/acp/sessions/${encodeURIComponent(sessionId)}/stop`, {
+    method: 'POST',
+  });
+  return parse(sessionResponseSchema, await response.json());
+};
+
 export const fetchRoutines = async (): Promise<RoutinesResponse> => {
   const response = await apiFetch('/api/routines', { method: 'GET' });
   return parse(routinesResponseSchema, await response.json());

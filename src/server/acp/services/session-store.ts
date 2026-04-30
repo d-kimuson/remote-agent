@@ -1750,6 +1750,25 @@ export const createSessionStore = ({
     });
   };
 
+  const stopSession = async (sessionId: string): Promise<SessionSummary> => {
+    const entry = getSessionEntry(sessionId);
+    if (entry.runningPromptCount > 0 || entry.activePromptControllers.size > 0) {
+      throw new Error('Cannot stop a running session. Cancel it first.');
+    }
+
+    cancelPermissionRequestsForSession(sessionId);
+    await Promise.resolve(entry.provider.cleanup());
+    runtimeSessions.delete(sessionId);
+
+    const stoppedSession = parse(sessionSummarySchema, {
+      ...entry.session,
+      status: 'inactive',
+      isActive: false,
+    });
+    emitSessionUpdated(stoppedSession);
+    return stoppedSession;
+  };
+
   const removeSession = async (sessionId: string): Promise<boolean> => {
     const existingSessions = await database.db
       .select({ sessionId: sessionsTable.sessionId })
@@ -1783,6 +1802,7 @@ export const createSessionStore = ({
     updateSessionConfigOption,
     sendPrompt,
     cancelSession,
+    stopSession,
     removeSession,
   };
 };
@@ -1880,6 +1900,10 @@ export const sendPrompt = async (
 
 export const cancelSession = async (sessionId: string): Promise<SessionSummary> => {
   return getSessionStore().cancelSession(sessionId);
+};
+
+export const stopSession = async (sessionId: string): Promise<SessionSummary> => {
+  return getSessionStore().stopSession(sessionId);
 };
 
 export const removeSession = async (sessionId: string): Promise<boolean> => {

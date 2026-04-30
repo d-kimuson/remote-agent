@@ -29,6 +29,7 @@ type IncludeParseResult =
     };
 
 type GitRunner = (cwd: string, args: readonly string[]) => Promise<void>;
+type GitOutputRunner = (cwd: string, args: readonly string[]) => Promise<string>;
 type SetupScriptRunner = (cwd: string, script: string) => Promise<void>;
 
 const hasParentTraversal = (value: string): boolean => {
@@ -123,6 +124,29 @@ const runGit: GitRunner = async (cwd, args) => {
     child.on('close', (code) => {
       if (code === 0) {
         resolve();
+        return;
+      }
+      reject(new Error(`git ${args.join(' ')} failed: ${stderrChunks.join('')}`));
+    });
+  });
+};
+
+const runGitOutput: GitOutputRunner = async (cwd, args) => {
+  return new Promise<string>((resolve, reject) => {
+    const child = spawn('git', args, { cwd, shell: false, stdio: 'pipe' });
+    const stdoutChunks: string[] = [];
+    const stderrChunks: string[] = [];
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdoutChunks.push(chunk.toString('utf8'));
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderrChunks.push(chunk.toString('utf8'));
+    });
+    child.on('error', reject);
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdoutChunks.join(''));
         return;
       }
       reject(new Error(`git ${args.join(' ')} failed: ${stderrChunks.join('')}`));
@@ -227,11 +251,33 @@ const copyIncludedPath = async (sourcePath: string, destinationPath: string): Pr
   throw new Error(`.worktreeinclude supports files and directories only: ${sourcePath}`);
 };
 
+const resolveProjectGitWorktreePaths = async (
+  projectDirectory: string,
+  gitOutputRunner: GitOutputRunner,
+): Promise<{
+  readonly repositoryDirectory: string;
+  readonly projectRelativePath: string;
+}> => {
+  const repositoryDirectory = (
+    await gitOutputRunner(projectDirectory, ['rev-parse', '--show-toplevel'])
+  ).trim();
+  const projectRelativePath = path.relative(repositoryDirectory, projectDirectory);
+  if (projectRelativePath.startsWith('..') || path.isAbsolute(projectRelativePath)) {
+    throw new Error(`project directory is outside git repository: ${projectDirectory}`);
+  }
+
+  return {
+    repositoryDirectory,
+    projectRelativePath,
+  };
+};
+
 export const createWorktreeForProject = async (
   project: Project,
   request: CreateProjectWorktreeRequest,
   gitRunner: GitRunner = runGit,
   setupScriptRunner: SetupScriptRunner = runSetupScript,
+  gitOutputRunner: GitOutputRunner = runGitOutput,
 ): Promise<ProjectWorktree> => {
   const nameResult = validateWorktreeName(request.name);
   if (nameResult.kind === 'error') {
@@ -251,35 +297,40 @@ export const createWorktreeForProject = async (
   }
 
   const includePaths = await readIncludedPaths(project.workingDirectory);
-  const worktreesDirectory = path.join(project.workingDirectory, '.worktrees');
-  const worktreeDirectory = path.join(worktreesDirectory, nameResult.name);
-  if (await fileExists(worktreeDirectory)) {
+  const { repositoryDirectory, projectRelativePath } = await resolveProjectGitWorktreePaths(
+    project.workingDirectory,
+    gitOutputRunner,
+  );
+  const worktreesDirectory = path.join(repositoryDirectory, '.worktrees');
+  const worktreeRepositoryDirectory = path.join(worktreesDirectory, nameResult.name);
+  const worktreeProjectDirectory = path.join(worktreeRepositoryDirectory, projectRelativePath);
+  if (await fileExists(worktreeRepositoryDirectory)) {
     throw new Error(`worktree already exists: ${nameResult.name}`);
   }
 
   await mkdir(worktreesDirectory, { recursive: true });
-  await gitRunner(project.workingDirectory, [
+  await gitRunner(repositoryDirectory, [
     'worktree',
     'add',
     '-b',
     branchNameResult.value,
-    worktreeDirectory,
+    worktreeRepositoryDirectory,
     baseRefResult.value,
   ]);
 
   for (const includePath of includePaths) {
     await copyIncludedPath(
       path.join(project.workingDirectory, includePath),
-      path.join(worktreeDirectory, includePath),
+      path.join(worktreeProjectDirectory, includePath),
     );
   }
 
-  await setupScriptRunner(worktreeDirectory, project.worktreeSetupScript ?? '');
+  await setupScriptRunner(worktreeProjectDirectory, project.worktreeSetupScript ?? '');
 
   return parse(projectWorktreeSchema, {
     projectId: project.id,
     name: nameResult.name,
-    path: worktreeDirectory,
+    path: worktreeProjectDirectory,
     branchName: branchNameResult.value,
     baseRef: baseRefResult.value,
     createdAt: new Date().toISOString(),

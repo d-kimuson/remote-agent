@@ -65,6 +65,30 @@ describe('createWorktreeForProject', () => {
     );
   });
 
+  test('creates monorepo subdirectory worktrees below the repository root', async () => {
+    const project = await createProjectRepo();
+    const frontendDirectory = path.join(project.workingDirectory, 'frontend');
+    await mkdir(frontendDirectory, { recursive: true });
+    await writeFile(path.join(frontendDirectory, 'package.json'), '{"name":"frontend"}\n');
+    await runGit(project.workingDirectory, ['add', 'frontend/package.json']);
+    await runGit(project.workingDirectory, ['commit', '-m', 'add frontend']);
+
+    const worktree = await createWorktreeForProject(
+      {
+        ...project,
+        workingDirectory: frontendDirectory,
+      },
+      { name: 'feature-frontend' },
+    );
+
+    expect(worktree).toMatchObject({
+      path: path.join(project.workingDirectory, '.worktrees', 'feature-frontend', 'frontend'),
+    });
+    await expect(readFile(path.join(worktree.path, 'package.json'), 'utf8')).resolves.toBe(
+      '{"name":"frontend"}\n',
+    );
+  });
+
   test('uses the requested branch name and base ref', async () => {
     const project = await createProjectRepo();
     await runGit(project.workingDirectory, ['checkout', '-b', 'base-branch']);

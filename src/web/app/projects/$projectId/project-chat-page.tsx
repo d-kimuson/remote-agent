@@ -9,6 +9,7 @@ import {
   Mic,
   MessageSquareDashed,
   Paperclip,
+  PowerOff,
   Send,
   ShieldAlert,
   Square,
@@ -84,6 +85,7 @@ import {
   resolveAcpPermissionRequest,
   sendPromptRequest,
   sendPreparedPromptRequest,
+  stopSessionRequest,
   updateProjectModePreferenceRequest,
   updateProjectModelPreferenceRequest,
   updateSessionConfigOptionRequest,
@@ -1486,6 +1488,10 @@ export const ProjectChatPage: FC<{
     mutationFn: cancelSessionRequest,
   });
 
+  const stopSessionMutation = useMutation({
+    mutationFn: stopSessionRequest,
+  });
+
   const resolvePermissionMutation = useMutation({
     mutationFn: ({
       optionId,
@@ -1556,6 +1562,7 @@ export const ProjectChatPage: FC<{
     updateSessionConfigOptionMutation.isPending ||
     updateSessionMutation.isPending ||
     cancelSessionMutation.isPending ||
+    stopSessionMutation.isPending ||
     uploadAttachmentsMutation.isPending;
   const isEditorDisabled = isAwaitingActiveAssistantResponse;
   const isSelectedSessionRunning =
@@ -2010,6 +2017,26 @@ export const ProjectChatPage: FC<{
     }
   };
 
+  const handleStopSession = async (targetSessionId: string) => {
+    const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+    setSessionsData((sessions) =>
+      sessions.map((session) =>
+        session.sessionId === targetSessionId
+          ? { ...session, status: 'inactive', isActive: false }
+          : session,
+      ),
+    );
+
+    try {
+      const response = await stopSessionMutation.mutateAsync(targetSessionId);
+      upsertSessionInCache(response.session);
+      void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+      void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
+    } catch {
+      queryClient.setQueryData(sessionsQueryKey, previousSessions);
+    }
+  };
+
   const handleResolvePermission = async (requestId: string, optionId: string | null) => {
     const response = await resolvePermissionMutation.mutateAsync({ requestId, optionId });
     queryClient.setQueryData(acpPermissionRequestsQueryKey, response);
@@ -2387,19 +2414,41 @@ export const ProjectChatPage: FC<{
             <span className="shrink-0 text-xs text-muted-foreground">{pageAgentLabel}</span>
           </div>
           {sessionId !== null ? (
-            <Button
-              aria-label="Close session"
-              className="shrink-0"
-              disabled={closeSessionMutation.isPending}
-              onClick={() => {
-                void handleCloseSession(sessionId);
-              }}
-              size="icon-sm"
-              type="button"
-              variant="ghost"
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              {selectedSession !== null &&
+              selectedSession.isActive &&
+              selectedSession.status === 'paused' ? (
+                <Button
+                  aria-label="Stop paused session"
+                  disabled={stopSessionMutation.isPending}
+                  onClick={() => {
+                    void handleStopSession(sessionId);
+                  }}
+                  size="icon-sm"
+                  title="Stop"
+                  type="button"
+                  variant="ghost"
+                >
+                  {stopSessionMutation.isPending ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <PowerOff className="size-4" />
+                  )}
+                </Button>
+              ) : null}
+              <Button
+                aria-label="Close session"
+                disabled={closeSessionMutation.isPending}
+                onClick={() => {
+                  void handleCloseSession(sessionId);
+                }}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            </div>
           ) : null}
         </header>
 

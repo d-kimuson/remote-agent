@@ -68,6 +68,7 @@ import {
   listSessions,
   removeSession,
   sendPrompt,
+  stopSession,
   updateSessionConfigOption,
   updateSession,
 } from './services/session-store.ts';
@@ -781,6 +782,26 @@ export const acpRoutes = new Hono()
         return c.json(response);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'failed to cancel session';
+        return c.json({ error: message }, 400);
+      }
+    },
+  )
+  .post(
+    '/sessions/:sessionId/stop',
+    describeRoute({
+      summary: 'Stop paused ACP session runtime',
+      responses: {
+        200: jsonResponse('Stopped ACP session', sessionResponseSchema),
+        400: jsonResponse('ACP session stop error', errorResponseSchema),
+      },
+    }),
+    async (c) => {
+      try {
+        const session = await stopSession(c.req.param('sessionId'));
+        const response = parse(sessionResponseSchema, { session });
+        return c.json(response);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'failed to stop session';
         return c.json({ error: message }, 400);
       }
     },

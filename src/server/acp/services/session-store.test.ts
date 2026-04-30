@@ -179,6 +179,117 @@ describe('createSessionStore', () => {
     ]);
   });
 
+  test('stops a paused active session without deleting persisted metadata', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    let cleanupCount = 0;
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {
+          cleanupCount += 1;
+        },
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-stop',
+            modes: { currentModeId: '', availableModes: [] },
+            models: { currentModelId: '', availableModels: [] },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    const stoppedSession = await store.stopSession('session-stop');
+
+    expect(cleanupCount).toBe(1);
+    expect(stoppedSession).toMatchObject({
+      sessionId: 'session-stop',
+      status: 'inactive',
+      isActive: false,
+    });
+    await expect(store.listSessions()).resolves.toEqual([
+      expect.objectContaining({
+        sessionId: 'session-stop',
+        status: 'inactive',
+        isActive: false,
+      }),
+    ]);
+  });
+
+  test('rejects stopping a running session', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      promptCollector: (_provider, _prompt, options) =>
+        new Promise((resolve) => {
+          options.abortSignal.addEventListener('abort', () => {
+            resolve({
+              text: '',
+              rawEvents: [],
+              alreadyPersisted: false,
+              assistantSegmentMessages: [],
+            });
+          });
+        }),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-running-stop',
+            modes: { currentModeId: '', availableModes: [] },
+            models: { currentModelId: '', availableModels: [] },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+    const promptPromise = store.sendPrompt('session-running-stop', {
+      prompt: 'hello',
+      attachmentIds: [],
+    });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const sessions = await store.listSessions();
+      if (sessions[0]?.status === 'running') {
+        break;
+      }
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+
+    await expect(store.stopSession('session-running-stop')).rejects.toThrow(
+      'Cannot stop a running session. Cancel it first.',
+    );
+    await store.cancelSession('session-running-stop');
+    await promptPromise;
+  });
+
   test('passes preset authMethodId to ACP provider creation for codex sessions', async () => {
     const database = createMemoryDatabase();
     disposableClients.push(database.client);
