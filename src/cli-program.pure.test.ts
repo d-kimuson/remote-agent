@@ -17,14 +17,20 @@ describe('CLI program', () => {
     expect(help).not.toContain('Usage: @kimuson/remote-agent generate-api-key');
   });
 
-  test('shows serve usage with tailscale option', () => {
+  test('shows serve usage with configuration options', () => {
     const program = createCliProgram({
       generateApiKey: () => 'test-key',
       serve: () => {},
     });
     const serveCommand = program.commands.find((command) => command.name() === 'serve');
+    const help = serveCommand?.helpInformation() ?? '';
 
-    expect(serveCommand?.helpInformation()).toContain('--tailscale <port>');
+    expect(help).toContain('--port <port>');
+    expect(help).toContain('--tailscale <port>');
+    expect(help).toContain('--ra-dir <directory>');
+    expect(help).toContain('--ra-api-key <key>');
+    expect(help).toContain('--ra-allowed-ips <ips>');
+    expect(help).toContain('--ra-allowed-origins <origins>');
   });
 
   test('requires an explicit command instead of serving by default', async () => {
@@ -54,7 +60,7 @@ describe('CLI program', () => {
     expect(help).toContain('Usage: @kimuson/remote-agent [options] [command]');
   });
 
-  test('passes serve port and tailscale options to the serve handler', async () => {
+  test('passes serve options to the serve handler', async () => {
     let serveOptions: ServeOptions | null = null;
     const program = createCliProgram({
       generateApiKey: () => 'test-key',
@@ -63,12 +69,33 @@ describe('CLI program', () => {
       },
     });
 
-    await program.parseAsync(['serve', '--port', '33333', '--tailscale', '48989'], {
-      from: 'user',
-    });
+    await program.parseAsync(
+      [
+        'serve',
+        '--port',
+        '33333',
+        '--tailscale',
+        '48989',
+        '--ra-dir',
+        './data',
+        '--ra-api-key',
+        'test-key',
+        '--ra-allowed-ips',
+        '192.168.1.10',
+        '--ra-allowed-origins',
+        'https://app.example.com',
+      ],
+      {
+        from: 'user',
+      },
+    );
 
     expect(serveOptions).toEqual({
       port: '33333',
+      raAllowedIps: '192.168.1.10',
+      raAllowedOrigins: 'https://app.example.com',
+      raApiKey: 'test-key',
+      raDir: './data',
       tailscale: '48989',
     });
   });

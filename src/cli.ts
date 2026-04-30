@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { createCliProgram, type ServeOptions } from './cli-program.pure.ts';
+import { applyServeEnvOverrides } from './serve-options.pure.ts';
 import { parseTcpPort } from './tailscale.pure.ts';
 
 const generateApiKey = (): string => {
@@ -48,6 +49,7 @@ const logCheck = (message: string): void => {
 };
 
 const serve = async (options: ServeOptions): Promise<void> => {
+  applyServeEnvOverrides(process.env, options);
   const [{ envService }, { startServer }] = await Promise.all([
     import('./server/env.ts'),
     import('./server/server.ts'),

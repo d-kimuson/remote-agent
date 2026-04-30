@@ -101,11 +101,15 @@ accepted client IPs with `RA_ALLOWED_IPS`.
 
 | Environment variable | CLI flag        | Default | Description                                                                 |
 | -------------------- | --------------- | ------- | --------------------------------------------------------------------------- |
-| `PORT`               | -               | `8989`  | HTTP port for the `remote-agent` server.                                    |
-| `RA_DIR`             | -               | `~/.ra` | Directory for the SQLite database and app state.                            |
-| `RA_API_KEY`         | -               | -       | Bearer token required for `/api/*` requests. If unset, API key auth is off. |
-| `RA_ALLOWED_IPS`     | -               | -       | Comma-separated IP allowlist checked via `X-Forwarded-For` / `X-Real-IP`.   |
+| `PORT`               | `--port`        | `8989`  | HTTP port for the `remote-agent` server.                                    |
+| `RA_DIR`             | `--ra-dir`      | `~/.ra` | Directory for the SQLite database and app state.                            |
+| `RA_API_KEY`         | `--ra-api-key`  | -       | Bearer token required for `/api/*` requests. If unset, API key auth is off. |
+| `RA_ALLOWED_IPS`     | `--ra-allowed-ips` | -    | Comma-separated IP allowlist checked via `X-Forwarded-For` / `X-Real-IP`.   |
+| `RA_ALLOWED_ORIGINS` | `--ra-allowed-origins` | - | Comma-separated CORS origin allowlist for `/api/*` requests.                |
 | -                    | `--server-only` | `false` | Start only the API server without serving the client build.                 |
+| -                    | `--tailscale`   | -       | Publish through Tailscale Serve on the given HTTPS port.                    |
+
+When both an environment variable and a CLI flag are provided, the CLI flag takes priority.
 
 ## Available Providers
 

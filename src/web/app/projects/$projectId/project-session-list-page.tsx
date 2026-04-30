@@ -1,12 +1,12 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { MessageSquareDashed, Plus, Search } from 'lucide-react';
+import { History, MessageSquareDashed, Plus, Search } from 'lucide-react';
 import { useMemo, useState, type FC } from 'react';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
 
 import { Badge } from '../../../components/ui/badge.tsx';
-import { buttonVariants } from '../../../components/ui/button.tsx';
+import { Button, buttonVariants } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { fetchAgentProviders, fetchProject, fetchSessions } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
@@ -126,6 +126,16 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
               />
             </div>
             <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
+              <Button
+                className="w-full sm:w-auto"
+                disabled={!canLoadSessions}
+                onClick={openLoadSessionDialog}
+                type="button"
+                variant="outline"
+              >
+                <History className="size-4" />
+                既存セッションを読み込む
+              </Button>
               <Link
                 aria-label="新規セッション"
                 className={buttonVariants({ className: 'w-full sm:w-auto', variant: 'default' })}

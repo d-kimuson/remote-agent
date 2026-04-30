@@ -6,6 +6,10 @@ export type ServeOptions = {
   readonly serverOnly?: boolean;
   readonly port?: string;
   readonly tailscale?: string;
+  readonly raDir?: string;
+  readonly raApiKey?: string;
+  readonly raAllowedIps?: string;
+  readonly raAllowedOrigins?: string;
 };
 
 type CliProgramOptions = {
@@ -34,6 +38,10 @@ export const createCliProgram = (options: CliProgramOptions): Command => {
     .option('--server-only', 'start without serving client build')
     .option('--port <port>', 'local server port')
     .option('--tailscale <port>', 'publish through Tailscale Serve on the given HTTPS port')
+    .option('--ra-dir <directory>', 'directory for the SQLite database and app state')
+    .option('--ra-api-key <key>', 'bearer token required for /api/* requests')
+    .option('--ra-allowed-ips <ips>', 'comma-separated IP allowlist')
+    .option('--ra-allowed-origins <origins>', 'comma-separated CORS origin allowlist')
     .description('start the remote-agent server')
     .action(async (serveOptions: ServeOptions) => {
       await options.serve(serveOptions);
