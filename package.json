@@ -18,7 +18,7 @@
     "access": "public"
   },
   "scripts": {
-    "start": "portless --name 'remote-agent' node ./dist/cli.mjs",
+    "start": "portless --name 'remote-agent' node ./dist/cli.mjs serve",
     "dev": "pnpm dev:proxy && run-p dev:web dev:server",
     "dev:proxy": "node src/scripts/ensure-portless-proxy.ts",
     "dev:server": "RA_DIR=./data/.ra-dir RA_RUNTIME=dev portless --name 'remote-agent-server' --force node --watch src/server/main.ts",
@@ -36,7 +36,7 @@
     "migrate:generate": "drizzle-kit generate",
     "migrate:local": "RA_DIR=./data/.ra-dir node src/scripts/migrate-local.ts",
     "generate": "run-p generate:*",
-    "generate:db-docs": "drizzle-docs generate ./src/server/db/schema.ts -d sqlite >> ./docs/database.md",
+    "generate:db-docs": "drizzle-docs generate ./src/server/db/schema.ts -d sqlite > ./docs/database.md",
     "generate:openapi": "node src/scripts/write-openapi.ts docs/openapi.json",
     "check:bundled-licenses": "node scripts/check-bundled-licenses.ts",
     "prepack": "pnpm build && clean-pkg-json",

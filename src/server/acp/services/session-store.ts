@@ -381,6 +381,8 @@ const mapMessageKindFromDb = (value: string | null | undefined): ChatMessageKind
   return parse(chatMessageKindSchema, value);
 };
 
+const messageKindSortRank = (kind: string): number => (kind === 'user' ? 0 : 1);
+
 const messageFromRaw = ({
   id,
   kind,
@@ -779,7 +781,14 @@ export const createSessionStore = ({
     }
 
     return records
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
+      .sort((left, right) => {
+        const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+        if (createdAtOrder !== 0) {
+          return createdAtOrder;
+        }
+        const kindOrder = messageKindSortRank(left.kind) - messageKindSortRank(right.kind);
+        return kindOrder !== 0 ? kindOrder : left.id.localeCompare(right.id);
+      })
       .map((record) => {
         const parsedJson = (() => {
           try {

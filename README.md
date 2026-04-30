@@ -1,10 +1,14 @@
 # remote-agent
 
-<!-- TODO: Logo -->
+<p align="center">
+  <img src="docs/assets/logo.png" alt="remote-agent logo" width="220">
+</p>
 
 <p align="center">
   <a href="https://github.com/d-kimuson/remote-agent/actions/workflows/ci.yaml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/d-kimuson/remote-agent/ci.yaml?branch=main&style=for-the-badge" alt="CI status"></a>
   <a href="https://github.com/d-kimuson/remote-agent/releases"><img src="https://img.shields.io/github/v/release/d-kimuson/remote-agent?include_prereleases&style=for-the-badge" alt="GitHub release"></a>
+  <a href="https://npmjs.com/package/@kimuson/remote-agent"><img src="https://img.shields.io/npm/v/%40kimuson%2Fremote-agent?color=yellow&style=for-the-badge" alt="npm version"></a>
+  <a href="https://deepwiki.com/d-kimuson/remote-agent"><img src="https://img.shields.io/badge/Ask-DeepWiki-2563eb?style=for-the-badge" alt="Ask DeepWiki"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
@@ -28,7 +32,7 @@ Make sure the agent you want to use is already available on the server machine, 
 `remote-agent` server:
 
 ```bash
-npx -y @kimuson/remote-agent@latest
+npx -y @kimuson/remote-agent@latest serve
 ```
 
 By default, the server starts both the client SPA/PWA and the API server. Open the URL assigned by
@@ -38,25 +42,25 @@ Tailscale to start using `remote-agent` from another device.
 
 ## Features
 
-- Multi-provider support: built-in providers for Codex, Claude Code, GitHub Copilot CLI,
+- 🤖 Multi-provider support: built-in providers for Codex, Claude Code, GitHub Copilot CLI,
   pi-coding-agent, Cursor CLI, and OpenCode. Any ACP-compatible agent can also be added as a custom
   provider.
-- Browser/PWA client: the client is served as an SPA and works through a browser on any OS. Install
-  it as a PWA for an app-like experience.
-- Real-time preview: stream agent output as it is produced.
-- Visual tool viewers: inspect common tool calls such as Bash, Read, Write, and Edit with terminal,
-  file, and diff viewers.
-- Tool approval: approve or reject tool-approval requests from supported agents.
-- Notifications: receive task-completion and approval-request notifications. When installed as a
+- 🌐 Browser/PWA client: the client is served as an SPA and works through a browser on any OS.
+  Install it as a PWA for an app-like experience.
+- ⚡ Real-time preview: stream agent output as it is produced.
+- 🛠️ Visual tool viewers: inspect common tool calls such as Bash, Read, Write, and Edit with
+  terminal, file, and diff viewers.
+- ✅ Tool approval: approve or reject tool-approval requests from supported agents.
+- 🔔 Notifications: receive task-completion and approval-request notifications. When installed as a
   PWA, device notifications are available through the service worker.
-- Completion sound: play an audible notification when an agent task finishes.
-- Efficient prompt input: use agent command completion, file-path completion, and voice input.
-- Code review: open a GitHub-like diff viewer, leave line comments, and seamlessly turn them into
-  review instructions for the agent.
-- Git worktree support: start sessions in a selected worktree. Supports `.worktreeinclude`,
+- 🔊 Completion sound: play an audible notification when an agent task finishes.
+- ✍️ Efficient prompt input: use agent command completion, file-path completion, and voice input.
+- 🧑‍💻 Code review: open a GitHub-like diff viewer, leave line comments, and seamlessly turn them
+  into review instructions for the agent.
+- 🌿 Git worktree support: start sessions in a selected worktree. Supports `.worktreeinclude`,
   optional setup scripts, and preserving subpaths when starting from a subdirectory in a monorepo.
-- Routines: run agents on cron schedules or at a specified datetime.
-- Authentication: supports API key authentication and IP address restrictions.
+- ⏰ Routines: run agents on cron schedules or at a specified datetime.
+- 🔐 Authentication: supports API key authentication and IP address restrictions.
 
 ## Configuration
 
@@ -69,3 +73,43 @@ Tailscale to start using `remote-agent` from another device.
 | `RA_API_KEY`         | -               | -       | Bearer token required for `/api/*` requests. If unset, API key auth is off. |
 | `RA_ALLOWED_IPS`     | -               | -       | Comma-separated IP allowlist checked via `X-Forwarded-For` / `X-Real-IP`.   |
 | -                    | `--server-only` | `false` | Start only the API server without serving the client build.                 |
+
+## Available Providers
+
+`remote-agent` includes built-in provider presets for these agent CLIs:
+
+| Provider           | Preset ID         | Log import |
+| ------------------ | ----------------- | ---------- |
+| Codex              | `codex`           | ✅         |
+| Claude Code        | `claude-code`     | ✅         |
+| GitHub Copilot CLI | `copilot-cli`     | ❌         |
+| pi-coding-agent    | `pi-coding-agent` | ✅         |
+| Cursor CLI         | `cursor-cli`      | ❌         |
+| OpenCode           | `opencode`        | ❌         |
+
+`remote-agent` does not require you to install ACP packages separately. Make sure the agent you want
+to use is available on the server machine and authenticated as that agent normally requires.
+
+> [!WARNING]
+> Do not use Claude Code through `remote-agent` with a Claude subscription account. `remote-agent`
+> only connects to a local CLI process, so it may technically work with subscription-based Claude
+> Code authentication. However, Claude Code ACP is implemented through Agent SDK, and Anthropic does
+> not allow Claude Code subscription access to be used from third-party tools. Use provider
+> authentication only when it is permitted by the provider's current terms.
+
+### Custom Provider
+
+Want to use another agent? Add it as a Custom Provider through ACP.
+
+See the ACP agent list at https://agentclientprotocol.com/get-started/agents to find an available
+agent. If the agent you want is not listed, implement an ACP-compatible agent server and register
+its command as a Custom Provider.
+
+## Contribute
+
+Contributions are welcome. See [CONTRIBUTING.md](./CONTRIBUTING.md) for development setup, common
+commands, generated files, and release checks.
+
+## License
+
+MIT License. See [LICENSE](./LICENSE).

@@ -32,3 +32,11 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Run build
+        run: pnpm build
+
+      - name: Verify generated files
+        run: |
+          pnpm generate
+          git diff --exit-code -- docs/database.md docs/openapi.json
