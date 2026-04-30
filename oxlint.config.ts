@@ -1,6 +1,7 @@
 import { defineConfig } from 'oxlint';
 
 export default defineConfig({
+  jsPlugins: [{ name: 'remote-agent', specifier: './scripts/oxlint-plugin-remote-agent.js' }],
   plugins: [
     'unicorn',
     'typescript',
@@ -266,6 +267,7 @@ export default defineConfig({
       // server → web の参照を禁止。@/ エイリアス import も禁止（相対 import を使う）
       files: ['src/server/**'],
       rules: {
+        'remote-agent/no-raw-sqlite-query': 'error',
         'no-restricted-imports': [
           'error',
           {
@@ -298,6 +300,16 @@ export default defineConfig({
       files: ['src/web/main.tsx'],
       rules: {
         'typescript/consistent-type-definitions': 'off',
+      },
+    },
+    {
+      files: ['scripts/oxlint-plugin-remote-agent.js'],
+      rules: {
+        'typescript/no-unsafe-argument': 'off',
+        'typescript/no-unsafe-assignment': 'off',
+        'typescript/no-unsafe-call': 'off',
+        'typescript/no-unsafe-member-access': 'off',
+        'typescript/strict-boolean-expressions': 'off',
       },
     },
     {

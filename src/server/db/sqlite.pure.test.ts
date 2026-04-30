@@ -8,7 +8,7 @@ describe('resolveMigrationsFolder', () => {
     const moduleDirectory = path.join('/workspace', 'src', 'server', 'db');
 
     expect(resolveMigrationsFolder('dev', moduleDirectory)).toBe(
-      path.join('/workspace', 'drizzle'),
+      path.join('/workspace', 'drizzle', 'migrations'),
     );
   });
 

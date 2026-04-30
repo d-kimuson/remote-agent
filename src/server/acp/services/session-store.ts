@@ -4,10 +4,9 @@ import type {
   SetSessionConfigOptionResponse,
 } from '@agentclientprotocol/sdk';
 import type { ModelMessage, UserModelMessage } from 'ai';
-import type { DatabaseSync } from 'node:sqlite';
 
 import { createACPProvider, type ACPProvider } from '@mcpc-tech/acp-ai-provider';
-import { and, eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { readFile } from 'node:fs/promises';
 import { array, parse, string } from 'valibot';
 
@@ -517,35 +516,15 @@ const parseStringArray = (input: string): readonly string[] => {
   return parse(array(string()), data);
 };
 
-const firstUserMessagePreviewBySessionId = (client: DatabaseSync): ReadonlyMap<string, string> => {
-  const statement = client.prepare(`
-    SELECT t.session_id AS sessionId, t.text_for_search AS text
-    FROM session_messages t
-    INNER JOIN (
-      SELECT session_id, MIN(created_at) AS first_at
-      FROM session_messages
-      WHERE kind = 'user'
-      GROUP BY session_id
-    ) u ON t.session_id = u.session_id AND t.created_at = u.first_at AND t.kind = 'user'
-  `);
-  const isFirstUserPreviewRow = (row: unknown): row is { sessionId: string; text: string } => {
-    if (row === null || typeof row !== 'object') {
-      return false;
+const firstUserMessagePreviewBySessionId = (
+  rows: readonly { readonly sessionId: string; readonly text: string }[],
+): ReadonlyMap<string, string> => {
+  return rows.reduce<Map<string, string>>((previews, row) => {
+    if (!previews.has(row.sessionId)) {
+      previews.set(row.sessionId, row.text);
     }
-    if (!('sessionId' in row) || !('text' in row)) {
-      return false;
-    }
-    return (
-      typeof Reflect.get(row, 'sessionId') === 'string' &&
-      typeof Reflect.get(row, 'text') === 'string'
-    );
-  };
-
-  const rawRows: unknown = statement.all();
-  const rows: { sessionId: string; text: string }[] = Array.isArray(rawRows)
-    ? rawRows.filter(isFirstUserPreviewRow)
-    : [];
-  return new Map(rows.map((row) => [row.sessionId, row.text]));
+    return previews;
+  }, new Map());
 };
 
 const mapStoredSession = (
@@ -719,6 +698,14 @@ export const createSessionStore = ({
   const listSessions = async (): Promise<readonly SessionSummary[]> => {
     const records = await database.db.select().from(sessionsTable);
     const catalogRecords = await database.db.select().from(agentProviderCatalogsTable);
+    const firstUserMessageRecords = await database.db
+      .select({
+        sessionId: sessionMessagesTable.sessionId,
+        text: sessionMessagesTable.textForSearch,
+      })
+      .from(sessionMessagesTable)
+      .where(eq(sessionMessagesTable.kind, 'user'))
+      .orderBy(asc(sessionMessagesTable.sessionId), asc(sessionMessagesTable.createdAt));
     const catalogsByPresetAndCwd = new Map(
       catalogRecords.map((record) => [
         providerCatalogKey({ presetId: record.presetId, cwd: record.cwd }),
@@ -730,7 +717,7 @@ export const createSessionStore = ({
         },
       ]),
     );
-    const firstPreviews = firstUserMessagePreviewBySessionId(database.client);
+    const firstPreviews = firstUserMessagePreviewBySessionId(firstUserMessageRecords);
     return records
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
       .map((record) => {
