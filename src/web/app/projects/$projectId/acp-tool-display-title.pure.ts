@@ -13,6 +13,33 @@ const stringField = (record: Record<string, unknown>, key: string): string | nul
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
 };
 
+const commandField = (record: Record<string, unknown>): string | null => {
+  const command = record['command'];
+  if (typeof command === 'string' && command.trim().length > 0) {
+    return command.trim();
+  }
+  if (Array.isArray(command)) {
+    const parts = command.filter((part) => typeof part === 'string');
+    const last = parts.at(-1);
+    return last === undefined || last.trim().length === 0 ? null : last.trim();
+  }
+  return null;
+};
+
+const truncateTitleCommand = (command: string): string =>
+  command.length > 72 ? `${command.slice(0, 64)}...` : command;
+
+const displayToolName = (toolName: string, args: unknown): string => {
+  if (!isRecord(args)) {
+    return toolName;
+  }
+
+  const command = commandField(args);
+  return command === null || command === toolName
+    ? toolName
+    : `${toolName}: ${truncateTitleCommand(command)}`;
+};
+
 const tryProviderAgentInputToolName = (inputText: string): string | null => {
   const t = inputText.trim();
   if (t.length === 0) {
@@ -25,16 +52,16 @@ const tryProviderAgentInputToolName = (inputText: string): string | null => {
     }
     const directToolName = stringField(parsed, 'toolName');
     if (directToolName !== null && !isAcpProviderDynamicToolName(directToolName)) {
-      return directToolName;
+      return displayToolName(directToolName, parsed['args']);
     }
     const input = parsed['input'];
     if (isRecord(input)) {
       const nestedToolName = stringField(input, 'toolName');
       if (nestedToolName !== null) {
-        return nestedToolName;
+        return displayToolName(nestedToolName, input['args']);
       }
     }
-    return directToolName;
+    return directToolName === null ? null : displayToolName(directToolName, parsed['args']);
   } catch {
     /* 非 JSON */
   }

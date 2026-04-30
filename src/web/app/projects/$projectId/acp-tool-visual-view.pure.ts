@@ -123,6 +123,15 @@ const piEditArgsSchema = object({
   edits: array(piTextEditSchema),
 });
 
+const outputDiffItemSchema = object({
+  oldText: string(),
+  newText: string(),
+  path: string(),
+  type: literal('diff'),
+});
+
+const outputDiffSchema = array(outputDiffItemSchema);
+
 const fileChangeSchema = object({
   type: string(),
   unified_diff: string(),
@@ -238,7 +247,25 @@ const parseCallInput = (
     };
   }
 
+  const rawCommand = stripInlineCode(call.inputText);
+  if (rawCommand !== null) {
+    return {
+      toolName: call.toolName,
+      args: { command: rawCommand },
+    };
+  }
+
   return null;
+};
+
+const stripInlineCode = (text: string): string | null => {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  return trimmed.startsWith('`') && trimmed.endsWith('`') && trimmed.length >= 2
+    ? trimmed.slice(1, -1).trim()
+    : trimmed;
 };
 
 const parseResultPayload = (
@@ -460,16 +487,21 @@ const visualTerminalFromResult = ({
 const visualFileRead = ({
   args,
   output,
+  pathFallback,
 }: {
   readonly args: unknown;
   readonly output: unknown;
+  readonly pathFallback: string | null;
 }): Extract<AcpToolVisualView, { kind: 'file-read' }> | null => {
   const parsedArgs = safeParse(readArgsSchema, args);
   if (!parsedArgs.success) {
-    return null;
+    const text = extractOutputText(output);
+    return pathFallback === null || text === null
+      ? null
+      : { kind: 'file-read', path: pathFallback, text };
   }
 
-  const path = parsedArgs.output.path ?? parsedArgs.output.file_path ?? null;
+  const path = parsedArgs.output.path ?? parsedArgs.output.file_path ?? pathFallback;
   const text = extractOutputText(output);
   if (path === null || text === null) {
     return null;
@@ -614,6 +646,31 @@ const visualDiff = (args: unknown): Extract<AcpToolVisualView, { kind: 'diff' }>
   };
 };
 
+const visualDiffFromOutput = (
+  output: unknown,
+): Extract<AcpToolVisualView, { kind: 'diff' }> | null => {
+  const parsedOutput = safeParse(outputDiffSchema, output);
+  if (!parsedOutput.success) {
+    return null;
+  }
+
+  const files = parsedOutput.output.map((diff) =>
+    buildFileDiffFromStrings({
+      filename: diff.path,
+      oldString: diff.oldText,
+      newString: diff.newText,
+    }),
+  );
+
+  return files.length > 0 ? { kind: 'diff', files } : null;
+};
+
+const isReadToolName = (toolName: string): boolean =>
+  toolName === 'read' ||
+  toolName === 'read_file' ||
+  toolName === 'read file' ||
+  toolName.startsWith('read ');
+
 export const resolveAcpToolVisualView = (item: AcpToolMergeItem): AcpToolVisualView | null => {
   const callInput = parseCallInput(item.call);
   const resultPayload = parseResultPayload(item.result);
@@ -637,6 +694,11 @@ export const resolveAcpToolVisualView = (item: AcpToolMergeItem): AcpToolVisualV
     return visualTodos(input.args);
   }
 
+  const outputDiff = visualDiffFromOutput(output);
+  if (outputDiff !== null) {
+    return outputDiff;
+  }
+
   const diff = visualDiff(input.args);
   if (diff !== null) {
     return diff;
@@ -657,8 +719,8 @@ export const resolveAcpToolVisualView = (item: AcpToolMergeItem): AcpToolVisualV
     return terminal;
   }
 
-  if (toolName === 'read' || toolName === 'read_file') {
-    return visualFileRead({ args: input.args, output });
+  if (isReadToolName(toolName)) {
+    return visualFileRead({ args: input.args, output, pathFallback: input.toolName });
   }
 
   const search = visualSearchResults({ args: input.args, output });

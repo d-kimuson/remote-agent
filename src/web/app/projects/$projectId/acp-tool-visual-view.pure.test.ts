@@ -124,6 +124,64 @@ describe('resolveAcpToolVisualView', () => {
     });
   });
 
+  test('Read path を含む toolName と file_path args を file-read 表示に変換する', () => {
+    const visual = resolveAcpToolVisualView(
+      toolItem({
+        input: {
+          toolCallId: 'toolu_1',
+          toolName: 'Read docs/tmp/approval-ui-test-trial.md',
+          args: {
+            file_path: '/home/kaito/repos/remote-agent/docs/tmp/approval-ui-test-trial.md',
+          },
+        },
+        output: '1\t# Approval UI Test\n2\t\n3\t承認UI動作確認用のダミーファイル。\n4\t',
+      }),
+    );
+
+    expect(visual).toEqual({
+      kind: 'file-read',
+      path: '/home/kaito/repos/remote-agent/docs/tmp/approval-ui-test-trial.md',
+      text: '1\t# Approval UI Test\n2\t\n3\t承認UI動作確認用のダミーファイル。\n4\t',
+    });
+  });
+
+  test('Cursor CLI の Read File result-only output を file-read 表示に変換する', () => {
+    const toolCallId = 'call-read-file\nfc_1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: null,
+      result: {
+        type: 'toolResult',
+        toolCallId,
+        toolName: 'acp.acp_provider_agent_dynamic_tool',
+        outputText: '# Approval UI Tool Test\n\nInitial content for write test.\n',
+        rawText: JSON.stringify({
+          type: 'tool-result',
+          toolCallId,
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          input: {
+            toolCallId,
+            toolName: 'Read File',
+            args: {},
+          },
+          output: {
+            content: '# Approval UI Tool Test\n\nInitial content for write test.\n',
+          },
+          providerExecuted: true,
+        }),
+      },
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'file-read',
+      path: 'Read File',
+      text: '# Approval UI Tool Test\n\nInitial content for write test.\n',
+    });
+  });
+
   test('pattern args と文字列 output を search-results 表示に変換する', () => {
     const visual = resolveAcpToolVisualView(
       toolItem({
@@ -174,6 +232,38 @@ describe('resolveAcpToolVisualView', () => {
     });
   });
 
+  test('Cursor CLI の Edit File output diff を diff 表示に変換する', () => {
+    const visual = resolveAcpToolVisualView(
+      toolItem({
+        input: {
+          toolCallId: 'call-edit-file\nctc_1',
+          toolName: 'Edit File',
+          args: {},
+        },
+        output: [
+          {
+            newText:
+              '++ b//home/kaito/repos/remote-agent/docs/tmp/approval-ui-tool-test.md\n# Approval UI Tool Test\n\nInitial content for write test.',
+            oldText: '-- /dev/null\n',
+            path: '/home/kaito/repos/remote-agent/docs/tmp/approval-ui-tool-test.md',
+            type: 'diff',
+          },
+        ],
+      }),
+    );
+
+    expect(visual).toMatchObject({
+      kind: 'diff',
+      files: [
+        {
+          filename: '/home/kaito/repos/remote-agent/docs/tmp/approval-ui-tool-test.md',
+          linesAdded: 4,
+          linesDeleted: 2,
+        },
+      ],
+    });
+  });
+
   test('承認待ちの exec_command raw input を terminal 表示に変換する', () => {
     const toolCallId = 'call-1';
     const visual = resolveAcpToolVisualView({
@@ -197,6 +287,35 @@ describe('resolveAcpToolVisualView', () => {
     expect(visual).toEqual({
       kind: 'terminal',
       command: 'git checkout README.md && git status README.md',
+      cwd: null,
+      stdout: '',
+      stderr: '',
+      exitCode: null,
+      status: null,
+      pending: true,
+    });
+  });
+
+  test('承認待ちの非 JSON command input を terminal 表示に変換する', () => {
+    const toolCallId = 'call-1';
+    const visual = resolveAcpToolVisualView({
+      type: 'tool',
+      key: `tool-${toolCallId}`,
+      toolCallId,
+      call: {
+        type: 'toolCall',
+        toolCallId,
+        toolName: 'echo "second bash approval test" && pwd && date',
+        inputText: '`echo "second bash approval test" && pwd && date`',
+        rawText: '',
+      },
+      result: null,
+      error: null,
+    });
+
+    expect(visual).toEqual({
+      kind: 'terminal',
+      command: 'echo "second bash approval test" && pwd && date',
       cwd: null,
       stdout: '',
       stderr: '',

@@ -50,6 +50,51 @@ describe('resolveAcpToolCardTitle', () => {
     ).toBe('pwd');
   });
 
+  test('bash dynamic ツール名では command をタイトルに含める', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            toolCallId: 'toolu_1',
+            toolName: 'bash',
+            args: {
+              command: 'git check-ignore -v docs/tmp/approval-tool-test-2026.md docs/tmp/test.md',
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('bash: git check-ignore -v docs/tmp/approval-tool-test-2026.md docs/tmp/test.md');
+  });
+
+  test('長い command タイトルは省略する', () => {
+    expect(
+      resolveAcpToolCardTitle({
+        call: {
+          type: 'toolCall',
+          toolCallId: 'toolu_1',
+          toolName: 'acp.acp_provider_agent_dynamic_tool',
+          inputText: JSON.stringify({
+            toolCallId: 'toolu_1',
+            toolName: 'bash',
+            args: {
+              command:
+                'git check-ignore -v docs/tmp/approval-tool-test-2026.md docs/tmp/test.md docs/tmp/extra.md',
+            },
+          }),
+          rawText: '',
+        },
+        result: null,
+        error: null,
+      }),
+    ).toBe('bash: git check-ignore -v docs/tmp/approval-tool-test-2026.md docs/tmp...');
+  });
+
   test('result-only dynamic ツール名の raw part 形式では input.toolName を出す', () => {
     expect(
       resolveAcpToolCardTitle({
