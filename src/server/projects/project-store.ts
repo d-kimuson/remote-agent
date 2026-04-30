@@ -32,15 +32,6 @@ const slugify = (value: string): string => {
   );
 };
 
-const createDefaultProject = (): Project => {
-  const workingDirectory = process.cwd();
-  return parse(projectSchema, {
-    id: slugify(path.basename(workingDirectory)),
-    name: path.basename(workingDirectory),
-    workingDirectory,
-  });
-};
-
 const assertDirectory = async (workingDirectory: string): Promise<string> => {
   const resolvedPath = path.resolve(workingDirectory);
   const directoryStat = await stat(resolvedPath);
@@ -94,23 +85,7 @@ const mapProjectModePreferenceRecord = (
 });
 
 export const createProjectStore = (database: AppDatabase = getDefaultDatabase()) => {
-  const ensureDefaultProject = async (): Promise<void> => {
-    const existingProjects = await database.db.select().from(projectsTable).limit(1);
-    if (existingProjects.length > 0) {
-      return;
-    }
-
-    const defaultProject = createDefaultProject();
-    await database.db.insert(projectsTable).values({
-      id: defaultProject.id,
-      name: defaultProject.name,
-      workingDirectory: defaultProject.workingDirectory,
-      createdAt: new Date().toISOString(),
-    });
-  };
-
   const readProjects = async (): Promise<readonly Project[]> => {
-    await ensureDefaultProject();
     const records = await database.db.select().from(projectsTable);
     const projects = records.map(mapProjectRecord);
     return parse(projectsResponseSchema, { projects }).projects;
@@ -121,7 +96,6 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
   };
 
   const getProject = async (projectId: string): Promise<Project> => {
-    await ensureDefaultProject();
     const [record] = await database.db
       .select()
       .from(projectsTable)

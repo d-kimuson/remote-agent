@@ -15,6 +15,17 @@ afterEach(() => {
 });
 
 describe('createProjectStore', () => {
+  test('starts with no projects until one is explicitly created', async () => {
+    const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
+    const database = createDatabase(path.join(sandboxDirectory, 'remote-agent.sqlite'));
+    disposableClients.push(database.client);
+
+    const store = createProjectStore(database);
+
+    await expect(store.listProjects()).resolves.toEqual([]);
+    await expect(store.getProject('remote-agent')).rejects.toThrow('Unknown project: remote-agent');
+  });
+
   test('persists projects in sqlite and restores them from a new store instance', async () => {
     const sandboxDirectory = await mkdtemp(path.join(tmpdir(), 'remote-agent-projects-'));
     const firstProjectDirectory = path.join(sandboxDirectory, 'workspace-a');
