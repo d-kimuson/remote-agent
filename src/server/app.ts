@@ -1,6 +1,7 @@
 import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { openAPIRouteHandler } from 'hono-openapi';
+import { cors } from 'hono/cors';
 import path from 'node:path';
 
 import { envService } from './env.ts';
@@ -21,6 +22,11 @@ const openApiDocument = {
 
 export const createHonoApp = (options?: AppOptions) => {
   const app = new Hono();
+
+  const allowedOrigins = envService.getEnv('RA_ALLOWED_ORIGINS');
+  if (allowedOrigins.length > 0) {
+    app.use('/api/*', cors({ origin: allowedOrigins }));
+  }
 
   app.use('/api/*', async (c, next) => {
     if (
