@@ -37,7 +37,7 @@ import {
   type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
 } from '../../../shared/acp.ts';
-import { resolveAttachments } from '../../attachments/store.ts';
+import { resolveAttachments, resolveUploadedAttachments } from '../../attachments/store.ts';
 import {
   agentProviderCatalogsTable,
   sessionMessagesTable,
@@ -1495,7 +1495,10 @@ export const createSessionStore = ({
     request: SendMessageRequest,
   ): Promise<MessageResponse> => {
     const entry = await ensureSessionEntry(sessionId);
-    const attachments = resolveAttachments(request.attachmentIds ?? []);
+    const attachments =
+      request.attachments === undefined
+        ? resolveAttachments(request.attachmentIds ?? [])
+        : resolveUploadedAttachments(request.attachments);
     const attachmentPromptPlan = buildAttachmentPromptPlan({
       attachments,
       capabilities: acpAiProviderAttachmentCapabilities,

@@ -1,6 +1,16 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
-import { Loader2, Pencil, Plus, Trash2, Volume2 } from 'lucide-react';
-import { Suspense, useCallback, useEffect, useRef, useState, type FC } from 'react';
+import { Loader2, Mic, Paperclip, Pencil, Plus, Trash2, Volume2, X } from 'lucide-react';
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FC,
+  type ReactNode,
+} from 'react';
+import { toast } from 'sonner';
 
 import type {
   AgentProvidersResponse,
@@ -14,6 +24,7 @@ import type {
   RoutineKind,
   RoutinesResponse,
   UpdateRoutineRequest,
+  UploadedAttachment,
 } from '../../../shared/acp.ts';
 
 import { Badge } from '../../components/ui/badge.tsx';
@@ -57,9 +68,11 @@ import {
   updateAppSettingsRequest,
   updateCustomAgentProviderRequest,
   updateRoutineRequest,
+  uploadAttachmentsRequest,
 } from '../../lib/api/acp.ts';
 import { parseThemePreference, type ThemePreference } from '../../lib/theme.pure.ts';
 import { useTheme } from '../../lib/theme.tsx';
+import { cn } from '../../lib/utils.ts';
 import {
   getNotificationPermissionState,
   persistSystemNotificationPreference,
@@ -78,11 +91,13 @@ import {
   playTaskCompletionSound,
   readTaskCompletionSoundPreference,
 } from '../../pwa/task-completion-sound.ts';
+import { attachmentContentBlockLabel } from '../projects/$projectId/chat-state.pure.ts';
 import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
   agentSlashCommandsQueryKey,
 } from '../projects/$projectId/queries.ts';
+import { appendRichPromptText } from '../projects/$projectId/rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from '../projects/$projectId/rich-prompt-editor.tsx';
 import { appSettingsQueryKey, routinesQueryKey } from './queries.ts';
 
@@ -105,6 +120,38 @@ const dateTimeLocalValueFrom = (value: string): string => {
   return value.slice(0, 16);
 };
 
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  abort: () => void;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+type SpeechRecognitionWindow = Window & {
+  readonly SpeechRecognition?: SpeechRecognitionConstructor;
+  readonly webkitSpeechRecognition?: SpeechRecognitionConstructor;
+};
+
+const resolveSpeechRecognitionConstructor = (
+  browserWindow: SpeechRecognitionWindow = window,
+): SpeechRecognitionConstructor | null =>
+  browserWindow.SpeechRecognition ?? browserWindow.webkitSpeechRecognition ?? null;
+
+const finalSpeechTextFromEvent = (event: SpeechRecognitionEvent): string =>
+  Array.from(event.results)
+    .slice(event.resultIndex)
+    .filter((result) => result.isFinal && result.length > 0)
+    .map((result) => result[0]?.transcript.trim() ?? '')
+    .filter((text) => text.length > 0)
+    .join(' ');
+
 type RoutineFormState = {
   readonly name: string;
   readonly enabled: boolean;
@@ -114,6 +161,7 @@ type RoutineFormState = {
   readonly presetId: string;
   readonly modelId: string;
   readonly modeId: string;
+  readonly attachments: readonly UploadedAttachment[];
   readonly prompt: string;
 };
 
@@ -126,6 +174,7 @@ const blankRoutineFormState = (presetId: string): RoutineFormState => ({
   presetId,
   modelId: '',
   modeId: '',
+  attachments: [],
   prompt: '',
 });
 
@@ -138,6 +187,7 @@ const routineFormStateFromRoutine = (routine: Routine): RoutineFormState => ({
   presetId: routine.sendConfig.presetId,
   modelId: routine.sendConfig.modelId ?? '',
   modeId: routine.sendConfig.modeId ?? '',
+  attachments: routine.sendConfig.attachments ?? [],
   prompt: routine.sendConfig.prompt,
 });
 
@@ -161,6 +211,7 @@ const routineRequestFromFormState = ({
     cwd: project.workingDirectory,
     modelId: optionalFieldValue(state.modelId),
     modeId: optionalFieldValue(state.modeId),
+    attachments: [...state.attachments],
     prompt: state.prompt.trim(),
   },
 });
@@ -249,6 +300,8 @@ const routineModeOptionsWithCurrent = ({
 const routineOptionLabel = (option: ModelOption | ModeOption): string =>
   option.name === option.id ? option.name : `${option.name} (${option.id})`;
 
+const routineSelectContentClassName = 'duration-0 data-open:animate-none data-closed:animate-none';
+
 const providerSummaryToneClassName = (hasError: boolean): string =>
   hasError ? 'text-destructive' : 'text-muted-foreground';
 
@@ -308,7 +361,8 @@ const RoutinePromptField: FC<{
   readonly presetId: string;
   readonly projectId: string;
   readonly prompt: string;
-}> = ({ disabled, onPromptReady, presetId, projectId, prompt }) => {
+  readonly toolbarTrailing?: ReactNode;
+}> = ({ disabled, onPromptReady, presetId, projectId, prompt, toolbarTrailing }) => {
   const [externalValue, setExternalValue] = useState({ revision: 0, value: prompt });
   const { data: slashCommandData } = useSuspenseQuery({
     queryKey: agentSlashCommandsQueryKey(projectId, presetId),
@@ -331,6 +385,7 @@ const RoutinePromptField: FC<{
       onValueReaderReady={onPromptReady}
       placeholder="Send to the agent when this routine runs."
       slashCommands={slashCommandData.commands}
+      toolbarTrailing={toolbarTrailing}
     />
   );
 };
@@ -372,7 +427,7 @@ const RoutineModelModeFields: FC<{
           <SelectTrigger className="w-full" id="routine-model">
             <SelectValue placeholder={modelOptions.length === 0 ? 'No model choices' : 'Default'} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
             <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
             {modelOptions.map((model) => (
               <SelectItem key={model.id} value={model.id}>
@@ -399,7 +454,7 @@ const RoutineModelModeFields: FC<{
           <SelectTrigger className="w-full" id="routine-mode">
             <SelectValue placeholder={modeOptions.length === 0 ? 'No mode choices' : 'Default'} />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
             <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
             {modeOptions.map((mode) => (
               <SelectItem key={mode.id} value={mode.id}>
@@ -417,24 +472,33 @@ const RoutineDialogBody: FC<{
   readonly formError: string | null;
   readonly formState: RoutineFormState;
   readonly isMutating: boolean;
+  readonly isUploadingAttachments: boolean;
   readonly mode: 'create' | 'edit';
   readonly onCancel: () => void;
+  readonly onAttachFiles: (files: readonly File[]) => Promise<void>;
+  readonly onRemoveAttachment: (attachmentId: string) => void;
   readonly onSubmit: (prompt: string) => void;
-  readonly project: Project;
+  readonly projectId: string;
   readonly selectableProviders: readonly AgentPreset[];
   readonly setFormState: (update: (current: RoutineFormState) => RoutineFormState) => void;
 }> = ({
   formError,
   formState,
   isMutating,
+  isUploadingAttachments,
   mode,
+  onAttachFiles,
   onCancel,
+  onRemoveAttachment,
   onSubmit,
-  project,
+  projectId,
   selectableProviders,
   setFormState,
 }) => {
   const promptReaderRef = useRef<(() => string) | null>(null);
+  const attachFileInputRef = useRef<HTMLInputElement | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const [isListeningToSpeech, setIsListeningToSpeech] = useState(false);
   const handlePromptReady = useCallback((readValue: () => string) => {
     promptReaderRef.current = readValue;
   }, []);
@@ -444,6 +508,72 @@ const RoutineDialogBody: FC<{
     (formState.kind === 'cron'
       ? formState.cronExpression.trim().length > 0
       : formState.runAt.trim().length > 0);
+  const isFormDisabled = isMutating || isUploadingAttachments;
+
+  const handleAttachFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const files = input.files === null ? [] : [...input.files];
+    if (files.length === 0) {
+      return;
+    }
+
+    void onAttachFiles(files).finally(() => {
+      input.value = '';
+    });
+  };
+
+  const handleToggleSpeechInput = () => {
+    if (isFormDisabled) {
+      return;
+    }
+    const currentRecognition = speechRecognitionRef.current;
+    if (isListeningToSpeech) {
+      currentRecognition?.stop();
+      setIsListeningToSpeech(false);
+      return;
+    }
+
+    const SpeechRecognition = resolveSpeechRecognitionConstructor();
+    if (SpeechRecognition === null) {
+      toast.error('このブラウザは音声入力に対応していません');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = navigator.language.length > 0 ? navigator.language : 'ja-JP';
+    recognition.onresult = (event) => {
+      const speechText = finalSpeechTextFromEvent(event);
+      if (speechText.length === 0) {
+        return;
+      }
+      const currentPrompt = promptReaderRef.current?.() ?? formState.prompt;
+      const nextPrompt = appendRichPromptText({ value: currentPrompt, addition: speechText });
+      setFormState((current) => ({ ...current, prompt: nextPrompt }));
+    };
+    recognition.onerror = (event) => {
+      setIsListeningToSpeech(false);
+      speechRecognitionRef.current = null;
+      if (event.error !== 'aborted') {
+        toast.error(event.message.length > 0 ? event.message : '音声入力に失敗しました');
+      }
+    };
+    recognition.onend = () => {
+      setIsListeningToSpeech(false);
+      speechRecognitionRef.current = null;
+    };
+
+    speechRecognitionRef.current = recognition;
+    setIsListeningToSpeech(true);
+    try {
+      recognition.start();
+    } catch {
+      speechRecognitionRef.current = null;
+      setIsListeningToSpeech(false);
+      toast.error('音声入力を開始できませんでした');
+    }
+  };
 
   return (
     <>
@@ -473,7 +603,7 @@ const RoutineDialogBody: FC<{
               <SelectTrigger className="w-full" id="routine-kind">
                 <SelectValue placeholder="Kind" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
                 <SelectItem value="cron">cron</SelectItem>
                 <SelectItem value="scheduled">scheduled</SelectItem>
               </SelectContent>
@@ -507,20 +637,10 @@ const RoutineDialogBody: FC<{
               />
             </div>
           )}
-          <div className="flex items-center justify-between gap-3 self-end rounded-md border px-3 py-2">
-            <span className="text-sm font-medium">Enabled</span>
-            <RoutineEnabledToggle
-              checked={formState.enabled}
-              disabled={isMutating}
-              onCheckedChange={(enabled) => {
-                setFormState((current) => ({ ...current, enabled }));
-              }}
-            />
-          </div>
         </div>
 
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-2">
+          <div className="space-y-2 md:col-span-2">
             <Label htmlFor="routine-provider">Provider</Label>
             <Select
               onValueChange={(presetId) => {
@@ -539,7 +659,7 @@ const RoutineDialogBody: FC<{
               <SelectTrigger className="w-full" id="routine-provider">
                 <SelectValue placeholder="Provider" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
                 {selectableProviders.length === 0 ? (
                   <SelectItem value={formState.presetId}>{formState.presetId}</SelectItem>
                 ) : null}
@@ -551,31 +671,108 @@ const RoutineDialogBody: FC<{
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
-            <Label>Project path</Label>
-            <p className="rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
-              {project.workingDirectory}
-            </p>
-          </div>
         </div>
 
-        <Suspense fallback={<p className="text-sm text-muted-foreground">Loading choices...</p>}>
+        <Suspense
+          fallback={
+            <div className="grid min-h-[3.75rem] gap-3 md:grid-cols-2">
+              <p className="self-center text-sm text-muted-foreground">Loading choices...</p>
+            </div>
+          }
+        >
           <RoutineModelModeFields
             formState={formState}
-            projectId={project.id}
+            projectId={projectId}
             setFormState={setFormState}
           />
         </Suspense>
 
         <div className="space-y-2">
           <Label>Prompt</Label>
-          <Suspense fallback={<p className="text-sm text-muted-foreground">Loading commands...</p>}>
+          {formState.attachments.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {formState.attachments.map((attachment) => (
+                <span
+                  className="inline-flex max-w-full items-center gap-1.5 rounded-md border bg-background px-2 py-1 text-xs text-foreground"
+                  key={attachment.attachmentId}
+                >
+                  <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                  <span className="max-w-48 truncate">{attachment.name}</span>
+                  <span className="hidden text-muted-foreground sm:inline">
+                    {attachmentContentBlockLabel(attachment)}
+                  </span>
+                  <button
+                    aria-label={`Remove ${attachment.name}`}
+                    className="-mr-0.5 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    disabled={isFormDisabled}
+                    onClick={() => {
+                      onRemoveAttachment(attachment.attachmentId);
+                    }}
+                    type="button"
+                  >
+                    <X className="size-3" />
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <input
+            className="hidden"
+            multiple
+            onChange={handleAttachFileInputChange}
+            ref={attachFileInputRef}
+            type="file"
+          />
+          <Suspense
+            fallback={
+              <p className="min-h-28 rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                Loading commands...
+              </p>
+            }
+          >
             <RoutinePromptField
-              disabled={isMutating}
+              disabled={isFormDisabled}
               onPromptReady={handlePromptReady}
               presetId={formState.presetId}
-              projectId={project.id}
+              projectId={projectId}
               prompt={formState.prompt}
+              toolbarTrailing={
+                <>
+                  <Button
+                    aria-label="Attach files"
+                    disabled={isFormDisabled}
+                    onClick={() => {
+                      attachFileInputRef.current?.click();
+                    }}
+                    size="icon-sm"
+                    title="Attach files"
+                    type="button"
+                    variant="ghost"
+                  >
+                    {isUploadingAttachments ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      <Paperclip className="size-4" />
+                    )}
+                  </Button>
+                  <Button
+                    aria-label={isListeningToSpeech ? 'Stop voice input' : 'Start voice input'}
+                    className={cn(
+                      isListeningToSpeech
+                        ? 'bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive'
+                        : '',
+                    )}
+                    disabled={isFormDisabled}
+                    onClick={handleToggleSpeechInput}
+                    size="icon-sm"
+                    title={isListeningToSpeech ? '音声入力を停止' : '音声入力'}
+                    type="button"
+                    variant="ghost"
+                  >
+                    <Mic className="size-4" />
+                  </Button>
+                </>
+              }
             />
           </Suspense>
         </div>
@@ -583,11 +780,11 @@ const RoutineDialogBody: FC<{
         {formError === null ? null : <p className="text-sm text-destructive">{formError}</p>}
       </div>
       <DialogFooter>
-        <Button disabled={isMutating} onClick={onCancel} type="button" variant="outline">
+        <Button disabled={isFormDisabled} onClick={onCancel} type="button" variant="outline">
           Cancel
         </Button>
         <Button
-          disabled={!canSubmit || isMutating}
+          disabled={!canSubmit || isFormDisabled}
           onClick={() => {
             onSubmit(promptReaderRef.current?.() ?? formState.prompt);
           }}
@@ -610,7 +807,7 @@ const RoutineEnabledToggle: FC<{
     aria-checked={checked}
     aria-label={checked ? 'Disable routine' : 'Enable routine'}
     className={[
-      'inline-flex h-8 min-w-16 items-center gap-2 rounded-full border px-1 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+      'inline-flex h-7 w-12 shrink-0 items-center rounded-full border px-1 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
       checked
         ? 'border-primary bg-primary text-primary-foreground'
         : 'border-border bg-muted text-muted-foreground',
@@ -624,8 +821,8 @@ const RoutineEnabledToggle: FC<{
   >
     <span
       className={[
-        'size-6 rounded-full bg-background shadow-sm transition-transform',
-        checked ? 'translate-x-8' : 'translate-x-0',
+        'size-5 rounded-full bg-background shadow-sm transition-transform',
+        checked ? 'translate-x-5' : 'translate-x-0',
       ].join(' ')}
     />
     <span className="sr-only">{checked ? 'Enabled' : 'Disabled'}</span>
@@ -670,6 +867,9 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
       queryClient.setQueryData<RoutinesResponse>(routinesQueryKey, data);
     },
   });
+  const uploadRoutineAttachmentsMutation = useMutation({
+    mutationFn: uploadAttachmentsRequest,
+  });
   const selectableProviders =
     providerData?.providers.filter((entry) => entry.enabled).map((entry) => entry.preset) ?? [];
   const projectRoutines = routineData.routines.filter(
@@ -679,6 +879,29 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
     createRoutineMutation.isPending ||
     updateRoutineMutation.isPending ||
     deleteRoutineMutation.isPending;
+
+  const handleAttachRoutineFiles = async (files: readonly File[]) => {
+    setFormError(null);
+    try {
+      const response = await uploadRoutineAttachmentsMutation.mutateAsync(files);
+      setFormState((current) => ({
+        ...current,
+        attachments: [...current.attachments, ...response.attachments],
+      }));
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : 'Attachment upload failed.');
+    }
+  };
+
+  const handleRemoveRoutineAttachment = (attachmentId: string) => {
+    setFormState((current) => ({
+      ...current,
+      attachments: current.attachments.filter(
+        (attachment) => attachment.attachmentId !== attachmentId,
+      ),
+    }));
+  };
+
   const handleSubmit = async (prompt: string) => {
     const nextFormState = { ...formState, prompt };
     const canSubmit =
@@ -757,22 +980,14 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
   };
 
   return (
-    <Card className="app-panel">
-      <CardHeader>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <CardTitle>Routines</CardTitle>
-            <CardDescription>
-              {project.name} で実行する定期実行と予約送信の routine を管理します。
-            </CardDescription>
-          </div>
-          <Button onClick={handleCreateRoutine} type="button">
-            <Plus className="size-4" />
-            New routine
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-5">
+    <section className="space-y-5">
+      <div className="flex justify-end">
+        <Button onClick={handleCreateRoutine} type="button">
+          <Plus className="size-4" />
+          New routine
+        </Button>
+      </div>
+      <div className="space-y-5">
         <div className="space-y-3">
           {projectRoutines.length === 0 ? (
             <p className="text-sm text-muted-foreground">No routines yet.</p>
@@ -782,27 +997,33 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
               className="space-y-3 rounded-lg border border-border/70 px-3 py-3"
               key={routine.id}
             >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 space-y-1">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1 space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{routine.name}</p>
                     <Badge variant={routine.enabled ? 'default' : 'outline'}>
                       {routine.enabled ? 'Enabled' : 'Disabled'}
                     </Badge>
                     <Badge variant="secondary">{routine.kind}</Badge>
+                    {(routine.sendConfig.attachments ?? []).length > 0 ? (
+                      <Badge variant="outline">
+                        <Paperclip className="size-3" />
+                        {String((routine.sendConfig.attachments ?? []).length)}
+                      </Badge>
+                    ) : null}
                   </div>
                   <p className="break-all font-mono text-xs text-muted-foreground">
                     {routine.kind === 'cron' ? routine.config.cronExpression : routine.config.runAt}
                   </p>
-                  <p className="text-xs text-muted-foreground">
-                    Next: {formatOptionalDateTime(routine.nextRunAt)} · Last:{' '}
-                    {formatOptionalDateTime(routine.lastRunAt)}
-                  </p>
+                  <div className="space-y-0.5 text-xs text-muted-foreground">
+                    <p>Next: {formatOptionalDateTime(routine.nextRunAt)}</p>
+                    <p>Last: {formatOptionalDateTime(routine.lastRunAt)}</p>
+                  </div>
                   {routine.lastError === null || routine.lastError === undefined ? null : (
                     <p className="text-xs text-destructive">{routine.lastError}</p>
                   )}
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex shrink-0 items-center gap-1.5">
                   <RoutineEnabledToggle
                     checked={routine.enabled}
                     disabled={isMutating}
@@ -816,7 +1037,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                     onClick={() => {
                       handleEditRoutine(routine);
                     }}
-                    size="icon"
+                    size="icon-sm"
                     type="button"
                     variant="outline"
                   >
@@ -828,7 +1049,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                     onClick={() => {
                       void handleDeleteRoutine(routine.id);
                     }}
-                    size="icon"
+                    size="icon-sm"
                     type="button"
                     variant="outline"
                   >
@@ -852,7 +1073,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
           }}
           open={dialogOpen}
         >
-          <DialogContent className="sm:max-w-2xl">
+          <DialogContent className="top-4 max-h-[calc(100svh-2rem)] translate-y-0 overflow-hidden sm:top-1/2 sm:max-w-2xl sm:-translate-y-1/2">
             <DialogHeader>
               <DialogTitle>
                 {editingRoutineId === null ? 'New routine' : 'Edit routine'}
@@ -866,20 +1087,23 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                 formError={formError}
                 formState={formState}
                 isMutating={isMutating}
+                isUploadingAttachments={uploadRoutineAttachmentsMutation.isPending}
                 mode={editingRoutineId === null ? 'create' : 'edit'}
+                onAttachFiles={handleAttachRoutineFiles}
                 onCancel={handleCancelEdit}
+                onRemoveAttachment={handleRemoveRoutineAttachment}
                 onSubmit={(prompt) => {
                   void handleSubmit(prompt);
                 }}
-                project={project}
+                projectId={project.id}
                 selectableProviders={selectableProviders}
                 setFormState={setFormState}
               />
             ) : null}
           </DialogContent>
         </Dialog>
-      </CardContent>
-    </Card>
+      </div>
+    </section>
   );
 };
 

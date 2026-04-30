@@ -1039,6 +1039,7 @@ export type ResolveAcpPermissionRequest = InferOutput<typeof resolveAcpPermissio
 export const sendMessageRequestSchema = object({
   prompt: pipe(string(), trim()),
   attachmentIds: optional(array(pipe(string(), trim()))),
+  attachments: optional(array(uploadedAttachmentSchema)),
   modelId: optional(nullable(pipe(string(), trim()))),
   modeId: optional(nullable(pipe(string(), trim()))),
 });
@@ -1052,6 +1053,7 @@ export const routineSendConfigSchema = object({
   modelId: optional(nullable(pipe(string(), trim()))),
   modeId: optional(nullable(pipe(string(), trim()))),
   prompt: pipe(string(), trim()),
+  attachments: optional(array(uploadedAttachmentSchema)),
 });
 
 export type RoutineSendConfig = InferOutput<typeof routineSendConfigSchema>;

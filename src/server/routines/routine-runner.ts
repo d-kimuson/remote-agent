@@ -182,8 +182,14 @@ export const createRoutineRunner = ({
       presetId: preset.id,
       modeId: session.currentModeId ?? initialModeId,
     });
+    const attachmentIds =
+      routine.sendConfig.attachments?.map((attachment) => attachment.attachmentId) ?? [];
     await sendAgentPrompt(session.sessionId, {
       prompt: routine.sendConfig.prompt,
+      ...(routine.sendConfig.attachments === undefined
+        ? {}
+        : { attachments: routine.sendConfig.attachments }),
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
       modelId: routine.sendConfig.modelId ?? null,
       modeId: routine.sendConfig.modeId ?? null,
     });

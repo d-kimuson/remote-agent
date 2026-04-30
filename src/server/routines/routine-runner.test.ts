@@ -131,6 +131,78 @@ describe('createRoutineRunner', () => {
     ]);
   });
 
+  test('passes routine attachment ids to the prompt request', async () => {
+    const sentPrompts: unknown[] = [];
+    const runner = createRoutineRunner({
+      getProjectById: () =>
+        Promise.resolve({
+          id: 'project-1',
+          name: 'Project',
+          workingDirectory: '/work/project',
+        }),
+      getProjectSettingsById: () => Promise.resolve(emptyProjectSettings),
+      markProjectModelUsed: () => Promise.resolve(emptyProjectSettings),
+      markProjectModeUsed: () => Promise.resolve(emptyProjectSettings),
+      createAgentSession: () => Promise.resolve(baseSession),
+      sendAgentPrompt: (sessionId, request) => {
+        sentPrompts.push({ sessionId, request });
+        return Promise.resolve({
+          session: baseSession,
+          text: 'done',
+          rawEvents: [],
+          assistantSegmentMessages: [],
+        });
+      },
+    });
+
+    await runner.runRoutine({
+      id: 'routine-attachment',
+      name: 'With attachment',
+      enabled: true,
+      kind: 'cron',
+      config: { cronExpression: '0 9 * * *' },
+      sendConfig: {
+        projectId: 'project-1',
+        presetId: 'codex',
+        cwd: null,
+        prompt: 'Read this file.',
+        attachments: [
+          {
+            attachmentId: 'attachment-1',
+            name: 'note.txt',
+            mediaType: 'text/plain',
+            sizeInBytes: 12,
+          },
+        ],
+      },
+      createdAt: '2026-04-29T00:00:00.000Z',
+      updatedAt: '2026-04-29T00:00:00.000Z',
+      lastRunAt: null,
+      nextRunAt: '2026-04-29T09:00:00.000Z',
+      lastError: null,
+    });
+
+    expect(sentPrompts).toEqual([
+      {
+        sessionId: 'session-routine',
+        request: {
+          prompt: 'Read this file.',
+          attachmentIds: ['attachment-1'],
+          attachments: [
+            {
+              attachmentId: 'attachment-1',
+              name: 'note.txt',
+              mediaType: 'text/plain',
+              sizeInBytes: 12,
+            },
+          ],
+          modelId: null,
+          modeId: null,
+        },
+      },
+    ]);
+  });
+
   test('uses the project last-used mode when a routine omits modeId', async () => {
     const createdSessions: unknown[] = [];
     const settings: ProjectSettings = {

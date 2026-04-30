@@ -123,6 +123,27 @@ export const resolveAttachments = (
   return attachments;
 };
 
+export const resolveUploadedAttachments = (
+  attachments: readonly UploadedAttachment[],
+): readonly ResolvedAttachment[] =>
+  attachments.map((attachment) => {
+    const stored = attachmentStore.get(attachment.attachmentId);
+    if (stored !== undefined) {
+      return {
+        ...toUploadedAttachment(stored),
+        storedPath: stored.storedPath,
+      };
+    }
+
+    return {
+      ...attachment,
+      storedPath: path.join(
+        uploadsDirectory,
+        toStoredFilename(attachment.attachmentId, attachment.name),
+      ),
+    };
+  });
+
 export const listStoredAttachments = (): readonly ResolvedAttachment[] => {
   return [...attachmentStore.values()].map((entry) => ({
     attachmentId: entry.attachmentId,
