@@ -13,5 +13,11 @@
     ]
   },
   "sortPackageJson": true,
-  "ignorePatterns": ["**/*.gen.*", "**/*.generated.*", "src/web/routeTree.gen.ts"]
+  "ignorePatterns": [
+    "**/*.gen.*",
+    "**/*.generated.*",
+    "src/web/routeTree.gen.ts",
+    "docs/database.md",
+    "docs/openapi.json"
+  ]
 }

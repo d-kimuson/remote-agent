@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { createHonoApp } from '../server/app.ts';
 
-const outputFilePath = path.resolve(process.argv[2] ?? 'dist/openapi.json');
+const outputFilePath = path.resolve(process.argv[2] ?? 'docs/openapi.json');
 const response = await createHonoApp().request('/api/openapi.json');
 
 if (!response.ok) {

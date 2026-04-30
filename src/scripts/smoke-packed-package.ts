@@ -29,6 +29,7 @@ try {
   const packageDirectory = path.join(sandboxDirectory, 'package');
   const requiredFiles = [
     'dist/cli.mjs',
+    'docs/openapi.json',
     'dist/migrations/20260428141939_fat_tenebrous/migration.sql',
     'dist/migrations/20260428141939_fat_tenebrous/snapshot.json',
   ];

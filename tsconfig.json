@@ -30,5 +30,5 @@
     "target": "es2024",
     "lib": ["dom", "dom.iterable", "esnext"]
   },
-  "include": ["src"]
+  "include": ["src", "scripts/release.ts", "scripts/check-bundled-licenses.ts", "tsdown.config.ts"]
 }

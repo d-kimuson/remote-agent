@@ -35,6 +35,7 @@
         {
           default = pkgs.mkShell {
             packages = [
+              pkgs.gitleaks
               pkgs.git
               pkgs.nodejs
               pkgs.pnpm

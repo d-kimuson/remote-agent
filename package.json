@@ -1,13 +1,14 @@
 {
   "name": "@kimuson/remote-agent",
   "version": "0.0.2-beta.1",
-  "private": false,
-  "description": "A CLI that serves a web UI for interacting with ACP-compatible agents",
+  "description": "A CLI that serves a web UI and bridge server for interacting with ACP-compatible agents",
+  "license": "MIT",
   "bin": {
     "remote-agent": "./dist/cli.mjs"
   },
   "files": [
-    "dist"
+    "dist",
+    "docs/openapi.json"
   ],
   "type": "module",
   "exports": {
@@ -19,11 +20,10 @@
   "scripts": {
     "start": "portless --name 'remote-agent' node ./dist/cli.mjs",
     "dev": "pnpm dev:proxy && run-p dev:web dev:server",
-    "dev:proxy": "node --experimental-strip-types src/scripts/ensure-portless-proxy.ts",
+    "dev:proxy": "node src/scripts/ensure-portless-proxy.ts",
     "dev:server": "RA_DIR=./data/.ra-dir RA_RUNTIME=dev portless --name 'remote-agent-server' --force node --watch src/server/main.ts",
     "dev:web": "SERVER_BASE_URL=$(pnpm portless get remote-agent-server) portless --name 'remote-agent-web' --force vite",
-    "build": "run-s build:server build:web build:openapi",
-    "build:openapi": "node --experimental-strip-types src/scripts/write-openapi.ts dist/openapi.json",
+    "build": "run-s build:server build:web",
     "build:server": "tsdown",
     "build:web": "vite build",
     "typecheck": "tsgo -p . --noEmit",
@@ -34,10 +34,14 @@
     "lint:oxfmt": "pnpm fix:oxfmt --check",
     "lint:oxlint": "oxlint --ignore-path .gitignore --no-error-on-unmatched-pattern",
     "migrate:generate": "drizzle-kit generate",
-    "migrate:local": "RA_DIR=./data/.ra-dir node --experimental-strip-types src/scripts/migrate-local.ts",
+    "migrate:local": "RA_DIR=./data/.ra-dir node src/scripts/migrate-local.ts",
+    "generate": "run-p generate:*",
     "generate:db-docs": "drizzle-docs generate ./src/server/db/schema.ts -d sqlite >> ./docs/database.md",
-    "prepack": "./scripts/prepare-publish.sh",
-    "smoke:pack": "pnpm build && node --experimental-strip-types src/scripts/smoke-packed-package.ts",
+    "generate:openapi": "node src/scripts/write-openapi.ts docs/openapi.json",
+    "check:bundled-licenses": "node scripts/check-bundled-licenses.ts",
+    "prepack": "pnpm build && clean-pkg-json",
+    "release": "node scripts/release.ts",
+    "smoke:pack": "pnpm build && node src/scripts/smoke-packed-package.ts",
     "test": "vitest run"
   },
   "dependencies": {
@@ -68,7 +72,9 @@
     "@vitejs/plugin-react": "6.0.1",
     "@vitest/browser-playwright": "4.1.5",
     "ai": "6.0.168",
+    "changelogithub": "14.0.0",
     "class-variance-authority": "0.7.1",
+    "clean-pkg-json": "1.4.2",
     "clsx": "2.1.1",
     "commander": "14.0.3",
     "drizzle-docs-generator": "0.7.2",
@@ -77,6 +83,7 @@
     "gatecheck": "0.0.1-beta.5",
     "hono": "4.12.14",
     "hono-openapi": "1.3.0",
+    "inquirer": "13.3.0",
     "lefthook": "2.1.6",
     "lucide-react": "1.8.0",
     "npm-run-all2": "8.0.4",
@@ -116,7 +123,8 @@
       "@anthropic-ai/sdk": "0.91.1",
       "serialize-javascript@<7.0.5": ">=7.0.5",
       "uuid@<14.0.0": ">=14.0.0",
-      "yaml@>=2.0.0 <2.8.3": ">=2.8.3"
+      "yaml@>=2.0.0 <2.8.3": ">=2.8.3",
+      "tar@<7.5.11": ">=7.5.11"
     }
   }
 }
