@@ -91,6 +91,7 @@ import {
 } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
 import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
+import { formatAcpPermissionOptionLabel } from './acp-permission-display.pure.ts';
 import {
   formatAcpSelectOptionLabel,
   formatAcpSelectValueLabel,
@@ -630,7 +631,7 @@ const PermissionRequestPanel: FC<{
             type="button"
             variant={permissionOptionVariant(option.kind)}
           >
-            {option.name}
+            {formatAcpPermissionOptionLabel(option)}
           </Button>
         ))}
         <Button
