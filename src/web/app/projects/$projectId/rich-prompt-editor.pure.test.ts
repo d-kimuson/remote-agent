@@ -9,6 +9,7 @@ import {
   replaceFileCompletionQuery,
   replaceSlashCommandQuery,
   richPromptFormatShortcutFromInput,
+  shouldSubmitRichPromptFromInput,
   slashCommandQueryFromPrompt,
 } from './rich-prompt-editor.pure.ts';
 
@@ -83,6 +84,47 @@ describe('rich-prompt-editor.pure', () => {
         metaKey: false,
       }),
     ).toBe('italic');
+  });
+
+  test('detects submit shortcut from configured key binding', () => {
+    expect(
+      shouldSubmitRichPromptFromInput({
+        binding: 'mod-enter',
+        input: {
+          key: 'Enter',
+          ctrlKey: true,
+          metaKey: false,
+          shiftKey: false,
+          altKey: false,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldSubmitRichPromptFromInput({
+        binding: 'enter',
+        input: {
+          key: 'Enter',
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: false,
+          altKey: false,
+        },
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldSubmitRichPromptFromInput({
+        binding: 'enter',
+        input: {
+          key: 'Enter',
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: true,
+          altKey: false,
+        },
+      }),
+    ).toBe(false);
   });
 
   test('replaces the selected range and moves the caret after the inserted text', () => {

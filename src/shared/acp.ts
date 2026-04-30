@@ -910,6 +910,28 @@ export const appSetupStateResponseSchema = object({
 
 export type AppSetupStateResponse = InferOutput<typeof appSetupStateResponseSchema>;
 
+export const appSubmitKeyBindingSchema = union([literal('mod-enter'), literal('enter')]);
+
+export type AppSubmitKeyBinding = InferOutput<typeof appSubmitKeyBindingSchema>;
+
+export const appSettingsSchema = object({
+  submitKeyBinding: appSubmitKeyBindingSchema,
+});
+
+export type AppSettings = InferOutput<typeof appSettingsSchema>;
+
+export const appSettingsResponseSchema = object({
+  settings: appSettingsSchema,
+});
+
+export type AppSettingsResponse = InferOutput<typeof appSettingsResponseSchema>;
+
+export const updateAppSettingsRequestSchema = object({
+  submitKeyBinding: appSubmitKeyBindingSchema,
+});
+
+export type UpdateAppSettingsRequest = InferOutput<typeof updateAppSettingsRequestSchema>;
+
 export const updateAgentProviderRequestSchema = object({
   enabled: boolean(),
 });

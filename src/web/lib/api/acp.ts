@@ -5,6 +5,7 @@ import {
   agentProvidersResponseSchema,
   agentSlashCommandsResponseSchema,
   acpPermissionRequestsResponseSchema,
+  appSettingsResponseSchema,
   appSetupStateResponseSchema,
   appInfoSchema,
   cancelSessionResponseSchema,
@@ -35,6 +36,7 @@ import {
   type AgentProvidersResponse,
   type AgentSlashCommandsResponse,
   type AcpPermissionRequestsResponse,
+  type AppSettingsResponse,
   type AppSetupStateResponse,
   type AppInfo,
   type CancelSessionResponse,
@@ -69,6 +71,7 @@ import {
   type UpdateSessionConfigOptionRequest,
   type UpdateSessionRequest,
   type UpdateAgentProviderRequest,
+  type UpdateAppSettingsRequest,
   type UpdateCustomAgentProviderRequest,
   type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
@@ -255,6 +258,18 @@ export const resolveAcpPermissionRequest = async (
 export const fetchAgentProviders = async (): Promise<AgentProvidersResponse> => {
   const response = await honoClient.acp.providers.$get();
   return parse(agentProvidersResponseSchema, await response.json());
+};
+
+export const fetchAppSettings = async (): Promise<AppSettingsResponse> => {
+  const response = await honoClient.settings.$get();
+  return parse(appSettingsResponseSchema, await response.json());
+};
+
+export const updateAppSettingsRequest = async (
+  request: UpdateAppSettingsRequest,
+): Promise<AppSettingsResponse> => {
+  const response = await honoClient.settings.$patch({ json: request });
+  return parse(appSettingsResponseSchema, await response.json());
 };
 
 export const fetchAppSetupState = async (): Promise<AppSetupStateResponse> => {

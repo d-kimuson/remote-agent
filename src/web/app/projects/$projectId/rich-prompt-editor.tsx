@@ -23,7 +23,11 @@ import {
   type ReactNode,
 } from 'react';
 
-import type { FileCompletionEntry, SlashCommand } from '../../../../shared/acp.ts';
+import type {
+  AppSubmitKeyBinding,
+  FileCompletionEntry,
+  SlashCommand,
+} from '../../../../shared/acp.ts';
 
 import { Button } from '../../../components/ui/button.tsx';
 import { fetchFileCompletion } from '../../../lib/api/acp.ts';
@@ -40,6 +44,7 @@ import {
   type FileCompletionQuery,
   type RichPromptFormat,
   type RichPromptSelection,
+  shouldSubmitRichPromptFromInput,
   slashCommandQueryFromPrompt,
 } from './rich-prompt-editor.pure.ts';
 
@@ -69,6 +74,7 @@ export const RichPromptEditor: FC<{
   readonly placeholder: string;
   readonly projectId?: string;
   readonly slashCommands?: readonly SlashCommand[];
+  readonly submitKeyBinding?: AppSubmitKeyBinding;
   readonly toolbarTrailing?: ReactNode;
 }> = ({
   className,
@@ -79,6 +85,7 @@ export const RichPromptEditor: FC<{
   placeholder,
   projectId,
   slashCommands = [],
+  submitKeyBinding = 'mod-enter',
   toolbarTrailing,
 }) => {
   const queryClient = useQueryClient();
@@ -353,7 +360,18 @@ export const RichPromptEditor: FC<{
       }
     }
 
-    if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+    if (
+      shouldSubmitRichPromptFromInput({
+        binding: submitKeyBinding,
+        input: {
+          key: event.key,
+          ctrlKey: event.ctrlKey,
+          metaKey: event.metaKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+        },
+      })
+    ) {
       event.preventDefault();
       onSubmit(readCurrentValue());
       return;

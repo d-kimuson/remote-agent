@@ -77,6 +77,7 @@ import {
   fetchAgentSlashCommands,
   fetchAcpPermissionRequests,
   fetchAppInfo,
+  fetchAppSettings,
   fetchProject,
   fetchProjectSettings,
   fetchSessionMessages,
@@ -95,6 +96,7 @@ import {
 import { cn } from '../../../lib/utils.ts';
 import { markAppNotificationsReadForSession } from '../../../pwa/notification-center.ts';
 import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
+import { appSettingsQueryKey } from '../../settings/queries.ts';
 import {
   formatAcpPermissionOptionLabel,
   permissionRequestVisualInputText,
@@ -876,6 +878,10 @@ export const ProjectChatPage: FC<{
     queryKey: appInfoQueryKey,
     queryFn: fetchAppInfo,
   });
+  const { data: appSettingsData } = useSuspenseQuery({
+    queryKey: appSettingsQueryKey,
+    queryFn: fetchAppSettings,
+  });
   const { data: providerData } = useSuspenseQuery({
     queryKey: agentProvidersQueryKey,
     queryFn: fetchAgentProviders,
@@ -891,6 +897,7 @@ export const ProjectChatPage: FC<{
 
   const project = projectData.project;
   const projectSettings = projectSettingsData.settings;
+  const appSettings = appSettingsData.settings;
   const selectablePresets = useMemo(
     () => providerData.providers.filter((entry) => entry.enabled).map((entry) => entry.preset),
     [providerData.providers],
@@ -2783,6 +2790,7 @@ export const ProjectChatPage: FC<{
                   placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
                   projectId={projectId}
                   slashCommands={effectiveSlashCommands}
+                  submitKeyBinding={appSettings.submitKeyBinding}
                 />
 
                 <div className="flex min-h-9 flex-col gap-1 bg-transparent px-1.5 pt-1 pb-0 sm:px-2">

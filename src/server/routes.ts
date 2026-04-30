@@ -5,6 +5,7 @@ import { parse } from 'valibot';
 import { appInfoSchema } from '../shared/acp.ts';
 import { agentPresets } from './acp/presets.ts';
 import { acpRoutes } from './acp/routes.ts';
+import { appSettingsRoutes } from './app-settings/routes.ts';
 import { appSetupRoutes } from './app-setup/routes.ts';
 import { attachmentRoutes } from './attachments/routes.ts';
 import { filesystemRoutes } from './filesystem/routes.ts';
@@ -34,6 +35,7 @@ export const routes = new Hono()
   .route('/filesystem', filesystemRoutes)
   .route('/projects', projectRoutes)
   .route('/routines', routineRoutes)
+  .route('/settings', appSettingsRoutes)
   .route('/setup', appSetupRoutes)
   .route('/acp', acpRoutes);
 

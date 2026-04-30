@@ -6,6 +6,7 @@ import { fetchAppSetupState } from '../../lib/api/acp.ts';
 import { appSetupStateQueryKey } from '../onboarding/queries.ts';
 import {
   AppearanceSettingsPanel,
+  KeybindingSettingsPanel,
   NotificationsSettingsPanel,
   ProviderSettingsPanel,
 } from './settings-panels.tsx';
@@ -28,6 +29,7 @@ export const SettingsPage: FC = () => {
     <div className="space-y-6">
       <ProviderSettingsPanel />
       <AppearanceSettingsPanel />
+      <KeybindingSettingsPanel />
       <NotificationsSettingsPanel />
     </div>
   );

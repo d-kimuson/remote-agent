@@ -1,4 +1,8 @@
-import type { FileCompletionEntry, SlashCommand } from '../../../../shared/acp.ts';
+import type {
+  AppSubmitKeyBinding,
+  FileCompletionEntry,
+  SlashCommand,
+} from '../../../../shared/acp.ts';
 
 export type RichPromptFormat = 'bold' | 'italic' | 'code' | 'bulletList' | 'quote';
 
@@ -6,6 +10,14 @@ export type RichPromptShortcutInput = {
   readonly key: string;
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
+};
+
+export type RichPromptSubmitShortcutInput = {
+  readonly key: string;
+  readonly metaKey: boolean;
+  readonly ctrlKey: boolean;
+  readonly shiftKey: boolean;
+  readonly altKey: boolean;
 };
 
 export type RichPromptSelection = {
@@ -137,6 +149,29 @@ export const richPromptFormatShortcutFromInput = ({
   }
 
   return null;
+};
+
+export const shouldSubmitRichPromptFromInput = ({
+  binding,
+  input,
+}: {
+  readonly binding: AppSubmitKeyBinding;
+  readonly input: RichPromptSubmitShortcutInput;
+}): boolean => {
+  if (input.key !== 'Enter') {
+    return false;
+  }
+
+  if (binding === 'mod-enter') {
+    return (input.metaKey || input.ctrlKey) && !input.shiftKey && !input.altKey;
+  }
+
+  if (binding === 'enter') {
+    return !input.metaKey && !input.ctrlKey && !input.shiftKey && !input.altKey;
+  }
+
+  const exhaustive: never = binding;
+  return exhaustive;
 };
 
 export const replaceRichPromptSelection = ({

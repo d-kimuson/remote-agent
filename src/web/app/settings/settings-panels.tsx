@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState, type FC } from 'rea
 import type {
   AgentProvidersResponse,
   AgentPreset,
+  AppSubmitKeyBinding,
   CreateRoutineRequest,
   ModeOption,
   ModelOption,
@@ -47,11 +48,13 @@ import {
   createRoutineRequest,
   deleteRoutineRequest,
   deleteCustomAgentProviderRequest,
+  fetchAppSettings,
   fetchAgentModelCatalog,
   fetchAgentProviders,
   fetchAgentSlashCommands,
   fetchRoutines,
   updateAgentProviderRequest,
+  updateAppSettingsRequest,
   updateCustomAgentProviderRequest,
   updateRoutineRequest,
 } from '../../lib/api/acp.ts';
@@ -81,7 +84,7 @@ import {
   agentSlashCommandsQueryKey,
 } from '../projects/$projectId/queries.ts';
 import { RichPromptEditor } from '../projects/$projectId/rich-prompt-editor.tsx';
-import { routinesQueryKey } from './queries.ts';
+import { appSettingsQueryKey, routinesQueryKey } from './queries.ts';
 
 const optionalFieldValue = (value: string): string | null => {
   const trimmed = value.trim();
@@ -183,6 +186,29 @@ const themePreferenceChoices = [
   readonly label: string;
   readonly description: string;
 }[];
+
+const submitKeyBindingChoices = [
+  {
+    value: 'mod-enter',
+    label: 'Cmd/Ctrl + Enter',
+    description: 'Enter は改行として使います。',
+  },
+  {
+    value: 'enter',
+    label: 'Enter',
+    description: 'Shift + Enter で改行します。',
+  },
+] as const satisfies readonly {
+  readonly value: AppSubmitKeyBinding;
+  readonly label: string;
+  readonly description: string;
+}[];
+
+const parseAppSubmitKeyBinding = (value: string): AppSubmitKeyBinding =>
+  value === 'enter' ? 'enter' : 'mod-enter';
+
+const submitKeyBindingLabel = (value: AppSubmitKeyBinding): string =>
+  submitKeyBindingChoices.find((choice) => choice.value === value)?.label ?? value;
 
 const routineDefaultSelectValue = '__remote_agent_default__';
 
@@ -1241,6 +1267,79 @@ export const AppearanceSettingsPanel: FC = () => {
             ))}
           </SelectContent>
         </Select>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const KeybindingSettingsPanel: FC = () => {
+  const queryClient = useQueryClient();
+  const { data } = useSuspenseQuery({
+    queryKey: appSettingsQueryKey,
+    queryFn: fetchAppSettings,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updateAppSettingsRequest,
+    onSuccess: (response) => {
+      queryClient.setQueryData(appSettingsQueryKey, response);
+    },
+  });
+
+  const updateError =
+    updateMutation.error instanceof Error ? updateMutation.error.message : '保存に失敗しました。';
+
+  return (
+    <Card className="app-panel">
+      <CardHeader>
+        <CardTitle>Keybindings</CardTitle>
+        <CardDescription>キーボード操作を設定します。</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+        <div className="space-y-1">
+          <Label htmlFor="submit-key-binding">Submit</Label>
+          <p className="text-sm text-muted-foreground">
+            チャット入力欄から prompt を送信するキーです。
+          </p>
+          {updateMutation.isError ? (
+            <p className="text-sm text-destructive">{updateError}</p>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2">
+          <Select
+            disabled={updateMutation.isPending}
+            onValueChange={(value) => {
+              if (value === null) {
+                return;
+              }
+              updateMutation.mutate({ submitKeyBinding: parseAppSubmitKeyBinding(value) });
+            }}
+            value={data.settings.submitKeyBinding}
+          >
+            <SelectTrigger className="w-full" id="submit-key-binding">
+              <SelectValue placeholder="Submit">
+                {(value) =>
+                  typeof value === 'string'
+                    ? submitKeyBindingLabel(parseAppSubmitKeyBinding(value))
+                    : 'Submit'
+                }
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end" className="min-w-64">
+              {submitKeyBindingChoices.map((choice) => (
+                <SelectItem key={choice.value} value={choice.value}>
+                  <div className="flex flex-col">
+                    <span>{choice.label}</span>
+                    <span className="text-xs text-muted-foreground">{choice.description}</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {updateMutation.isPending ? (
+            <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );
