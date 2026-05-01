@@ -10,11 +10,13 @@ import {
   type FC,
   type ReactNode,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import type {
   AgentProvidersResponse,
   AgentPreset,
+  AppLanguage,
   AppSubmitKeyBinding,
   CreateRoutineRequest,
   ModeOption,
@@ -255,6 +257,16 @@ const submitKeyBindingChoices = [
   readonly description: string;
 }[];
 
+const languageChoices = [
+  { value: 'ja', labelKey: 'settings.language.options.ja' },
+  { value: 'en', labelKey: 'settings.language.options.en' },
+] as const satisfies readonly {
+  readonly value: AppLanguage;
+  readonly labelKey: 'settings.language.options.ja' | 'settings.language.options.en';
+}[];
+
+const parseAppLanguage = (value: string): AppLanguage => (value === 'en' ? 'en' : 'ja');
+
 const parseAppSubmitKeyBinding = (value: string): AppSubmitKeyBinding =>
   value === 'enter' ? 'enter' : 'mod-enter';
 
@@ -294,7 +306,7 @@ const routineModeOptionsWithCurrent = ({
   if (trimmed.length === 0 || options.some((option) => option.id === trimmed)) {
     return options;
   }
-  return [{ id: trimmed, name: trimmed, description: 'Saved custom value' }, ...options];
+  return [{ id: trimmed, name: trimmed, description: 'Saved mode preference' }, ...options];
 };
 
 const routineOptionLabel = (option: ModelOption | ModeOption): string =>
@@ -395,6 +407,7 @@ const RoutineModelModeFields: FC<{
   readonly projectId: string;
   readonly setFormState: (update: (current: RoutineFormState) => RoutineFormState) => void;
 }> = ({ formState, projectId, setFormState }) => {
+  const { t } = useTranslation();
   const { data: catalog } = useSuspenseQuery({
     queryKey: agentModelCatalogQueryKey(projectId, formState.presetId),
     queryFn: () => fetchAgentModelCatalog({ projectId, presetId: formState.presetId }),
@@ -411,7 +424,7 @@ const RoutineModelModeFields: FC<{
   return (
     <div className="grid gap-3 md:grid-cols-2">
       <div className="space-y-2">
-        <Label htmlFor="routine-model">Model</Label>
+        <Label htmlFor="routine-model">{t('routines.model')}</Label>
         <Select
           onValueChange={(value) => {
             if (value === null) {
@@ -425,10 +438,14 @@ const RoutineModelModeFields: FC<{
           value={routineSelectValueFromOptional(formState.modelId)}
         >
           <SelectTrigger className="w-full" id="routine-model">
-            <SelectValue placeholder={modelOptions.length === 0 ? 'No model choices' : 'Default'} />
+            <SelectValue
+              placeholder={
+                modelOptions.length === 0 ? t('routines.noModelChoices') : t('common.default')
+              }
+            />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
-            <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
+            <SelectItem value={routineDefaultSelectValue}>{t('common.default')}</SelectItem>
             {modelOptions.map((model) => (
               <SelectItem key={model.id} value={model.id}>
                 {routineOptionLabel(model)}
@@ -438,7 +455,7 @@ const RoutineModelModeFields: FC<{
         </Select>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="routine-mode">Mode</Label>
+        <Label htmlFor="routine-mode">{t('routines.mode')}</Label>
         <Select
           onValueChange={(value) => {
             if (value === null) {
@@ -452,10 +469,14 @@ const RoutineModelModeFields: FC<{
           value={routineSelectValueFromOptional(formState.modeId)}
         >
           <SelectTrigger className="w-full" id="routine-mode">
-            <SelectValue placeholder={modeOptions.length === 0 ? 'No mode choices' : 'Default'} />
+            <SelectValue
+              placeholder={
+                modeOptions.length === 0 ? t('routines.noModeChoices') : t('common.default')
+              }
+            />
           </SelectTrigger>
           <SelectContent alignItemWithTrigger={false} className={routineSelectContentClassName}>
-            <SelectItem value={routineDefaultSelectValue}>Default</SelectItem>
+            <SelectItem value={routineDefaultSelectValue}>{t('common.default')}</SelectItem>
             {modeOptions.map((mode) => (
               <SelectItem key={mode.id} value={mode.id}>
                 {routineOptionLabel(mode)}
@@ -802,34 +823,39 @@ const RoutineEnabledToggle: FC<{
   readonly checked: boolean;
   readonly disabled: boolean;
   readonly onCheckedChange: (checked: boolean) => void;
-}> = ({ checked, disabled, onCheckedChange }) => (
-  <button
-    aria-checked={checked}
-    aria-label={checked ? 'Disable routine' : 'Enable routine'}
-    className={[
-      'inline-flex h-7 w-12 shrink-0 items-center rounded-full border px-1 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
-      checked
-        ? 'border-primary bg-primary text-primary-foreground'
-        : 'border-border bg-muted text-muted-foreground',
-    ].join(' ')}
-    disabled={disabled}
-    onClick={() => {
-      onCheckedChange(!checked);
-    }}
-    role="switch"
-    type="button"
-  >
-    <span
+}> = ({ checked, disabled, onCheckedChange }) => {
+  const { t } = useTranslation();
+
+  return (
+    <button
+      aria-checked={checked}
+      aria-label={checked ? t('routines.disable') : t('routines.enable')}
       className={[
-        'size-5 rounded-full bg-background shadow-sm transition-transform',
-        checked ? 'translate-x-5' : 'translate-x-0',
+        'inline-flex h-7 w-12 shrink-0 items-center rounded-full border px-1 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50',
+        checked
+          ? 'border-primary bg-primary text-primary-foreground'
+          : 'border-border bg-muted text-muted-foreground',
       ].join(' ')}
-    />
-    <span className="sr-only">{checked ? 'Enabled' : 'Disabled'}</span>
-  </button>
-);
+      disabled={disabled}
+      onClick={() => {
+        onCheckedChange(!checked);
+      }}
+      role="switch"
+      type="button"
+    >
+      <span
+        className={[
+          'size-5 rounded-full bg-background shadow-sm transition-transform',
+          checked ? 'translate-x-5' : 'translate-x-0',
+        ].join(' ')}
+      />
+      <span className="sr-only">{checked ? t('common.enabled') : t('common.disabled')}</span>
+    </button>
+  );
+};
 
 export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ project }) => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [formState, setFormState] = useState<RoutineFormState>(blankRoutineFormState('codex'));
@@ -984,13 +1010,13 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
       <div className="flex justify-end">
         <Button onClick={handleCreateRoutine} type="button">
           <Plus className="size-4" />
-          New routine
+          {t('routines.newRoutine')}
         </Button>
       </div>
       <div className="space-y-5">
         <div className="space-y-3">
           {projectRoutines.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No routines yet.</p>
+            <p className="text-sm text-muted-foreground">{t('routines.noRoutinesYet')}</p>
           ) : null}
           {projectRoutines.map((routine) => (
             <div
@@ -1002,7 +1028,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                   <div className="flex flex-wrap items-center gap-2">
                     <p className="font-medium">{routine.name}</p>
                     <Badge variant={routine.enabled ? 'default' : 'outline'}>
-                      {routine.enabled ? 'Enabled' : 'Disabled'}
+                      {routine.enabled ? t('common.enabled') : t('common.disabled')}
                     </Badge>
                     <Badge variant="secondary">{routine.kind}</Badge>
                     {(routine.sendConfig.attachments ?? []).length > 0 ? (
@@ -1016,8 +1042,12 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                     {routine.kind === 'cron' ? routine.config.cronExpression : routine.config.runAt}
                   </p>
                   <div className="space-y-0.5 text-xs text-muted-foreground">
-                    <p>Next: {formatOptionalDateTime(routine.nextRunAt)}</p>
-                    <p>Last: {formatOptionalDateTime(routine.lastRunAt)}</p>
+                    <p>
+                      {t('routines.next')}: {formatOptionalDateTime(routine.nextRunAt)}
+                    </p>
+                    <p>
+                      {t('routines.last')}: {formatOptionalDateTime(routine.lastRunAt)}
+                    </p>
                   </div>
                   {routine.lastError === null || routine.lastError === undefined ? null : (
                     <p className="text-xs text-destructive">{routine.lastError}</p>
@@ -1032,7 +1062,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                     }}
                   />
                   <Button
-                    aria-label="Edit routine"
+                    aria-label={t('common.edit')}
                     disabled={isMutating}
                     onClick={() => {
                       handleEditRoutine(routine);
@@ -1044,7 +1074,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
                     <Pencil className="size-4" />
                   </Button>
                   <Button
-                    aria-label="Delete routine"
+                    aria-label={t('common.delete')}
                     disabled={isMutating}
                     onClick={() => {
                       void handleDeleteRoutine(routine.id);
@@ -1076,11 +1106,9 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
           <DialogContent className="top-4 max-h-[calc(100svh-2rem)] translate-y-0 overflow-hidden sm:top-1/2 sm:max-w-2xl sm:-translate-y-1/2">
             <DialogHeader>
               <DialogTitle>
-                {editingRoutineId === null ? 'New routine' : 'Edit routine'}
+                {editingRoutineId === null ? t('routines.newRoutine') : t('routines.editRoutine')}
               </DialogTitle>
-              <DialogDescription>
-                cron または scheduled を選び、送信先 provider と prompt を設定します。
-              </DialogDescription>
+              <DialogDescription>{t('routines.dialogDescription')}</DialogDescription>
             </DialogHeader>
             {dialogOpen ? (
               <RoutineDialogBody
@@ -1108,6 +1136,7 @@ export const RoutineSettingsPanel: FC<{ readonly project: Project }> = ({ projec
 };
 
 export const ProviderSettingsPanel: FC = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: providerData } = useSuspenseQuery({
     queryKey: agentProvidersQueryKey,
@@ -1276,8 +1305,8 @@ export const ProviderSettingsPanel: FC = () => {
   return (
     <Card className="app-panel">
       <CardHeader>
-        <CardTitle>Providers</CardTitle>
-        <CardDescription>プロジェクトで利用する ACP provider を選択します。</CardDescription>
+        <CardTitle>{t('providerSettings.title')}</CardTitle>
+        <CardDescription>{t('providerSettings.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {providerData.providers.map((entry) => {
@@ -1292,7 +1321,7 @@ export const ProviderSettingsPanel: FC = () => {
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{entry.preset.label}</span>
                     <Badge variant={entry.enabled ? 'default' : 'outline'}>
-                      {entry.enabled ? 'Enabled' : 'Disabled'}
+                      {entry.enabled ? t('common.enabled') : t('common.disabled')}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">{entry.preset.description}</p>
@@ -1301,16 +1330,18 @@ export const ProviderSettingsPanel: FC = () => {
                   </span>
                   {entry.enabled ? (
                     <p className={`text-xs ${providerSummaryToneClassName(summaryHasError)}`}>
-                      {isBusy ? '...確認中' : providerSummaryText(summary)}
+                      {isBusy ? t('providerSettings.checking') : providerSummaryText(summary)}
                     </p>
                   ) : (
-                    <p className="text-xs text-muted-foreground">無効</p>
+                    <p className="text-xs text-muted-foreground">{t('common.disabled')}</p>
                   )}
                 </div>
                 {isCustomProvider ? (
                   <div className="flex items-center gap-1.5">
                     <Button
-                      aria-label={`${entry.preset.label} を編集`}
+                      aria-label={t('providerSettings.editProviderAria', {
+                        label: entry.preset.label,
+                      })}
                       disabled={isBusy}
                       onClick={() => {
                         openEditCustomProviderDialog({
@@ -1321,20 +1352,22 @@ export const ProviderSettingsPanel: FC = () => {
                         });
                       }}
                       size="icon-sm"
-                      title="編集"
+                      title={t('common.edit')}
                       type="button"
                       variant="ghost"
                     >
                       <Pencil className="size-4" />
                     </Button>
                     <Button
-                      aria-label={`${entry.preset.label} を削除`}
+                      aria-label={t('providerSettings.deleteProviderAria', {
+                        label: entry.preset.label,
+                      })}
                       disabled={isBusy}
                       onClick={() => {
                         void handleDeleteCustomProvider(entry.preset.id);
                       }}
                       size="icon-sm"
-                      title="削除"
+                      title={t('common.delete')}
                       type="button"
                       variant="ghost"
                     >
@@ -1358,7 +1391,11 @@ export const ProviderSettingsPanel: FC = () => {
                     variant={entry.enabled ? 'outline' : 'default'}
                   >
                     {isBusy ? <Loader2 className="size-4 animate-spin" /> : null}
-                    {isBusy ? '...確認中' : entry.enabled ? '無効にする' : '有効にする'}
+                    {isBusy
+                      ? t('providerSettings.checking')
+                      : entry.enabled
+                        ? t('common.disable')
+                        : t('common.enable')}
                   </Button>
                 )}
               </div>
@@ -1372,7 +1409,7 @@ export const ProviderSettingsPanel: FC = () => {
           variant="outline"
         >
           <Plus className="size-4" />
-          Custom Provider を追加
+          {t('providerSettings.addCustomProvider')}
         </Button>
         <Dialog
           onOpenChange={(open) => {
@@ -1386,42 +1423,40 @@ export const ProviderSettingsPanel: FC = () => {
             <DialogHeader>
               <DialogTitle>
                 {customProviderDialogState?.mode === 'edit'
-                  ? 'Custom Provider を編集'
-                  : 'Custom Provider を追加'}
+                  ? t('providerSettings.editCustomProviderDialog')
+                  : t('providerSettings.addCustomProviderDialog')}
               </DialogTitle>
-              <DialogDescription>
-                ACP agent list から対応 agent を探すか、ACP 対応 server を実装して、stdio
-                で起動できるコマンドを入力してください。
-                https://agentclientprotocol.com/get-started/agents
-              </DialogDescription>
+              <DialogDescription>{t('providerSettings.dialogDescription')}</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="custom-provider-dialog-name">Name</Label>
+                <Label htmlFor="custom-provider-dialog-name">{t('providerSettings.name')}</Label>
                 <Input
                   id="custom-provider-dialog-name"
                   onChange={(event) => {
                     setCustomProviderName(event.target.value);
                   }}
-                  placeholder="hoge-agent"
+                  placeholder={t('providerSettings.namePlaceholder')}
                   value={customProviderName}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="custom-provider-dialog-command">Command</Label>
+                <Label htmlFor="custom-provider-dialog-command">
+                  {t('providerSettings.command')}
+                </Label>
                 <Input
                   id="custom-provider-dialog-command"
                   onChange={(event) => {
                     setCustomProviderCommandText(event.target.value);
                   }}
-                  placeholder="npx hoge-agent --acp"
+                  placeholder={t('providerSettings.commandPlaceholder')}
                   value={customProviderCommandText}
                 />
               </div>
             </div>
             <DialogFooter>
               <Button onClick={closeCustomProviderDialog} type="button" variant="outline">
-                キャンセル
+                {t('common.cancel')}
               </Button>
               <Button
                 disabled={
@@ -1445,7 +1480,7 @@ export const ProviderSettingsPanel: FC = () => {
                 ] === true ? (
                   <Loader2 className="size-4 animate-spin" />
                 ) : null}
-                {customProviderDialogState?.mode === 'edit' ? '保存' : '追加'}
+                {customProviderDialogState?.mode === 'edit' ? t('common.save') : t('common.create')}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -1456,17 +1491,18 @@ export const ProviderSettingsPanel: FC = () => {
 };
 
 export const AppearanceSettingsPanel: FC = () => {
+  const { t } = useTranslation();
   const { preference, resolvedTheme, setPreference } = useTheme();
 
   return (
     <Card className="app-panel">
       <CardHeader>
-        <CardTitle>Appearance</CardTitle>
-        <CardDescription>UI の配色テーマを設定します。</CardDescription>
+        <CardTitle>{t('appearance.title')}</CardTitle>
+        <CardDescription>{t('appearance.theme.description')}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
         <div className="space-y-1">
-          <Label htmlFor="theme-preference">Theme</Label>
+          <Label htmlFor="theme-preference">{t('appearance.theme.label')}</Label>
           <p className="text-sm text-muted-foreground">
             現在の表示は <span className="font-medium text-foreground">{resolvedTheme}</span> です。
           </p>
@@ -1496,7 +1532,71 @@ export const AppearanceSettingsPanel: FC = () => {
   );
 };
 
+export const LanguageSettingsPanel: FC = () => {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const { data } = useSuspenseQuery({
+    queryKey: appSettingsQueryKey,
+    queryFn: fetchAppSettings,
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: updateAppSettingsRequest,
+    onSuccess: (response) => {
+      queryClient.setQueryData(appSettingsQueryKey, response);
+      toast.success(t('settings.language.saved'));
+    },
+    onError: () => {
+      toast.error(t('settings.language.failed'));
+    },
+  });
+
+  return (
+    <Card className="app-panel">
+      <CardHeader>
+        <CardTitle>{t('settings.language.title')}</CardTitle>
+        <CardDescription>{t('settings.language.description')}</CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
+        <div className="space-y-1">
+          <Label htmlFor="app-language">{t('settings.language.label')}</Label>
+        </div>
+        <div className="flex items-center gap-2">
+          <Select
+            disabled={updateMutation.isPending}
+            onValueChange={(value) => {
+              if (value === null) {
+                return;
+              }
+              updateMutation.mutate({
+                language: parseAppLanguage(value),
+                submitKeyBinding: data.settings.submitKeyBinding,
+              });
+            }}
+            value={data.settings.language}
+          >
+            <SelectTrigger className="w-full" id="app-language">
+              <SelectValue placeholder={t('settings.language.label')} />
+            </SelectTrigger>
+            <SelectContent align="end">
+              {languageChoices.map((choice) => (
+                <SelectItem key={choice.value} value={choice.value}>
+                  {t(choice.labelKey)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {updateMutation.isPending ? (
+            <Loader2 className="size-4 shrink-0 animate-spin text-muted-foreground" />
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export const KeybindingSettingsPanel: FC = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data } = useSuspenseQuery({
     queryKey: appSettingsQueryKey,
@@ -1511,20 +1611,18 @@ export const KeybindingSettingsPanel: FC = () => {
   });
 
   const updateError =
-    updateMutation.error instanceof Error ? updateMutation.error.message : '保存に失敗しました。';
+    updateMutation.error instanceof Error ? updateMutation.error.message : t('common.saveFailed');
 
   return (
     <Card className="app-panel">
       <CardHeader>
-        <CardTitle>Keybindings</CardTitle>
-        <CardDescription>キーボード操作を設定します。</CardDescription>
+        <CardTitle>{t('keybinding.title')}</CardTitle>
+        <CardDescription>{t('keybinding.description')}</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-center">
         <div className="space-y-1">
-          <Label htmlFor="submit-key-binding">Submit</Label>
-          <p className="text-sm text-muted-foreground">
-            チャット入力欄から prompt を送信するキーです。
-          </p>
+          <Label htmlFor="submit-key-binding">{t('appearance.submitKey.label')}</Label>
+          <p className="text-sm text-muted-foreground">{t('appearance.submitKey.description')}</p>
           {updateMutation.isError ? (
             <p className="text-sm text-destructive">{updateError}</p>
           ) : null}
@@ -1536,7 +1634,10 @@ export const KeybindingSettingsPanel: FC = () => {
               if (value === null) {
                 return;
               }
-              updateMutation.mutate({ submitKeyBinding: parseAppSubmitKeyBinding(value) });
+              updateMutation.mutate({
+                language: data.settings.language,
+                submitKeyBinding: parseAppSubmitKeyBinding(value),
+              });
             }}
             value={data.settings.submitKeyBinding}
           >
@@ -1570,6 +1671,7 @@ export const KeybindingSettingsPanel: FC = () => {
 };
 
 export const NotificationsSettingsPanel: FC = () => {
+  const { t } = useTranslation();
   const [notificationPermission, setNotificationPermission] = useState(
     getNotificationPermissionState,
   );
@@ -1605,7 +1707,7 @@ export const NotificationsSettingsPanel: FC = () => {
     }
 
     if (notificationPermission === 'unsupported') {
-      setNotificationError('この環境では Service Worker 通知を利用できません。');
+      setNotificationError(t('notificationsSettings.systemNotification.unsupportedError'));
       return;
     }
 
@@ -1625,10 +1727,10 @@ export const NotificationsSettingsPanel: FC = () => {
       persistSystemNotificationPreference('disabled');
       setSystemNotificationPreference('disabled');
       if (nextPermission === 'denied') {
-        setNotificationError('通知が拒否されています。ブラウザ設定から許可してください。');
+        setNotificationError(t('notificationsSettings.systemNotification.deniedError'));
         return;
       }
-      setNotificationError('この環境では Service Worker 通知を利用できません。');
+      setNotificationError(t('notificationsSettings.systemNotification.unsupportedError'));
     } finally {
       setIsUpdatingSystemNotifications(false);
     }
@@ -1639,13 +1741,13 @@ export const NotificationsSettingsPanel: FC = () => {
       projectId: 'settings',
       projectName: 'Remote Agent',
       sessionId: 'settings',
-      text: 'バックグラウンド時の assistant 応答をこの形式で通知します。',
+      text: t('notificationsSettings.systemNotification.previewText'),
       timestamp: Date.now(),
       url: '/settings',
     });
 
     if (!didShowNotification) {
-      setNotificationError('通知を表示できませんでした。先に通知を有効にしてください。');
+      setNotificationError(t('notificationsSettings.systemNotification.previewFailed'));
       return;
     }
 
@@ -1672,23 +1774,21 @@ export const NotificationsSettingsPanel: FC = () => {
   return (
     <Card className="app-panel">
       <CardHeader>
-        <CardTitle>Notifications</CardTitle>
-        <CardDescription>
-          バックグラウンド時の assistant 応答を Service Worker 通知で受け取るための設定。
-        </CardDescription>
+        <CardTitle>{t('notificationsSettings.title')}</CardTitle>
+        <CardDescription>{t('notificationsSettings.description')}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
           <div className="min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <Label>System notifications</Label>
+              <Label>{t('notificationsSettings.systemNotification.label')}</Label>
               <Badge variant="outline">{notificationPermission}</Badge>
               <Badge variant={systemNotificationPreference === 'enabled' ? 'default' : 'outline'}>
                 {systemNotificationPreference === 'enabled' ? 'Enabled' : 'Disabled'}
               </Badge>
             </div>
             <p className="text-sm text-muted-foreground">
-              バックグラウンド時の assistant 応答をシステム通知で受け取ります。
+              {t('notificationsSettings.systemNotification.description')}
             </p>
           </div>
           <Button
@@ -1719,14 +1819,16 @@ export const NotificationsSettingsPanel: FC = () => {
             type="button"
             variant="outline"
           >
-            Test
+            {t('notificationsSettings.systemNotification.test')}
           </Button>
         </div>
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_220px_auto] md:items-center">
           <div className="min-w-0 space-y-1">
-            <Label htmlFor="task-completion-sound">Completion sound</Label>
+            <Label htmlFor="task-completion-sound">
+              {t('notificationsSettings.taskCompletionSound.label')}
+            </Label>
             <p className="text-sm text-muted-foreground">
-              エージェントのタスク/応答が完了したときに音を鳴らします。
+              {t('notificationsSettings.taskCompletionSound.description')}
             </p>
           </div>
           <Select
@@ -1736,7 +1838,7 @@ export const NotificationsSettingsPanel: FC = () => {
             value={taskCompletionSoundPreference}
           >
             <SelectTrigger className="w-full" id="task-completion-sound">
-              <SelectValue placeholder="Completion sound" />
+              <SelectValue placeholder={t('notificationsSettings.taskCompletionSound.label')} />
             </SelectTrigger>
             <SelectContent>
               {taskCompletionSoundOptions.map((option) => (
@@ -1755,12 +1857,12 @@ export const NotificationsSettingsPanel: FC = () => {
             variant="outline"
           >
             <Volume2 className="size-4" />
-            Test sound
+            {t('notificationsSettings.taskCompletionSound.preview')}
           </Button>
         </div>
         {notificationPermission === 'denied' ? (
           <p className="text-xs text-muted-foreground">
-            ブラウザ側で通知が拒否されています。再度有効にする場合はブラウザ設定から許可してください。
+            {t('notificationsSettings.systemNotification.deniedHint')}
           </p>
         ) : null}
         {notificationError === null ? null : (

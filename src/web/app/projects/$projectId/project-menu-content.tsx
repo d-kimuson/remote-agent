@@ -2,6 +2,7 @@ import type { FC } from 'react';
 
 import { Link } from '@tanstack/react-router';
 import { CalendarClock, FolderKanban, History, MessageSquare, Plus, Settings } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
 
@@ -45,6 +46,7 @@ export const ProjectMenuContent: FC<{
   sessions,
   sessionCount,
 }) => {
+  const { t } = useTranslation();
   const closeAppMenu = useCloseAppMenu();
   const sortedSessions = sortSessionsNewestFirst(sessions);
 
@@ -60,7 +62,7 @@ export const ProjectMenuContent: FC<{
           >
             <span className="flex min-w-0 items-center gap-2">
               <MessageSquare className="size-4 shrink-0" />
-              <span className="truncate">セッションリスト</span>
+              <span className="truncate">{t('menu.sessions')}</span>
             </span>
             <Badge variant="secondary">{sessionCount}</Badge>
           </Link>
@@ -71,7 +73,7 @@ export const ProjectMenuContent: FC<{
             to="/projects/$projectId/routines"
           >
             <CalendarClock className="size-4" />
-            Routines
+            {t('menu.routines')}
           </Link>
           <Link
             className={menuLinkClassName}
@@ -80,41 +82,41 @@ export const ProjectMenuContent: FC<{
             to="/projects/$projectId/settings"
           >
             <Settings className="size-4" />
-            設定
+            {t('menu.settings')}
           </Link>
           <Link className={menuLinkClassName} onClick={closeAppMenu} to="/projects">
             <FolderKanban className="size-4" />
-            プロジェクト
+            {t('menu.projects')}
           </Link>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-2 border-t border-sidebar-border pt-3">
           <div className="flex items-center justify-between gap-2 px-1">
             <p className="text-xs font-semibold tracking-[0.14em] text-muted-foreground">
-              RECENT SESSIONS
+              {t('menu.recentSessions')}
             </p>
             <div className="flex items-center gap-1">
               <Button
-                aria-label="既存セッションを読み込む"
+                aria-label={t('sessions.loadExisting')}
                 disabled={!canLoadSessions}
                 onClick={() => {
                   closeAppMenu();
                   onOpenLoadSessions();
                 }}
                 size="icon-sm"
-                title="既存セッションを読み込む"
+                title={t('sessions.loadExisting')}
                 type="button"
                 variant="ghost"
               >
                 <History className="size-4" />
               </Button>
               <Link
-                aria-label="新規セッション"
+                aria-label={t('sessions.newSession')}
                 className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                 onClick={closeAppMenu}
                 params={{ projectId }}
                 search={{}}
-                title="新規セッション"
+                title={t('sessions.newSession')}
                 to="/projects/$projectId"
               >
                 <Plus className="size-4" />
@@ -125,7 +127,7 @@ export const ProjectMenuContent: FC<{
             <div className="space-y-2 pr-2">
               {sortedSessions.length === 0 ? (
                 <div className="rounded-lg border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">
-                  No sessions yet.
+                  {t('menu.noSessionsYet')}
                 </div>
               ) : null}
               {sortedSessions.map((session) => {
@@ -157,7 +159,7 @@ export const ProjectMenuContent: FC<{
                       <div className="flex shrink-0 items-center gap-1">
                         {isCurrentSession ? (
                           <Badge className="border-sidebar-primary/40 bg-sidebar-primary/15 text-sidebar-primary">
-                            Viewing
+                            {t('menu.viewing')}
                           </Badge>
                         ) : null}
                         <Badge className="shrink-0" variant="outline">

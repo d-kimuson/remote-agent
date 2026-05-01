@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { Bell, CheckCheck, Menu } from 'lucide-react';
 import { useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { projectsQueryKey } from '@/web/app/projects/$projectId/queries';
 import { Button } from '@/web/components/ui/button';
@@ -55,6 +56,7 @@ const compactPath = (path: string): string => {
 };
 
 const NotificationButton: FC = () => {
+  const { t } = useTranslation();
   const { notifications, unreadCount } = useNotificationCenter();
   const [isOpen, setIsOpen] = useState(false);
   const displayCount = unreadCount > 99 ? '99+' : String(unreadCount);
@@ -65,14 +67,20 @@ const NotificationButton: FC = () => {
       <Button
         aria-expanded={isOpen}
         aria-label={
-          unreadCount > 0 ? `Notifications, ${String(unreadCount)} unread` : 'Notifications'
+          unreadCount > 0
+            ? t('notifications.ariaLabel_unread', { count: unreadCount })
+            : t('notifications.ariaLabel_noUnread')
         }
         className="relative"
         onClick={() => {
           setIsOpen((current) => !current);
         }}
         size="icon-sm"
-        title={unreadCount > 0 ? `${String(unreadCount)} unread notifications` : 'Notifications'}
+        title={
+          unreadCount > 0
+            ? t('notifications.ariaLabelUnread', { count: unreadCount })
+            : t('notifications.title')
+        }
         type="button"
         variant="ghost"
       >
@@ -88,9 +96,12 @@ const NotificationButton: FC = () => {
         <div className="app-panel-strong absolute top-9 right-0 z-50 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-lg text-popover-foreground">
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Notifications</p>
+              <p className="text-sm font-semibold">{t('notifications.title')}</p>
               <p className="text-xs text-muted-foreground">
-                {unreadCount} unread · latest {notificationDisplayLimit}
+                {t('notifications.unreadSummary', {
+                  unread: unreadCount,
+                  limit: notificationDisplayLimit,
+                })}
               </p>
             </div>
             <Button
@@ -101,14 +112,14 @@ const NotificationButton: FC = () => {
               variant="ghost"
             >
               <CheckCheck className="size-4" />
-              Mark all read
+              {t('notifications.markAllRead')}
             </Button>
           </div>
 
           <div className="max-h-[420px] overflow-y-auto p-2">
             {visibleNotifications.length === 0 ? (
               <div className="rounded-md border border-dashed px-3 py-8 text-center text-xs text-muted-foreground">
-                No notifications.
+                {t('notifications.noNotifications')}
               </div>
             ) : null}
             <div className="space-y-2.5">
@@ -160,6 +171,7 @@ export const AppHeader: FC<{
   readonly isDesktopMenuExpanded: boolean;
   readonly onOpenMenu: () => void;
 }> = ({ isDesktopMenuExpanded, onOpenMenu }) => {
+  const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const currentProjectId = currentProjectIdFromPath(location.pathname);
@@ -173,7 +185,7 @@ export const AppHeader: FC<{
   return (
     <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
       <Button
-        aria-label="Open menu"
+        aria-label={t('menu.openMenu')}
         className={isDesktopMenuExpanded ? 'shrink-0 md:hidden' : 'shrink-0'}
         onClick={onOpenMenu}
         size="icon-sm"
@@ -184,7 +196,7 @@ export const AppHeader: FC<{
       </Button>
       {currentProjectId === null ? (
         <div className="flex min-w-0 flex-1 items-center">
-          <p className="truncate text-sm font-semibold tracking-tight">remote-agent</p>
+          <p className="truncate text-sm font-semibold tracking-tight">{t('common.appName')}</p>
         </div>
       ) : (
         <>

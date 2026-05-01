@@ -1,6 +1,7 @@
 import type { ChangeEvent, FC } from 'react';
 
 import { Paperclip } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 import type { UploadedAttachment } from '../../../../shared/acp.ts';
 
@@ -38,6 +39,7 @@ export const AttachFilesDialog: FC<{
   readonly onClose: () => void;
   readonly onRemoveFile: (attachmentId: string) => void;
 }> = ({ attachedFiles, error, isUploading, onAttachFiles, onClose, onRemoveFile }) => {
+  const { t } = useTranslation();
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const fileList = event.target.files;
     if (fileList === null || fileList.length === 0) {
@@ -59,8 +61,8 @@ export const AttachFilesDialog: FC<{
     >
       <DialogContent className="flex max-h-[82vh] max-w-3xl grid-rows-none flex-col">
         <DialogHeader>
-          <DialogTitle>Attach files</DialogTitle>
-          <DialogDescription>Choose files to include with the next message.</DialogDescription>
+          <DialogTitle>{t('attachFiles.title')}</DialogTitle>
+          <DialogDescription>{t('attachFiles.description')}</DialogDescription>
         </DialogHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-4">
           <div className="space-y-2">
@@ -71,7 +73,7 @@ export const AttachFilesDialog: FC<{
             <div className="space-y-3">
               {attachedFiles.length === 0 ? (
                 <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                  No files attached.
+                  {t('attachFiles.noFilesAttached')}
                 </div>
               ) : null}
 
@@ -101,7 +103,7 @@ export const AttachFilesDialog: FC<{
                     type="button"
                     variant="outline"
                   >
-                    Remove
+                    {t('common.remove')}
                   </Button>
                 </div>
               ))}
@@ -109,7 +111,9 @@ export const AttachFilesDialog: FC<{
           </ScrollArea>
 
           <div className="flex flex-wrap gap-2">
-            {attachedFiles.length === 0 ? <Badge variant="outline">No attached file</Badge> : null}
+            {attachedFiles.length === 0 ? (
+              <Badge variant="outline">{t('attachFiles.noAttachedFile')}</Badge>
+            ) : null}
             {attachedFiles.map((attachment) => (
               <Badge key={attachment.attachmentId} variant="secondary">
                 <Paperclip className="size-3" />
@@ -125,7 +129,7 @@ export const AttachFilesDialog: FC<{
         </div>
         <DialogFooter>
           <Button disabled={isUploading} onClick={onClose} type="button">
-            {isUploading ? 'Uploading...' : 'Done'}
+            {isUploading ? t('attachFiles.uploading') : t('common.done')}
           </Button>
         </DialogFooter>
       </DialogContent>

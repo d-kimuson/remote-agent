@@ -921,7 +921,12 @@ export const appSubmitKeyBindingSchema = union([literal('mod-enter'), literal('e
 
 export type AppSubmitKeyBinding = InferOutput<typeof appSubmitKeyBindingSchema>;
 
+export const appLanguageSchema = union([literal('ja'), literal('en')]);
+
+export type AppLanguage = InferOutput<typeof appLanguageSchema>;
+
 export const appSettingsSchema = object({
+  language: appLanguageSchema,
   submitKeyBinding: appSubmitKeyBindingSchema,
 });
 
@@ -934,6 +939,7 @@ export const appSettingsResponseSchema = object({
 export type AppSettingsResponse = InferOutput<typeof appSettingsResponseSchema>;
 
 export const updateAppSettingsRequestSchema = object({
+  language: appLanguageSchema,
   submitKeyBinding: appSubmitKeyBindingSchema,
 });
 

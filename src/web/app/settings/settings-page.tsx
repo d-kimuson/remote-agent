@@ -1,17 +1,20 @@
 import type { FC } from 'react';
 
 import { useSuspenseQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { fetchAppSetupState } from '../../lib/api/acp.ts';
 import { appSetupStateQueryKey } from '../onboarding/queries.ts';
 import {
   AppearanceSettingsPanel,
   KeybindingSettingsPanel,
+  LanguageSettingsPanel,
   NotificationsSettingsPanel,
   ProviderSettingsPanel,
 } from './settings-panels.tsx';
 
 export const SettingsPage: FC = () => {
+  const { t } = useTranslation();
   const { data: setupData } = useSuspenseQuery({
     queryKey: appSetupStateQueryKey,
     queryFn: fetchAppSetupState,
@@ -20,7 +23,7 @@ export const SettingsPage: FC = () => {
   if (!setupData.setup.initialSetupCompleted) {
     return (
       <div className="rounded-md border bg-muted/30 p-4 text-sm text-muted-foreground">
-        Initial setup is open. Complete it to edit the full settings page.
+        {t('settings.initialSetupOpen')}
       </div>
     );
   }
@@ -28,6 +31,7 @@ export const SettingsPage: FC = () => {
   return (
     <div className="space-y-6">
       <ProviderSettingsPanel />
+      <LanguageSettingsPanel />
       <AppearanceSettingsPanel />
       <KeybindingSettingsPanel />
       <NotificationsSettingsPanel />

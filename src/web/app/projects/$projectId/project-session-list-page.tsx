@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { History, MessageSquareDashed, Plus, Search } from 'lucide-react';
 import { useMemo, useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
 
@@ -66,6 +67,7 @@ const SessionRow: FC<{ readonly projectId: string; readonly session: SessionSumm
 };
 
 export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
+  const { t } = useTranslation();
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
@@ -110,8 +112,12 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-4 py-6 md:px-6">
         <header className="flex flex-col gap-4 border-b pb-5">
           <div className="min-w-0 space-y-2">
-            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">セッションリスト</h1>
-            <Badge variant="outline">{projectSessions.length} sessions</Badge>
+            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+              {t('sessions.title')}
+            </h1>
+            <Badge variant="outline">
+              {t('sessions.sessionCount', { count: projectSessions.length })}
+            </Badge>
           </div>
           <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="relative w-full lg:max-w-sm">
@@ -121,7 +127,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
                 onChange={(event) => {
                   setQuery(event.target.value);
                 }}
-                placeholder="セッションを検索"
+                placeholder={t('sessions.searchPlaceholder')}
                 value={query}
               />
             </div>
@@ -134,17 +140,17 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
                 variant="outline"
               >
                 <History className="size-4" />
-                既存セッションを読み込む
+                {t('sessions.loadExisting')}
               </Button>
               <Link
-                aria-label="新規セッション"
+                aria-label={t('sessions.newSession')}
                 className={buttonVariants({ className: 'w-full sm:w-auto', variant: 'default' })}
                 params={{ projectId }}
                 search={{}}
                 to="/projects/$projectId"
               >
                 <Plus className="size-4" />
-                新規セッション
+                {t('sessions.newSession')}
               </Link>
             </div>
           </div>
@@ -154,7 +160,7 @@ export const ProjectSessionListPage: FC<{ readonly projectId: string }> = ({ pro
           {sessions.length === 0 ? (
             <div className="app-panel rounded-lg border-dashed px-6 py-14 text-center">
               <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground" />
-              <p className="text-sm font-medium">No sessions found.</p>
+              <p className="text-sm font-medium">{t('sessions.noSessionsFound')}</p>
             </div>
           ) : null}
           {sessions.map((session) => (

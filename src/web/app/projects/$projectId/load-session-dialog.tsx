@@ -1,5 +1,6 @@
 import { ChevronDown, History, LoaderCircle } from 'lucide-react';
 import { useMemo, useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type {
   AgentPreset,
@@ -49,6 +50,7 @@ export const LoadSessionDialog: FC<{
   onLoadSessions,
   onClose,
 }) => {
+  const { t } = useTranslation();
   const [selectedSessionIds, setSelectedSessionIds] = useState<ReadonlySet<string>>(new Set());
   const loadableSessions = useMemo(
     () => sessions.filter((session) => session.loadable),
@@ -91,14 +93,14 @@ export const LoadSessionDialog: FC<{
     >
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Load session</DialogTitle>
-          <DialogDescription>Select a provider, then choose sessions to import.</DialogDescription>
+          <DialogTitle>{t('loadSession.title')}</DialogTitle>
+          <DialogDescription>{t('loadSession.description')}</DialogDescription>
         </DialogHeader>
 
         <div className="min-h-0 min-w-0 space-y-4 overflow-hidden">
           <div className="relative min-w-0">
             <select
-              aria-label="読み込み provider"
+              aria-label={t('loadSession.providerLabel')}
               className="h-8 w-full appearance-none rounded-lg border border-input bg-background px-2.5 pr-8 text-sm outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30"
               disabled={providerPresets.length === 0 || isLoadingSession}
               onChange={(event) => {
@@ -110,7 +112,7 @@ export const LoadSessionDialog: FC<{
               value={selectedProviderId ?? ''}
             >
               <option disabled value="">
-                Provider
+                {t('loadSession.providerPlaceholder')}
               </option>
               {providerPresets.map((preset) => (
                 <option key={preset.id} value={preset.id}>
@@ -135,7 +137,7 @@ export const LoadSessionDialog: FC<{
                     toggleAllLoadable(checked === true);
                   }}
                 />
-                <span className="min-w-0 truncate">Select all</span>
+                <span className="min-w-0 truncate">{t('loadSession.selectAll')}</span>
               </label>
               <Button
                 className="w-full sm:w-64"
@@ -146,7 +148,7 @@ export const LoadSessionDialog: FC<{
                 type="button"
               >
                 {isLoadingSession
-                  ? 'Loading...'
+                  ? t('common.loading')
                   : `Load Selected Items (${selectedSessions.length})`}
               </Button>
             </div>
@@ -156,7 +158,7 @@ export const LoadSessionDialog: FC<{
             {isLoading ? (
               <div className="flex items-center gap-2 rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
                 <LoaderCircle className="size-4 animate-spin" />
-                Loading sessions...
+                {t('loadSession.loading')}
               </div>
             ) : null}
 
@@ -174,13 +176,13 @@ export const LoadSessionDialog: FC<{
 
             {selectedProviderId === null ? (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                Select a provider to load sessions.
+                {t('loadSession.selectProviderFirst')}
               </div>
             ) : null}
 
             {selectedProviderId !== null && sessions.length === 0 && !isLoading ? (
               <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
-                No sessions found.
+                {t('loadSession.noSessionsFound')}
               </div>
             ) : null}
 

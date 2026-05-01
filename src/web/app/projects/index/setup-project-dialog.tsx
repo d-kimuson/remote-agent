@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
 import { Loader2, Plus } from 'lucide-react';
 import { Suspense, useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { ProjectsResponse } from '../../../../shared/acp.ts';
 
@@ -26,6 +27,7 @@ const deriveProjectName = (workingDirectory: string): string => {
 };
 
 export const SetupProjectDialog: FC = () => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [selectedPath, setSelectedPath] = useState('');
   const navigate = useNavigate();
@@ -64,22 +66,20 @@ export const SetupProjectDialog: FC = () => {
         render={
           <Button>
             <Plus className="size-4" />
-            New project
+            {t('projects.newProject')}
           </Button>
         }
       />
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Set up a project</DialogTitle>
-          <DialogDescription>
-            Choose a working directory from this machine to create or open as a project.
-          </DialogDescription>
+          <DialogTitle>{t('projects.setupTitle')}</DialogTitle>
+          <DialogDescription>{t('projects.setupDescription')}</DialogDescription>
         </DialogHeader>
         <div className="py-2">
           <Suspense
             fallback={
               <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
-                Loading directories…
+                {t('projects.loadingDirectories')}
               </div>
             }
           >
@@ -94,7 +94,7 @@ export const SetupProjectDialog: FC = () => {
             type="button"
             variant="outline"
           >
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             disabled={selectedPath === '' || setupProjectMutation.isPending}
@@ -106,12 +106,12 @@ export const SetupProjectDialog: FC = () => {
             {setupProjectMutation.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Setting up...
+                {t('projects.settingUp')}
               </>
             ) : (
               <>
                 <Plus className="size-4" />
-                Set up project
+                {t('projects.setUpProject')}
               </>
             )}
           </Button>

@@ -19,6 +19,7 @@ describe('createAppSettingsStore', () => {
     const store = createAppSettingsStore(database);
 
     await expect(store.getSettings()).resolves.toEqual({
+      language: 'ja',
       submitKeyBinding: 'mod-enter',
     });
   });
@@ -28,10 +29,10 @@ describe('createAppSettingsStore', () => {
     disposableClients.push(database.client);
 
     const store = createAppSettingsStore(database);
-    const updated = await store.updateSettings({ submitKeyBinding: 'enter' });
+    const updated = await store.updateSettings({ language: 'en', submitKeyBinding: 'enter' });
     const restored = await store.getSettings();
 
-    expect(updated).toEqual({ submitKeyBinding: 'enter' });
+    expect(updated).toEqual({ language: 'en', submitKeyBinding: 'enter' });
     expect(restored).toEqual(updated);
   });
 });

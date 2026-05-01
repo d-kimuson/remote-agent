@@ -18,6 +18,7 @@ On task completion, verify ALL of the following pass in addition to task-specifi
 
 ```bash
 pnpm gatecheck check
+pnpm check:i18n
 pnpm build
 pnpm test
 ```
@@ -26,9 +27,10 @@ If ACP-compatible local agents are available, manually verify at least one sessi
 
 ## Notable Commands
 
-| Command          | Purpose                                  |
-| ---------------- | ---------------------------------------- |
-| `pnpm build`     | Build for production                     |
-| `pnpm dev`       | Start Hono and Vite in parallel          |
-| `pnpm test`      | Run unit and browser tests               |
-| `pnpm typecheck` | Run TypeScript native preview type check |
+| Command           | Purpose                                    |
+| ----------------- | ------------------------------------------ |
+| `pnpm build`      | Build for production                       |
+| `pnpm check:i18n` | Verify i18n resource keys and primary text |
+| `pnpm dev`        | Start Hono and Vite in parallel            |
+| `pnpm test`       | Run unit and browser tests                 |
+| `pnpm typecheck`  | Run TypeScript native preview type check   |

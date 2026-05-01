@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-q
 import { Link } from '@tanstack/react-router';
 import { History, Loader2, Save, Settings } from 'lucide-react';
 import { useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import { Button, buttonVariants } from '../../../components/ui/button.tsx';
@@ -27,6 +28,7 @@ import {
 import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
 
 export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
@@ -66,7 +68,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
       queryClient.setQueryData(projectSettingsQueryKey(projectId), response);
       void queryClient.invalidateQueries({ queryKey: projectQueryKey(projectId) });
       void queryClient.invalidateQueries({ queryKey: projectsQueryKey });
-      toast.success('Project settings saved');
+      toast.success(t('projectSettings.saved'));
     },
   });
   const settingsChanged =
@@ -89,7 +91,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
         <header className="flex flex-col gap-3 border-b pb-5">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Settings className="size-4" />
-            Project settings
+            {t('projectSettings.title')}
           </div>
           <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div className="min-w-0 space-y-2">
@@ -106,7 +108,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
               to="/projects/$projectId/sessions"
             >
               <History className="size-4" />
-              セッションリスト
+              {t('sessions.title')}
             </Link>
           </div>
         </header>
@@ -121,7 +123,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
               }}
             >
               <div className="space-y-2">
-                <Label htmlFor="project-name">Project name</Label>
+                <Label htmlFor="project-name">{t('projectSettings.projectName')}</Label>
                 <Input
                   disabled={updateSettingsMutation.isPending}
                   id="project-name"
@@ -133,14 +135,16 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
               </div>
 
               <div className="space-y-2">
-                <Label>Working directory</Label>
+                <Label>{t('projectSettings.workingDirectory')}</Label>
                 <p className="break-all rounded-md border bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
                   {projectData.project.workingDirectory}
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="project-worktree-setup-script">Worktree setup script</Label>
+                <Label htmlFor="project-worktree-setup-script">
+                  {t('projectSettings.worktreeSetupScript')}
+                </Label>
                 <Textarea
                   className="min-h-32 font-mono"
                   disabled={updateSettingsMutation.isPending}
@@ -148,7 +152,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
                   onChange={(event) => {
                     setWorktreeSetupScript(event.currentTarget.value);
                   }}
-                  placeholder="pnpm install"
+                  placeholder={t('projectSettings.worktreeSetupPlaceholder')}
                   value={worktreeSetupScript}
                 />
               </div>
@@ -157,7 +161,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
                 <p className="text-sm text-destructive">
                   {updateSettingsMutation.error instanceof Error
                     ? updateSettingsMutation.error.message
-                    : 'Failed to save project settings'}
+                    : t('projectSettings.saveFailed')}
                 </p>
               )}
 
@@ -175,7 +179,7 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
                   ) : (
                     <Save className="size-4" />
                   )}
-                  保存
+                  {t('common.save')}
                 </Button>
               </div>
             </form>

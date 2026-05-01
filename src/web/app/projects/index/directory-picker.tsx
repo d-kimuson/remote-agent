@@ -1,6 +1,7 @@
 import { useSuspenseQuery } from '@tanstack/react-query';
 import { ChevronRight, Folder } from 'lucide-react';
 import { useEffect, useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { Checkbox } from '../../../components/ui/checkbox.tsx';
 import { Label } from '../../../components/ui/label.tsx';
@@ -11,6 +12,7 @@ export type DirectoryPickerProps = {
 };
 
 export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
+  const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState<string | undefined>(undefined);
   const [showHidden, setShowHidden] = useState(false);
 
@@ -31,7 +33,8 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
     <div className="rounded-md border">
       <div className="border-b bg-muted/50 p-3">
         <p className="text-sm font-medium">
-          Current: <span className="font-mono">{data?.currentPath ?? '~'}</span>
+          {t('directoryPicker.current')}{' '}
+          <span className="font-mono">{data?.currentPath ?? '~'}</span>
         </p>
       </div>
       <div className="flex items-center gap-2 border-b p-3">
@@ -43,7 +46,7 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
           }}
         />
         <Label className="cursor-pointer text-sm" htmlFor="directory-picker-show-hidden">
-          Show hidden
+          {t('directoryPicker.showHidden')}
         </Label>
       </div>
       <div className="max-h-96 overflow-auto">
@@ -68,7 +71,9 @@ export const DirectoryPicker: FC<DirectoryPickerProps> = ({ onPathChange }) => {
             ))}
           </div>
         ) : (
-          <div className="p-8 text-center text-sm text-muted-foreground">No directories.</div>
+          <div className="p-8 text-center text-sm text-muted-foreground">
+            {t('directoryPicker.noDirectories')}
+          </div>
         )}
       </div>
     </div>

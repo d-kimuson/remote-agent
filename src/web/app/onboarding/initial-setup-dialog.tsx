@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Check, Loader2 } from 'lucide-react';
 import { Suspense, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import type { AppSetupStateResponse } from '../../../shared/acp.ts';
 
@@ -27,6 +28,7 @@ import {
 import { appSetupStateQueryKey } from './queries.ts';
 
 export const InitialSetupDialog: FC = () => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const { data: setupData } = useSuspenseQuery({
     queryKey: appSetupStateQueryKey,
@@ -53,17 +55,14 @@ export const InitialSetupDialog: FC = () => {
     <Dialog open>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
-          <DialogTitle>Initial setup</DialogTitle>
-          <DialogDescription>
-            まず利用する ACP provider を 1
-            つ以上有効にしてください。必要ならテーマと通知もここで設定できます。
-          </DialogDescription>
+          <DialogTitle>{t('setup.initialTitle')}</DialogTitle>
+          <DialogDescription>{t('setup.initialDescription')}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <Suspense
             fallback={
               <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
-                Loading settings...
+                {t('setup.loadingSettings')}
               </div>
             }
           >
@@ -74,9 +73,7 @@ export const InitialSetupDialog: FC = () => {
         </div>
         <DialogFooter className="gap-2">
           {hasEnabledProvider ? null : (
-            <p className="text-sm text-muted-foreground">
-              セッション作成に進むには Provider を 1 つ以上有効にしてください。
-            </p>
+            <p className="text-sm text-muted-foreground">{t('setup.enableProviderFirst')}</p>
           )}
           <Button
             disabled={!hasEnabledProvider || completeSetupMutation.isPending}
@@ -88,12 +85,12 @@ export const InitialSetupDialog: FC = () => {
             {completeSetupMutation.isPending ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Saving...
+                {t('setup.saving')}
               </>
             ) : (
               <>
                 <Check className="size-4" />
-                Start using Remote Agent
+                {t('setup.startUsing')}
               </>
             )}
           </Button>

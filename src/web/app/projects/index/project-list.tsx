@@ -2,6 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
 import { FolderIcon } from 'lucide-react';
 import { useMemo, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 
 import { projectsQueryKey } from '../$projectId/queries.ts';
 import { buttonVariants } from '../../../components/ui/button.tsx';
@@ -16,6 +17,7 @@ import { fetchProjects } from '../../../lib/api/acp.ts';
 import { cn } from '../../../lib/utils.ts';
 
 export const ProjectList: FC = () => {
+  const { t } = useTranslation();
   const { data } = useSuspenseQuery({
     queryKey: projectsQueryKey,
     queryFn: fetchProjects,
@@ -34,9 +36,9 @@ export const ProjectList: FC = () => {
       <Card className="app-panel">
         <CardContent className="flex flex-col items-center justify-center py-12">
           <FolderIcon className="mb-4 size-12 text-muted-foreground" />
-          <h3 className="mb-2 text-lg font-medium">No projects yet</h3>
+          <h3 className="mb-2 text-lg font-medium">{t('projects.noProjectsYet')}</h3>
           <p className="max-w-md text-center text-sm text-muted-foreground">
-            Create a project from a working directory to start an ACP session.
+            {t('projects.noProjectsDescription')}
           </p>
         </CardContent>
       </Card>
@@ -62,7 +64,7 @@ export const ProjectList: FC = () => {
               params={{ projectId: project.id }}
               to="/projects/$projectId"
             >
-              Open
+              {t('common.open')}
             </Link>
           </CardContent>
         </Card>
@@ -71,8 +73,12 @@ export const ProjectList: FC = () => {
   );
 };
 
-export const ProjectListSkeleton: FC = () => (
-  <div className="flex items-center justify-center py-12">
-    <div className="text-sm text-muted-foreground">Loading projects...</div>
-  </div>
-);
+export const ProjectListSkeleton: FC = () => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="flex items-center justify-center py-12">
+      <div className="text-sm text-muted-foreground">{t('projects.loading')}</div>
+    </div>
+  );
+};

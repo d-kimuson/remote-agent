@@ -1,6 +1,7 @@
 import type { FC } from 'react';
 
 import { useSuspenseQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import { fetchAgentProviders, fetchProject, fetchSessions } from '../../../lib/api/acp.ts';
 import { RoutineSettingsPanel } from '../../settings/settings-panels.tsx';
@@ -9,6 +10,7 @@ import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from './que
 import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
 
 export const ProjectRoutinesPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
+  const { t } = useTranslation();
   const { data: projectData } = useSuspenseQuery({
     queryKey: projectQueryKey(projectId),
     queryFn: () => fetchProject(projectId),
@@ -43,9 +45,11 @@ export const ProjectRoutinesPage: FC<{ readonly projectId: string }> = ({ projec
       {dialog}
       <div className="mx-auto flex max-w-3xl flex-col gap-6 px-4 py-6 md:px-6">
         <header className="flex flex-col gap-3 border-b pb-5">
-          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Routines</h1>
+          <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
+            {t('routines.title')}
+          </h1>
           <p className="text-sm text-muted-foreground">
-            {projectData.project.name} で実行する定期タスクを管理します。
+            {t('routines.description', { projectName: projectData.project.name })}
           </p>
         </header>
         <RoutineSettingsPanel project={projectData.project} />

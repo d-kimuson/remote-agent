@@ -9,6 +9,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { useCallback, useEffect, useState, type FC } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import type { GitRevisionRef } from '../../../../shared/acp.ts';
@@ -96,20 +97,26 @@ const DiffSummary: FC<{
   readonly filesChanged: number;
   readonly insertions: number;
   readonly deletions: number;
-}> = ({ filesChanged, insertions, deletions }) => (
-  <div className="rounded-lg border bg-muted/20 p-2">
-    <div className="flex items-center justify-between text-sm">
-      <div className="flex min-w-0 items-center gap-1.5">
-        <FileText className="size-4 shrink-0 text-muted-foreground" />
-        <span className="truncate font-medium">{filesChanged} files changed</span>
-      </div>
-      <div className="flex shrink-0 items-center gap-3 font-medium">
-        {insertions > 0 ? <span className="text-green-600">+{insertions}</span> : null}
-        {deletions > 0 ? <span className="text-red-600">-{deletions}</span> : null}
+}> = ({ filesChanged, insertions, deletions }) => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="rounded-lg border bg-muted/20 p-2">
+      <div className="flex items-center justify-between text-sm">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <FileText className="size-4 shrink-0 text-muted-foreground" />
+          <span className="truncate font-medium">
+            {t('review.filesChanged', { count: filesChanged })}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-3 font-medium">
+          {insertions > 0 ? <span className="text-green-600">+{insertions}</span> : null}
+          {deletions > 0 ? <span className="text-red-600">-{deletions}</span> : null}
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 const ReviewDialogContent: FC<{
   readonly projectId: string;
@@ -118,6 +125,7 @@ const ReviewDialogContent: FC<{
   readonly onInsertReview: (markdown: string) => void;
   readonly onClose: () => void;
 }> = ({ projectId, cwd, reviewSessionId, onInsertReview, onClose }) => {
+  const { t } = useTranslation();
   const [compareFrom, setCompareFrom] = useState(defaultCompareFrom);
   const [compareTo, setCompareTo] = useState(defaultCompareTo);
   const { comments, addComment, clearComments, removeComment } = useReviewComments(reviewSessionId);
@@ -158,7 +166,7 @@ const ReviewDialogContent: FC<{
   const refs =
     revisionsData?.refs ??
     ([
-      { name: 'working', type: 'working', displayName: 'Uncommitted changes' },
+      { name: 'working', type: 'working', displayName: t('review.uncommittedChanges') },
       { name: 'HEAD', type: 'head', displayName: 'HEAD' },
     ] satisfies readonly GitRevisionRef[]);
   const isLoading = isRevisionsPending || isDiffPending;
@@ -166,12 +174,12 @@ const ReviewDialogContent: FC<{
 
   const handleReset = () => {
     clearComments();
-    toast.success('Review comments cleared');
+    toast.success(t('review.commentsCleared'));
   };
 
   const handleInsertReview = () => {
     onInsertReview(formatReviewMarkdown(comments, compareFrom, compareTo));
-    toast.success('Review inserted into input');
+    toast.success(t('review.reviewInserted'));
     onClose();
   };
 
@@ -180,13 +188,13 @@ const ReviewDialogContent: FC<{
       <div className="space-y-2 border-b px-3 py-3">
         <div className="grid gap-2 sm:grid-cols-2">
           <RefSelector
-            label="Compare from"
+            label={t('review.compareFrom')}
             onValueChange={setCompareFrom}
             refs={refs.filter((ref) => ref.name !== 'working')}
             value={compareFrom}
           />
           <RefSelector
-            label="Compare to"
+            label={t('review.compareTo')}
             onValueChange={setCompareTo}
             refs={refs}
             value={compareTo}
@@ -207,7 +215,7 @@ const ReviewDialogContent: FC<{
           ) : (
             <RefreshCcw className="size-3" />
           )}
-          Refresh
+          {t('common.refresh')}
         </Button>
       </div>
 
@@ -224,7 +232,9 @@ const ReviewDialogContent: FC<{
               <div className="mx-auto flex size-12 items-center justify-center rounded-xl bg-muted/40">
                 <GitCompare className="size-6 text-muted-foreground" />
               </div>
-              <p className="text-sm font-medium text-muted-foreground">No items to review</p>
+              <p className="text-sm font-medium text-muted-foreground">
+                {t('review.noItemsToReview')}
+              </p>
             </div>
           </div>
         ) : null}
@@ -233,7 +243,9 @@ const ReviewDialogContent: FC<{
           <div>
             <div className="sticky top-0 z-30 flex items-center justify-between border-b bg-background/95 px-3 py-2 backdrop-blur">
               <span className="text-xs text-muted-foreground">
-                {comments.length === 0 ? 'No comments' : `${comments.length} comments`}
+                {comments.length === 0
+                  ? t('review.noComments')
+                  : t('review.commentsCount', { count: comments.length })}
               </span>
               <div className="flex items-center gap-1">
                 <Button
@@ -245,7 +257,7 @@ const ReviewDialogContent: FC<{
                   variant="ghost"
                 >
                   <Trash2 className="size-3" />
-                  Reset
+                  {t('common.reset')}
                 </Button>
                 <Button
                   className="h-7 text-xs"
@@ -255,7 +267,7 @@ const ReviewDialogContent: FC<{
                   type="button"
                 >
                   <ClipboardPaste className="size-3" />
-                  Insert Review
+                  {t('review.insertReview')}
                 </Button>
               </div>
             </div>
@@ -287,7 +299,7 @@ const ReviewDialogContent: FC<{
           <div className="flex items-center justify-center py-8">
             <div className="space-y-2 text-center">
               <Loader2 className="mx-auto size-6 animate-spin text-muted-foreground" />
-              <p className="text-xs text-muted-foreground">Loading diff...</p>
+              <p className="text-xs text-muted-foreground">{t('review.loadingDiff')}</p>
             </div>
           </div>
         ) : null}
@@ -303,6 +315,7 @@ export const ReviewDialogButton: FC<{
   readonly disabled?: boolean;
   readonly onInsertReview: (markdown: string) => void;
 }> = ({ projectId, cwd, reviewSessionId, disabled, onInsertReview }) => {
+  const { t } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -310,15 +323,15 @@ export const ReviewDialogButton: FC<{
       <DialogTrigger
         render={
           <Button
-            aria-label="Review changes"
+            aria-label={t('chat.reviewChanges')}
             disabled={disabled}
             size="sm"
-            title="Review changes"
+            title={t('chat.reviewChanges')}
             type="button"
             variant="ghost"
           >
             <GitCompare className="size-4" />
-            <span className="hidden sm:inline">Review</span>
+            <span className="hidden sm:inline">{t('chat.review')}</span>
           </Button>
         }
       />
@@ -328,10 +341,8 @@ export const ReviewDialogButton: FC<{
         )}
       >
         <DialogHeader className="border-b px-4 py-3">
-          <DialogTitle>Review</DialogTitle>
-          <DialogDescription>
-            Git Diff View にコメントを付けて入力欄へ挿入します。
-          </DialogDescription>
+          <DialogTitle>{t('review.title')}</DialogTitle>
+          <DialogDescription>{t('review.description')}</DialogDescription>
         </DialogHeader>
         {isOpen ? (
           <ReviewDialogContent

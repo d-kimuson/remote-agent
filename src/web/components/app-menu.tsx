@@ -15,6 +15,7 @@ import {
   type ReactNode,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 
 import { AppHeader } from '@/web/components/app-header';
 import { Button } from '@/web/components/ui/button';
@@ -35,26 +36,29 @@ const maxDesktopMenuWidth = 520;
 const clampDesktopMenuWidth = (width: number): number =>
   Math.min(maxDesktopMenuWidth, Math.max(minDesktopMenuWidth, width));
 
-const DefaultMenuContent: FC<{ readonly closeMobileMenu: () => void }> = ({ closeMobileMenu }) => (
-  <div className="space-y-2 p-3">
-    <Link
-      className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-      onClick={closeMobileMenu}
-      to="/projects"
-    >
-      <FolderKanban className="size-4" />
-      プロジェクト
-    </Link>
-    <Link
-      className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-      onClick={closeMobileMenu}
-      to="/settings"
-    >
-      <Settings className="size-4" />
-      設定
-    </Link>
-  </div>
-);
+const DefaultMenuContent: FC<{ readonly closeMobileMenu: () => void }> = ({ closeMobileMenu }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="space-y-2 p-3">
+      <Link
+        className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        onClick={closeMobileMenu}
+        to="/projects"
+      >
+        <FolderKanban className="size-4" />
+        {t('menu.projects')}
+      </Link>
+      <Link
+        className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        onClick={closeMobileMenu}
+        to="/settings"
+      >
+        <Settings className="size-4" />
+        {t('menu.settings')}
+      </Link>
+    </div>
+  );
+};
 
 const AppMenuBody: FC<{
   readonly closeMobileMenu: () => void;
@@ -63,6 +67,8 @@ const AppMenuBody: FC<{
   readonly setTarget: (target: HTMLDivElement | null) => void;
   readonly onCollapse?: () => void;
 }> = ({ closeMobileMenu, hasCustomContent, isMobile, onCollapse, setTarget }) => {
+  const { t } = useTranslation();
+
   return (
     <div
       className={cn(
@@ -73,11 +79,13 @@ const AppMenuBody: FC<{
       <div className="flex h-14 shrink-0 items-center justify-between border-b border-sidebar-border px-3">
         <div className="flex min-w-0 items-center gap-2">
           <Menu className="size-4 text-muted-foreground" />
-          <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground">MENU</p>
+          <p className="text-xs font-semibold tracking-[0.18em] text-muted-foreground">
+            {t('menu.title')}
+          </p>
         </div>
         {isMobile || onCollapse === undefined ? (
           <Button
-            aria-label="Close menu"
+            aria-label={t('menu.closeMenu')}
             onClick={closeMobileMenu}
             size="icon"
             type="button"
@@ -87,7 +95,7 @@ const AppMenuBody: FC<{
           </Button>
         ) : (
           <Button
-            aria-label="Collapse menu"
+            aria-label={t('menu.collapseMenu')}
             onClick={onCollapse}
             size="icon"
             type="button"
@@ -138,6 +146,7 @@ export const useOpenAppMenu = (): (() => void) => {
 };
 
 export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const [desktopTarget, setDesktopTarget] = useState<HTMLDivElement | null>(null);
   const [mobileTarget, setMobileTarget] = useState<HTMLDivElement | null>(null);
   const [hasCustomContent, setHasCustomContent] = useState(false);
@@ -211,13 +220,13 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
               setTarget={setDesktopTarget}
             />
             <button
-              aria-label="Resize menu"
+              aria-label={t('menu.resizeMenu')}
               className="absolute top-0 right-0 z-10 h-full w-3 translate-x-1/2 cursor-col-resize touch-none border-x border-transparent outline-none transition-colors hover:border-sidebar-ring/40 hover:bg-sidebar-ring/15 focus-visible:border-sidebar-ring/70 focus-visible:bg-sidebar-ring/20"
               onPointerCancel={handleResizePointerUp}
               onPointerDown={handleResizePointerDown}
               onPointerMove={handleResizePointerMove}
               onPointerUp={handleResizePointerUp}
-              title="Resize menu"
+              title={t('menu.resizeMenu')}
               type="button"
             />
           </aside>
@@ -230,7 +239,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
           )}
         >
           <button
-            aria-label="Close menu"
+            aria-label={t('menu.closeMenu')}
             className="absolute inset-0 cursor-default"
             onClick={closeMobileMenu}
             type="button"

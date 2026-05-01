@@ -27,6 +27,9 @@ jobs:
       - name: Run linting
         run: pnpm lint
 
+      - name: Run i18n checks
+        run: pnpm check:i18n
+
       - name: Run type checking
         run: pnpm typecheck
 

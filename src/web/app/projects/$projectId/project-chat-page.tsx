@@ -32,6 +32,7 @@ import {
   type ReactNode,
   type UIEventHandler,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
 import {
@@ -595,44 +596,47 @@ const AcpModelSelectItem: FC<{
   readonly onToggleFavorite: (modelId: string, favorite: boolean) => void;
   readonly options: readonly ModelOption[];
   readonly presetId: string | null | undefined;
-}> = ({ disabled = false, favorite, model, onToggleFavorite, options, presetId }) => (
-  <SelectItem
-    className="pr-2 pl-7 [&>span:last-child]:right-auto [&>span:last-child]:left-2"
-    value={model.id}
-  >
-    <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
-      <AcpSelectItemLabel>
-        {formatAcpSelectOptionLabel({
-          kind: 'model',
-          option: model,
-          options,
-          presetId,
-        })}
-      </AcpSelectItemLabel>
-      <button
-        aria-label={favorite ? 'Unpin model' : 'Pin model'}
-        className={cn(
-          'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
-          favorite ? 'text-amber-500 hover:text-amber-500' : '',
-        )}
-        disabled={disabled}
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onToggleFavorite(model.id, favorite);
-        }}
-        onPointerDown={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        title={favorite ? 'Pinned から外す' : 'Pinned に追加'}
-        type="button"
-      >
-        <Star aria-hidden="true" className={cn('size-3.5', favorite ? 'fill-current' : '')} />
-      </button>
-    </span>
-  </SelectItem>
-);
+}> = ({ disabled = false, favorite, model, onToggleFavorite, options, presetId }) => {
+  const { t } = useTranslation();
+  return (
+    <SelectItem
+      className="pr-2 pl-7 [&>span:last-child]:right-auto [&>span:last-child]:left-2"
+      value={model.id}
+    >
+      <span className="flex min-w-0 flex-1 items-center justify-between gap-2">
+        <AcpSelectItemLabel>
+          {formatAcpSelectOptionLabel({
+            kind: 'model',
+            option: model,
+            options,
+            presetId,
+          })}
+        </AcpSelectItemLabel>
+        <button
+          aria-label={favorite ? t('chat.unpinModel') : t('chat.pinModel')}
+          className={cn(
+            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+            favorite ? 'text-amber-500 hover:text-amber-500' : '',
+          )}
+          disabled={disabled}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onToggleFavorite(model.id, favorite);
+          }}
+          onPointerDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          title={favorite ? t('chat.unpinModel') : t('chat.pinModel')}
+          type="button"
+        >
+          <Star aria-hidden="true" className={cn('size-3.5', favorite ? 'fill-current' : '')} />
+        </button>
+      </span>
+    </SelectItem>
+  );
+};
 
 const AcpModelSelectItems: FC<{
   readonly disabled?: boolean;
@@ -722,6 +726,7 @@ const PermissionRequestPanel: FC<{
   readonly request: AcpPermissionRequest;
   readonly onResolve: (requestId: string, optionId: string | null) => void;
 }> = ({ disabled, request, onResolve }) => {
+  const { t } = useTranslation();
   const visualCandidate = permissionRequestToolVisual(request);
   const visual =
     visualCandidate?.kind === 'terminal' && visualCandidate.command.trim().length === 0
@@ -734,7 +739,7 @@ const PermissionRequestPanel: FC<{
         <div className="flex items-start gap-3">
           <ShieldAlert className="mt-0.5 size-4 shrink-0 text-amber-600" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">承認が必要です</p>
+            <p className="text-sm font-medium text-foreground">{t('chat.permissionRequired')}</p>
             {visual === null || visual.kind !== 'terminal' ? (
               <p className="mt-1 break-words text-sm text-muted-foreground">
                 {request.title ?? request.toolCallId}
@@ -870,6 +875,7 @@ export const ProjectChatPage: FC<{
   readonly projectId: string;
   readonly sessionId: string | null;
 }> = ({ projectId, sessionId }) => {
+  const { t } = useTranslation();
   const queryClient = useQueryClient();
   const navigate = useNavigate({ from: '/projects/$projectId' });
 
@@ -1804,7 +1810,7 @@ export const ProjectChatPage: FC<{
 
     const SpeechRecognition = resolveSpeechRecognitionConstructor();
     if (SpeechRecognition === null) {
-      toast.error('このブラウザは音声入力に対応していません');
+      toast.error(t('chat.voiceNotSupported'));
       return;
     }
 
@@ -1825,7 +1831,7 @@ export const ProjectChatPage: FC<{
       setIsListeningToSpeech(false);
       speechRecognitionRef.current = null;
       if (event.error !== 'aborted') {
-        toast.error(event.message.length > 0 ? event.message : '音声入力に失敗しました');
+        toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
       }
     };
     recognition.onend = () => {
@@ -1840,7 +1846,7 @@ export const ProjectChatPage: FC<{
     } catch {
       speechRecognitionRef.current = null;
       setIsListeningToSpeech(false);
-      toast.error('音声入力を開始できませんでした');
+      toast.error(t('chat.voiceStartFailed'));
     }
   };
 
@@ -2508,17 +2514,17 @@ export const ProjectChatPage: FC<{
                       <div className="w-full rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
                         <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />
                         <p className="text-sm font-medium text-foreground/90">
-                          新しいチャットを開始
+                          {t('chat.startNewChat')}
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                          下の欄に入力して会話を始めましょう
+                          {t('chat.startNewChatDescription')}
                         </p>
                       </div>
                       {projectSessions.length > 0 ? (
                         <div className="mt-6 w-full">
                           <h3 className="mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-[0.1em] text-muted-foreground">
                             <History className="size-3.5" />
-                            最近のセッション
+                            {t('chat.recentSessions')}
                           </h3>
                           <div className="space-y-2">
                             {projectSessions.slice(0, 3).map((session) => {
@@ -2834,7 +2840,9 @@ export const ProjectChatPage: FC<{
                         disabled={isEditorDisabled}
                         onClick={handleToggleSpeechInput}
                         size="icon-sm"
-                        title={isListeningToSpeech ? '音声入力を停止' : '音声入力'}
+                        title={
+                          isListeningToSpeech ? t('chat.voiceInputStop') : t('chat.voiceInputStart')
+                        }
                         type="button"
                         variant="ghost"
                       >
