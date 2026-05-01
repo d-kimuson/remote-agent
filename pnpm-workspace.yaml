@@ -7,8 +7,10 @@ engineStrict: true
 
 minimumReleaseAge: 1440
 overrides:
+  '@anthropic-ai/sdk': 0.91.1
   '@mcpc-tech/acp-ai-provider>zod': 4.4.1
   serialize-javascript@<7.0.5: '>=7.0.5'
+  tar@<7.5.11: '>=7.5.11'
   uuid@<14.0.0: '>=14.0.0'
   yaml@>=2.0.0 <2.8.3: '>=2.8.3'
 saveExact: true
