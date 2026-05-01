@@ -10,7 +10,7 @@ import {
   SplitSquareVertical,
   TerminalSquare,
 } from 'lucide-react';
-import { startTransition, useDeferredValue, useState, type FC } from 'react';
+import { startTransition, useDeferredValue, useState, type FC, type ReactNode } from 'react';
 
 import type { AgentPreset, RawEvent, SessionSummary } from '@/shared/acp';
 
@@ -133,17 +133,17 @@ const SessionBadge: FC<{
 };
 
 const RawEventPanel: FC<{
-  readonly icon: typeof Sparkles;
+  readonly icon: ReactNode;
   readonly title: string;
   readonly description: string;
   readonly items: readonly string[];
-}> = ({ icon: Icon, title, description, items }) => {
+}> = ({ icon, title, description, items }) => {
   return (
     <Card className="border-white/70 bg-white/80 shadow-[0_16px_40px_rgb(15_23_42_/_0.08)] backdrop-blur">
       <CardHeader className="gap-2">
         <div className="flex items-center gap-2">
           <span className="flex size-8 items-center justify-center rounded-full bg-secondary text-secondary-foreground">
-            <Icon className="size-4" />
+            {icon}
           </span>
           <div>
             <CardTitle>{title}</CardTitle>
@@ -691,19 +691,19 @@ const RemoteAgentPage: FC = () => {
           <div className="space-y-6">
             <RawEventPanel
               description="Agent が返した plan entries を整形して表示します。"
-              icon={Sparkles}
+              icon={<Sparkles className="size-4" />}
               items={planItems}
               title="Plan"
             />
             <RawEventPanel
               description="ACP の diff raw event を path / old / new で展開します。"
-              icon={SplitSquareVertical}
+              icon={<SplitSquareVertical className="size-4" />}
               items={diffItems}
               title="Diff"
             />
             <RawEventPanel
               description="terminal event の出力をそのまま追います。"
-              icon={TerminalSquare}
+              icon={<TerminalSquare className="size-4" />}
               items={terminalItems}
               title="Terminal"
             />

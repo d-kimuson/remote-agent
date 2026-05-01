@@ -374,6 +374,7 @@ export const useAcpSseCacheSync = (): void => {
       scheduleFlush();
     };
     source.onmessage = onMessage;
+    const knownPermissionRequestIds = knownPermissionRequestIdsRef.current;
     return () => {
       source.onmessage = null;
       source.close();
@@ -389,12 +390,7 @@ export const useAcpSseCacheSync = (): void => {
         pending.catalogUpdates.size > 0 ||
         pending.permissionRequestsUpdated;
       if (hasWork) {
-        void flushPending(
-          queryClient,
-          pending,
-          knownStatuses,
-          knownPermissionRequestIdsRef.current,
-        );
+        void flushPending(queryClient, pending, knownStatuses, knownPermissionRequestIds);
       }
     };
   }, [queryClient]);

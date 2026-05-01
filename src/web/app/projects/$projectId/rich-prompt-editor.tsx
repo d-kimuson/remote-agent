@@ -1,15 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  Bold,
-  Check,
-  Code2,
-  File,
-  Folder,
-  Italic,
-  List,
-  Quote,
-  type LucideIcon,
-} from 'lucide-react';
+import { Bold, Check, Code2, File, Folder, Italic, List, Quote } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -51,15 +41,15 @@ import {
 type ToolbarItem = {
   readonly format: RichPromptFormat;
   readonly label: string;
-  readonly icon: LucideIcon;
+  readonly icon: ReactNode;
 };
 
 const toolbarItems = [
-  { format: 'bold', label: 'Bold', icon: Bold },
-  { format: 'italic', label: 'Italic', icon: Italic },
-  { format: 'code', label: 'Code', icon: Code2 },
-  { format: 'bulletList', label: 'Bullet list', icon: List },
-  { format: 'quote', label: 'Quote', icon: Quote },
+  { format: 'bold', label: 'Bold', icon: <Bold className="size-4" /> },
+  { format: 'italic', label: 'Italic', icon: <Italic className="size-4" /> },
+  { format: 'code', label: 'Code', icon: <Code2 className="size-4" /> },
+  { format: 'bulletList', label: 'Bullet list', icon: <List className="size-4" /> },
+  { format: 'quote', label: 'Quote', icon: <Quote className="size-4" /> },
 ] satisfies readonly ToolbarItem[];
 
 export const RichPromptEditor: FC<{
@@ -414,7 +404,6 @@ export const RichPromptEditor: FC<{
     >
       <div className="flex items-center gap-1 border-b bg-transparent px-2 py-1">
         {toolbarItems.map((item) => {
-          const Icon = item.icon;
           return (
             <Button
               aria-label={item.label}
@@ -431,7 +420,7 @@ export const RichPromptEditor: FC<{
               type="button"
               variant="ghost"
             >
-              <Icon className="size-4" />
+              {item.icon}
             </Button>
           );
         })}
@@ -479,7 +468,6 @@ export const RichPromptEditor: FC<{
               )}
             </div>
             {filteredFileEntries.map((entry, index) => {
-              const Icon = entry.type === 'directory' ? Folder : File;
               return (
                 <button
                   aria-selected={index === selectedFileIndex}
@@ -501,12 +489,11 @@ export const RichPromptEditor: FC<{
                   title={entry.path}
                   type="button"
                 >
-                  <Icon
-                    className={cn(
-                      'size-4 shrink-0',
-                      entry.type === 'directory' ? 'text-primary' : 'text-muted-foreground',
-                    )}
-                  />
+                  {entry.type === 'directory' ? (
+                    <Folder className="size-4 shrink-0 text-primary" />
+                  ) : (
+                    <File className="size-4 shrink-0 text-muted-foreground" />
+                  )}
                   <span className="min-w-0 flex-1 truncate">
                     {entry.name}
                     {entry.type === 'directory' ? '/' : ''}

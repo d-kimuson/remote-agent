@@ -149,7 +149,7 @@ const listAllSessions = async (
   let cursor: string | null | undefined = undefined;
 
   while (true) {
-    const response = await connection.unstable_listSessions({ cursor, cwd });
+    const response = await connection.listSessions({ cursor, cwd });
     sessions.push(...response.sessions);
 
     if (response.nextCursor === null || response.nextCursor === undefined) {

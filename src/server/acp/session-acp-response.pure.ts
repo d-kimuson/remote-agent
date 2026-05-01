@@ -63,14 +63,17 @@ const readConfigSelects = (
   if (configOptions === null || configOptions === undefined) {
     return { options: [], currentId: null };
   }
-  const selects = configOptions.filter((c) => c.type === 'select' && pick(c));
-  if (selects.length === 0) {
+  const selectOptions = configOptions.filter((c) => c.type === 'select' && pick(c));
+  if (selectOptions.length === 0) {
     return { options: [], currentId: null };
   }
   const seen = new Set<string>();
   const options: ModelOption[] = [];
-  for (const s of selects) {
-    for (const o of flattenConfigSelectOptions(s.options)) {
+  for (const option of selectOptions) {
+    if (option.type !== 'select') {
+      continue;
+    }
+    for (const o of flattenConfigSelectOptions(option.options)) {
       const id = normalizeModelOptionId(o.value);
       if (seen.has(id)) {
         continue;
@@ -83,7 +86,8 @@ const readConfigSelects = (
       });
     }
   }
-  const currentVal = selects[0]?.currentValue;
+  const firstSelectOption = selectOptions[0];
+  const currentVal = firstSelectOption?.type === 'select' ? firstSelectOption.currentValue : null;
   const currentId =
     currentVal !== null && currentVal !== undefined && String(currentVal).length > 0
       ? String(currentVal)
