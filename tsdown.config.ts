@@ -42,7 +42,7 @@ const readPackageVersion = (packageDirectory: string): string => {
 
 export default defineConfig({
   entry: {
-    cli: 'src/cli.ts',
+    cli: 'src/cli/index.ts',
   },
   outDir: 'dist',
   platform: 'node',

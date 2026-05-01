@@ -51,8 +51,8 @@ const logCheck = (message: string): void => {
 const serve = async (options: ServeOptions): Promise<void> => {
   applyServeEnvOverrides(process.env, options);
   const [{ envService }, { startServer }] = await Promise.all([
-    import('./server/env.ts'),
-    import('./server/server.ts'),
+    import('../server/env.ts'),
+    import('../server/server.ts'),
   ]);
   const cliDirectory = path.dirname(fileURLToPath(import.meta.url));
   const clientBuildDirectory = path.resolve(cliDirectory, 'client');

@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 
-import pkg from '../package.json' with { type: 'json' };
+import pkg from '../../package.json' with { type: 'json' };
 
 export type ServeOptions = {
   readonly serverOnly?: boolean;
