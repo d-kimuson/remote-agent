@@ -14,6 +14,11 @@
 
 `remote-agent` is a tool for remotely operating coding agents such as Codex, Claude Code, Cursor CLI, and other agent CLIs from a single web interface. Run the `remote-agent` server on your own machine, then connect from a client device such as iOS, Android, another desktop browser, or an installed PWA to start sessions, resume work, approve tool requests, and interact with your agents.
 
+## Requirements
+
+- Node.js v24 and npm-compatible `npx` on the server machine.
+- The agent CLI you want to use must be installed, available on the server machine's `PATH`, and authenticated as that agent normally requires.
+
 ## Installation
 
 ### Quick Start (PWA with Tailscale, Recommended)
@@ -122,6 +127,18 @@ Want to use another agent? Add it as a Custom Provider through ACP.
 See the ACP agent list at https://agentclientprotocol.com/get-started/agents to find an available
 agent. If the agent you want is not listed, implement an ACP-compatible agent server and register
 its command as a Custom Provider.
+
+## How It Works
+
+`remote-agent` keeps ACP sessions on the Node.js server instead of starting local agents directly from the browser. The browser SPA talks to the Hono API/BFF, the server manages ACP-compatible provider processes, and agent output, plans, diffs, terminal data, and approval requests are streamed back to the browser.
+
+## Security
+
+`remote-agent` is designed to run on trusted machines and private networks, and its dependency policy is intentionally conservative:
+
+- pnpm `minimumReleaseAge` is enabled so newly published package versions are not installed immediately.
+- Every release must pass `pnpm audit --audit-level low` before publishing.
+- Runtime dependencies are kept at zero except for ACP packages that must be available directly at runtime for the built-in agent providers.
 
 ## Contribute
 
