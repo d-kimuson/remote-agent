@@ -8,6 +8,11 @@ import {
 } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
 
+import {
+  findReusableNotificationClientIndex,
+  notificationClickTargetUrl,
+} from './pwa/notification-click.pure.ts';
+
 declare let self: ServiceWorkerGlobalScope;
 
 cleanupOutdatedCaches();
@@ -41,17 +46,29 @@ self.addEventListener('notificationclick', (event) => {
       return '/';
     }
   })();
-  const nextPathname = new URL(nextUrl, self.location.origin).pathname;
+  const targetUrl = notificationClickTargetUrl(nextUrl, self.location.origin);
 
   event.waitUntil(
-    self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then((clients) => {
-      const matchedClient = clients.find((client) => new URL(client.url).pathname === nextPathname);
+    self.clients.matchAll({ includeUncontrolled: true, type: 'window' }).then(async (clients) => {
+      const reusableClientIndex = findReusableNotificationClientIndex(
+        clients,
+        targetUrl,
+        self.location.origin,
+      );
 
-      if (matchedClient !== undefined) {
-        return matchedClient.focus();
+      if (reusableClientIndex !== null) {
+        const reusableClient = clients.at(reusableClientIndex);
+
+        if (reusableClient !== undefined) {
+          const targetClient =
+            reusableClient.url === targetUrl
+              ? reusableClient
+              : await reusableClient.navigate(targetUrl);
+          return (targetClient ?? reusableClient).focus();
+        }
       }
 
-      return self.clients.openWindow(nextUrl);
+      return self.clients.openWindow(targetUrl);
     }),
   );
 });
