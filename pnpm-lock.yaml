@@ -19,18 +19,9 @@ importers:
       '@zed-industries/codex-acp':
         specifier: 0.11.1
         version: 0.11.1
-      inquirer:
-        specifier: 13.3.0
-        version: 13.3.0(@types/node@25.6.0)
-      nanoid:
-        specifier: 5.1.9
-        version: 5.1.9
       pi-acp:
         specifier: 0.0.26
         version: 0.0.26
-      qrcode:
-        specifier: 1.5.4
-        version: 1.5.4
     devDependencies:
       '@agentclientprotocol/sdk':
         specifier: 0.14.1
@@ -131,12 +122,18 @@ importers:
       i18next:
         specifier: 26.0.8
         version: 26.0.8(typescript@6.0.3)
+      inquirer:
+        specifier: 13.4.2
+        version: 13.4.2(@types/node@25.6.0)
       lefthook:
         specifier: 2.1.6
         version: 2.1.6
       lucide-react:
         specifier: 1.8.0
         version: 1.8.0(react@19.2.5)
+      nanoid:
+        specifier: 5.1.9
+        version: 5.1.9
       npm-run-all2:
         specifier: 8.0.4
         version: 8.0.4
@@ -155,6 +152,9 @@ importers:
       portless:
         specifier: 0.10.3
         version: 0.10.3
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
       react:
         specifier: 19.2.5
         version: 19.2.5
@@ -3729,6 +3729,15 @@ packages:
 
   inquirer@13.3.0:
     resolution: {integrity: sha512-APTrZe9IhrsshL0u2PgmEMLP3CXDBjZ99xh5dR2+sryOt5R+JGL0KNuaTTT2lW54B9eNQDMutPR05UYTL7Xb1Q==}
+    engines: {node: '>=23.5.0 || ^22.13.0 || ^21.7.0 || ^20.12.0'}
+    peerDependencies:
+      '@types/node': '>=18'
+    peerDependenciesMeta:
+      '@types/node':
+        optional: true
+
+  inquirer@13.4.2:
+    resolution: {integrity: sha512-ziXEKBO6nxsX9Z3XEh7LNiUvYN/o5PYuYK+27l69NpjSUOh6JXQsQAKEw2AnZq5xvHeb3ZwkpzOxvNOswIX1fg==}
     engines: {node: '>=23.5.0 || ^22.13.0 || ^21.7.0 || ^20.12.0'}
     peerDependencies:
       '@types/node': '>=18'
@@ -9272,6 +9281,18 @@ snapshots:
   inline-style-parser@0.2.7: {}
 
   inquirer@13.3.0(@types/node@25.6.0):
+    dependencies:
+      '@inquirer/ansi': 2.0.5
+      '@inquirer/core': 11.1.9(@types/node@25.6.0)
+      '@inquirer/prompts': 8.4.2(@types/node@25.6.0)
+      '@inquirer/type': 4.0.5(@types/node@25.6.0)
+      mute-stream: 3.0.0
+      run-async: 4.0.6
+      rxjs: 7.8.2
+    optionalDependencies:
+      '@types/node': 25.6.0
+
+  inquirer@13.4.2(@types/node@25.6.0):
     dependencies:
       '@inquirer/ansi': 2.0.5
       '@inquirer/core': 11.1.9(@types/node@25.6.0)
