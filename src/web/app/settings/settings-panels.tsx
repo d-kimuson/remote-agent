@@ -93,6 +93,7 @@ import {
   playTaskCompletionSound,
   readTaskCompletionSoundPreference,
 } from '../../pwa/task-completion-sound.ts';
+import { ApiAuthForm } from '../auth/api-auth-form.tsx';
 import { attachmentContentBlockLabel } from '../projects/$projectId/chat-state.pure.ts';
 import {
   agentModelCatalogQueryKey,
@@ -1527,6 +1528,27 @@ export const AppearanceSettingsPanel: FC = () => {
             ))}
           </SelectContent>
         </Select>
+      </CardContent>
+    </Card>
+  );
+};
+
+export const ApiConnectionSettingsPanel: FC = () => {
+  const { t } = useTranslation();
+
+  const handleSaved = useCallback(() => {
+    toast.success(t('apiAuth.saved'));
+    window.location.reload();
+  }, [t]);
+
+  return (
+    <Card className="app-panel">
+      <CardHeader>
+        <CardTitle>{t('apiAuth.settingsTitle')}</CardTitle>
+        <CardDescription>{t('apiAuth.settingsDescription')}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ApiAuthForm onSaved={handleSaved} />
       </CardContent>
     </Card>
   );

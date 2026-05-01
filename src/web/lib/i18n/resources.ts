@@ -314,11 +314,15 @@ export const resources = {
         title: 'API設定',
         description:
           'API が認証を必要としています。API KEY と API URL を入力して続行してください。',
+        settingsTitle: 'API接続',
+        settingsDescription:
+          '接続先 API URL と API KEY を保存します。保存後に画面を再読み込みして切り替えます。',
         apiUrlLabel: 'API URL',
         apiUrlHelp: '例: https://example.com/api またはこの画面と同じドメイン',
         apiKeyLabel: 'API KEY',
         apiKeyPlaceholder: 'API KEY を入力',
         apiKeyRequired: 'API KEY が必要です。',
+        saved: 'API 接続設定を保存しました。',
         saving: '保存中...',
       },
     },
@@ -629,12 +633,17 @@ export const resources = {
       },
       apiAuth: {
         title: 'API settings',
-        description: 'This API requires authentication. Enter your API key and API URL to continue.',
+        description:
+          'This API requires authentication. Enter your API key and API URL to continue.',
+        settingsTitle: 'API connection',
+        settingsDescription:
+          'Save the API URL and API key. The app reloads after saving to switch connections.',
         apiUrlLabel: 'API URL',
         apiUrlHelp: 'Example: https://example.com/api or the same-domain endpoint',
         apiKeyLabel: 'API KEY',
         apiKeyPlaceholder: 'Enter API key',
         apiKeyRequired: 'API key is required.',
+        saved: 'API connection settings saved.',
         saving: 'Saving...',
       },
     },

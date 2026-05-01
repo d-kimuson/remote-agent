@@ -1,7 +1,3 @@
-/**
- * @vitest-environment jsdom
- */
-
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
@@ -13,7 +9,42 @@ import {
   storedApiUrl,
 } from './client.ts';
 
+const createTestStorage = (): Storage => {
+  const values = new Map<string, string>();
+  return {
+    get length() {
+      return values.size;
+    },
+    clear: () => {
+      values.clear();
+    },
+    getItem: (key) => values.get(key) ?? null,
+    key: (index) => Array.from(values.keys())[index] ?? null,
+    removeItem: (key) => {
+      values.delete(key);
+    },
+    setItem: (key, value) => {
+      values.set(key, value);
+    },
+  };
+};
+
+const stubBrowserGlobals = (): void => {
+  const eventTarget = new EventTarget();
+  const testStorage = createTestStorage();
+  const testWindow = {
+    location: new URL('http://localhost/'),
+    localStorage: testStorage,
+    addEventListener: eventTarget.addEventListener.bind(eventTarget),
+    dispatchEvent: eventTarget.dispatchEvent.bind(eventTarget),
+    removeEventListener: eventTarget.removeEventListener.bind(eventTarget),
+  };
+  vi.stubGlobal('localStorage', testStorage);
+  vi.stubGlobal('window', testWindow);
+};
+
 beforeEach(() => {
+  stubBrowserGlobals();
   localStorage.clear();
   vi.restoreAllMocks();
 });
@@ -49,12 +80,19 @@ describe('apiFetch', () => {
     expect(response).toBeTruthy();
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledWith('http://localhost:3333/custom-api/hello', expect.anything());
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:3333/custom-api/hello',
+      expect.anything(),
+    );
 
     const init = fetchMock.mock.calls[0]?.[1];
     expect(init).toBeDefined();
-    expect(init?.headers).toBeInstanceOf(Headers);
-    expect((init?.headers as Headers).get('authorization')).toBe('Bearer abc123');
+    const headers = init?.headers;
+    expect(headers).toBeInstanceOf(Headers);
+    if (!(headers instanceof Headers)) {
+      throw new Error('headers should be a Headers instance');
+    }
+    expect(headers.get('authorization')).toBe('Bearer abc123');
   });
 
   test('dispatches auth-required event and stores flag on 401', async () => {
@@ -73,5 +111,19 @@ describe('apiFetch', () => {
     expect(listener).toHaveBeenCalledTimes(1);
     expect(isApiAuthRequired()).toBe(true);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test('clears auth-required flag when API config is saved', async () => {
+    persistApiConfig({ apiKey: 'wrong', apiUrl: 'http://localhost/api' });
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('unauthorized', { status: 401, statusText: 'Unauthorized' }),
+    );
+
+    await expect(apiFetch('/api/test')).rejects.toThrow('HttpError: 401 Unauthorized');
+    expect(isApiAuthRequired()).toBe(true);
+
+    persistApiConfig({ apiKey: 'correct', apiUrl: 'http://localhost/api' });
+
+    expect(isApiAuthRequired()).toBe(false);
   });
 });

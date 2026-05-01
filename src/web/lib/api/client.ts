@@ -74,6 +74,10 @@ export const isApiAuthRequired = (): boolean => {
   return window.localStorage.getItem(apiAuthRequiredStorageKey) === '1';
 };
 
+export const isApiAuthError = (error: unknown): boolean => {
+  return error instanceof HttpError && error.status === 401;
+};
+
 const resolveApiUrl = (path: string): string => {
   const normalizedPath = normalizeApiPath(path);
   const safePath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
@@ -98,6 +102,7 @@ export const persistApiConfig = ({
     window.localStorage.setItem(apiKeyStorageKey, normalizedKey);
   }
   window.localStorage.setItem(apiUrlStorageKey, normalizeApiUrl(nextApiUrl));
+  setApiAuthRequired(false);
 };
 
 const apiKeyFromUrl = (): string | null => {

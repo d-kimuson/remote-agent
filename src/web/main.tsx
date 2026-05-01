@@ -3,6 +3,7 @@ import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 
+import { ApiAuthGate } from './app/auth/api-auth-gate.tsx';
 import { QueryClientProviderWrapper } from './lib/api/QueryClientProviderWrapper';
 import './lib/i18n/i18n.ts';
 import { LanguageSync } from './lib/i18n/language-sync.tsx';
@@ -40,10 +41,12 @@ root.render(
   <StrictMode>
     <ThemeProvider>
       <QueryClientProviderWrapper>
-        <Suspense fallback={null}>
-          <LanguageSync />
-        </Suspense>
-        <RouterProvider router={router} />
+        <ApiAuthGate>
+          <Suspense fallback={null}>
+            <LanguageSync />
+          </Suspense>
+          <RouterProvider router={router} />
+        </ApiAuthGate>
       </QueryClientProviderWrapper>
     </ThemeProvider>
   </StrictMode>,

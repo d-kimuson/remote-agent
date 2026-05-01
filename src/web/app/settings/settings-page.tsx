@@ -7,6 +7,7 @@ import { fetchAppSetupState } from '../../lib/api/acp.ts';
 import { appSetupStateQueryKey } from '../onboarding/queries.ts';
 import {
   AppearanceSettingsPanel,
+  ApiConnectionSettingsPanel,
   KeybindingSettingsPanel,
   LanguageSettingsPanel,
   NotificationsSettingsPanel,
@@ -30,6 +31,7 @@ export const SettingsPage: FC = () => {
 
   return (
     <div className="space-y-6">
+      <ApiConnectionSettingsPanel />
       <ProviderSettingsPanel />
       <LanguageSettingsPanel />
       <AppearanceSettingsPanel />
