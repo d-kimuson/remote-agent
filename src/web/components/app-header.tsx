@@ -184,6 +184,7 @@ export const AppHeader: FC<{
 
   return (
     <header className="app-topbar sticky top-0 z-30 flex h-10 shrink-0 items-center gap-2 border-b px-3 backdrop-blur">
+      <img alt="Remote Agent" className="size-5 shrink-0 opacity-80" src="/logo.png" />
       <Button
         aria-label={t('menu.openMenu')}
         className={isDesktopMenuExpanded ? 'shrink-0 md:hidden' : 'shrink-0'}
