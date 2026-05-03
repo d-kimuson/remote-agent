@@ -1263,6 +1263,13 @@ export type MessageResponse = InferOutput<typeof messageResponseSchema>;
 
 export const sessionMessagesResponseSchema = object({
   messages: array(chatMessageSchema),
+  pageInfo: object({
+    hasMoreBefore: boolean(),
+    beforeCursor: nullable(optional(pipe(string(), trim()))),
+  }),
+  meta: object({
+    totalMessageCount: number(),
+  }),
 });
 
 export type SessionMessagesResponse = InferOutput<typeof sessionMessagesResponseSchema>;

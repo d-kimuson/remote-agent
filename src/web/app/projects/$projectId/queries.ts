@@ -7,6 +7,9 @@ export const sessionsQueryKey = ['sessions'] as const;
 export const acpPermissionRequestsQueryKey = ['acp', 'permission-requests'] as const;
 export const sessionMessagesQueryKey = (sessionId: string) =>
   ['session-messages', sessionId] as const;
+
+export const sessionMessagesInfiniteQueryKey = (sessionId: string) =>
+  ['session-messages', sessionId, 'infinite'] as const;
 export const projectQueryKey = (projectId: string) => ['project', projectId] as const;
 export const projectSettingsQueryKey = (projectId: string) =>
   ['project-settings', projectId] as const;

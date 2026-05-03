@@ -1,4 +1,9 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
+import {
+  useMutation,
+  useQueryClient,
+  useSuspenseInfiniteQuery,
+  useSuspenseQuery,
+} from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
@@ -152,6 +157,7 @@ import {
   appInfoQueryKey,
   projectQueryKey,
   projectSettingsQueryKey,
+  sessionMessagesInfiniteQueryKey,
   sessionMessagesQueryKey,
   sessionsQueryKey,
 } from './queries.ts';
@@ -855,18 +861,42 @@ const SlashCommandsLoader: FC<{
   return null;
 };
 
+const SESSION_MESSAGES_PAGE_SIZE = 100;
+
 const SessionMessagesHydrator: FC<{
   readonly sessionId: string;
   readonly onHydrated: (sessionId: string, messages: readonly ChatMessage[]) => void;
-}> = ({ sessionId, onHydrated }) => {
-  const { data, dataUpdatedAt } = useSuspenseQuery({
-    queryKey: sessionMessagesQueryKey(sessionId),
-    queryFn: () => fetchSessionMessages(sessionId),
+  readonly onFetchNextPageReady: (
+    fetchNextPage: () => Promise<unknown>,
+    hasNextPage: boolean,
+    isFetchingNextPage: boolean,
+  ) => void;
+}> = ({ sessionId, onHydrated, onFetchNextPageReady }) => {
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSuspenseInfiniteQuery({
+    queryKey: sessionMessagesInfiniteQueryKey(sessionId),
+    queryFn: ({ pageParam }) =>
+      fetchSessionMessages(sessionId, {
+        view: 'transcript',
+        limit: SESSION_MESSAGES_PAGE_SIZE,
+        before: pageParam ?? undefined,
+      }),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) =>
+      lastPage.pageInfo.hasMoreBefore ? lastPage.pageInfo.beforeCursor : undefined,
   });
 
+  const allMessages = useMemo(
+    () => [...data.pages].reverse().flatMap((page) => page.messages),
+    [data.pages],
+  );
+
   useLayoutEffect(() => {
-    onHydrated(sessionId, data.messages);
-  }, [data.messages, dataUpdatedAt, onHydrated, sessionId]);
+    onHydrated(sessionId, allMessages);
+  }, [allMessages, onHydrated, sessionId]);
+
+  useLayoutEffect(() => {
+    onFetchNextPageReady(fetchNextPage, hasNextPage, isFetchingNextPage);
+  }, [fetchNextPage, hasNextPage, isFetchingNextPage, onFetchNextPageReady]);
 
   return null;
 };
@@ -970,6 +1000,10 @@ export const ProjectChatPage: FC<{
   const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [messagesBelowScroll, setMessagesBelowScroll] = useState(0);
+  const fetchNextPageRef = useRef<(() => void) | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
+  const fetchingNextPageRef = useRef(false);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
@@ -1781,12 +1815,23 @@ export const ProjectChatPage: FC<{
       sessionMessagesQueryKey(targetSessionId),
       (current) => {
         if (current === undefined) {
-          return { messages: [message] };
+          return {
+            messages: [message],
+            pageInfo: { hasMoreBefore: false, beforeCursor: null },
+            meta: { totalMessageCount: 1 },
+          };
         }
         if (current.messages.some((entry) => entry.id === message.id)) {
           return current;
         }
-        return { messages: [...current.messages, message] };
+        return {
+          ...current,
+          messages: [...current.messages, message],
+          meta: {
+            ...current.meta,
+            totalMessageCount: current.meta.totalMessageCount + 1,
+          },
+        };
       },
     );
   };
@@ -2322,6 +2367,16 @@ export const ProjectChatPage: FC<{
       selectedSession?.command ??
       'custom');
 
+  const handleFetchNextPageReady = useCallback(
+    (fetchNextPage: () => void, nextPageExists: boolean, nextIsFetchingNextPage: boolean) => {
+      fetchNextPageRef.current = fetchNextPage;
+      setHasNextPage(nextPageExists);
+      setIsFetchingNextPage(nextIsFetchingNextPage);
+      fetchingNextPageRef.current = nextIsFetchingNextPage;
+    },
+    [],
+  );
+
   const handleChatScroll: UIEventHandler<HTMLDivElement> = (event) => {
     const target = event.target;
     if (!(target instanceof HTMLElement)) {
@@ -2351,6 +2406,13 @@ export const ProjectChatPage: FC<{
       setMessagesBelowScroll(
         Math.max(0, Math.round(visibleTranscript.length * (1 - scrollPercentage))),
       );
+    }
+
+    // 上端に近づいたら古いメッセージを読み込む
+    const nearTopThreshold = 800;
+    if (target.scrollTop < nearTopThreshold && hasNextPage && !fetchingNextPageRef.current) {
+      fetchingNextPageRef.current = true;
+      fetchNextPageRef.current?.();
     }
   };
 
@@ -2415,6 +2477,7 @@ export const ProjectChatPage: FC<{
           <SessionMessagesHydrator
             key={sessionId}
             onHydrated={handleMessagesHydrated}
+            onFetchNextPageReady={handleFetchNextPageReady}
             sessionId={sessionId}
           />
         </Suspense>
@@ -2572,6 +2635,12 @@ export const ProjectChatPage: FC<{
                     </div>
                   ) : null}
 
+                  {isFetchingNextPage && hasNextPage && sessionId !== null && (
+                    <div className="flex w-full justify-center py-2 text-xs text-muted-foreground">
+                      <Loader2 className="mr-1.5 size-3 animate-spin" />
+                      古いメッセージを読み込み中...
+                    </div>
+                  )}
                   {visibleTranscript.map((message, index) => {
                     const isUser = message.role === 'user';
                     const displayEvents = filterDisplayableRawEvents(message.rawEvents);

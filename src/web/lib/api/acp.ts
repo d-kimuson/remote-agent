@@ -441,10 +441,29 @@ export const updateSessionConfigOptionRequest = async (
   return parse(sessionResponseSchema, await response.json());
 };
 
-export const fetchSessionMessages = async (sessionId: string): Promise<SessionMessagesResponse> => {
-  const response = await honoClient.acp.sessions[':sessionId'].messages.$get({
-    param: { sessionId },
-  });
+export const fetchSessionMessages = async (
+  sessionId: string,
+  options?: {
+    readonly view?: 'transcript' | 'raw';
+    readonly limit?: number;
+    readonly before?: string;
+  },
+): Promise<SessionMessagesResponse> => {
+  const params = new URLSearchParams();
+  if (options?.view !== undefined) {
+    params.set('view', options.view);
+  }
+  if (options?.limit !== undefined) {
+    params.set('limit', String(options.limit));
+  }
+  if (options?.before !== undefined) {
+    params.set('before', options.before);
+  }
+  const query = params.size > 0 ? `?${params.toString()}` : '';
+  const response = await apiFetch(
+    `/api/acp/sessions/${encodeURIComponent(sessionId)}/messages${query}`,
+    { method: 'GET' },
+  );
   return parse(sessionMessagesResponseSchema, await response.json());
 };
 

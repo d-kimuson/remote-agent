@@ -1,4 +1,4 @@
-import { useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 
@@ -18,6 +18,7 @@ import {
   acpPermissionRequestsQueryKey,
   projectsQueryKey,
   sessionMessagesQueryKey,
+  sessionMessagesInfiniteQueryKey,
   sessionsQueryKey,
 } from '../../app/projects/$projectId/queries.ts';
 import {
@@ -42,10 +43,34 @@ const applyTextDelta = (queryClient: QueryClient, event: AcpSseEvent): boolean =
     return false;
   }
 
+  // 従来の flat query に適用
   queryClient.setQueryData<SessionMessagesResponse>(
     sessionMessagesQueryKey(event.sessionId),
     (current) => applySessionStreamDeltaToMessages(current, event),
   );
+
+  // infinite query の先頭ページ（最新メッセージ）にも適用
+  queryClient.setQueriesData<InfiniteData<SessionMessagesResponse>>(
+    { queryKey: sessionMessagesInfiniteQueryKey(event.sessionId) },
+    (current) => {
+      if (current === undefined) {
+        return current;
+      }
+      const firstPage = current.pages[0];
+      if (firstPage === undefined) {
+        return current;
+      }
+      const updatedFirst = applySessionStreamDeltaToMessages(firstPage, event);
+      if (updatedFirst === firstPage) {
+        return current;
+      }
+      return {
+        ...current,
+        pages: [updatedFirst, ...current.pages.slice(1)],
+      };
+    },
+  );
+
   return true;
 };
 
@@ -253,6 +278,7 @@ const flushPending = async (
   const cachedSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
   for (const sessionId of work.removedSessionIds) {
     queryClient.removeQueries({ queryKey: sessionMessagesQueryKey(sessionId) });
+    queryClient.removeQueries({ queryKey: sessionMessagesInfiniteQueryKey(sessionId) });
   }
   let freshSessions: readonly SessionSummary[] | null = null;
   if (work.needSessionsList) {
@@ -276,6 +302,10 @@ const flushPending = async (
   for (const sessionId of work.messageSessionIds) {
     const queryKey = sessionMessagesQueryKey(sessionId);
     void queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
+    void queryClient.invalidateQueries({
+      queryKey: sessionMessagesInfiniteQueryKey(sessionId),
+      refetchType: 'all',
+    });
   }
   for (const key of work.catalogUpdates) {
     if (key.length > 0) {

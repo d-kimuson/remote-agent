@@ -62,17 +62,27 @@ export const applySessionStreamDeltaToMessages = (
   event: SessionStreamDeltaEvent,
 ): SessionMessagesResponse => {
   if (current === undefined) {
-    return { messages: [messageFromDelta(event)] };
+    return {
+      messages: [messageFromDelta(event)],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
+    };
   }
 
   const matched = current.messages.some((message) => messageMatchesDelta(message, event));
   if (!matched) {
     return {
+      ...current,
       messages: [...current.messages, messageFromDelta(event)],
+      meta: {
+        ...current.meta,
+        totalMessageCount: current.meta.totalMessageCount + 1,
+      },
     };
   }
 
   return {
+    ...current,
     messages: current.messages.map((message) =>
       messageMatchesDelta(message, event) ? mergeTextDeltaMessage(message, event) : message,
     ),

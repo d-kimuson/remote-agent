@@ -64,7 +64,7 @@ import {
   createSession,
   cancelSession,
   importSession,
-  listSessionMessages,
+  listSessionMessagesPaginated,
   listSessions,
   removeSession,
   sendPrompt,
@@ -893,8 +893,32 @@ export const acpRoutes = new Hono()
     }),
     async (c) => {
       const sessionId = c.req.param('sessionId');
+      const viewParam = c.req.query('view');
+      const limitParam = c.req.query('limit');
+      const beforeParam = c.req.query('before');
+
+      const view = viewParam === 'raw' ? 'raw' : 'transcript';
+      const limit = limitParam !== undefined ? Math.min(Number(limitParam), 1000) : 200;
+      const before =
+        beforeParam !== undefined && beforeParam.includes('__')
+          ? (() => {
+              const idx = beforeParam.lastIndexOf('__');
+              return {
+                createdAt: beforeParam.slice(0, idx),
+                id: beforeParam.slice(idx + 2),
+              };
+            })()
+          : null;
+
+      const result = await listSessionMessagesPaginated(sessionId, {
+        view,
+        limit,
+        before,
+      });
       const response = parse(sessionMessagesResponseSchema, {
-        messages: await listSessionMessages(sessionId),
+        messages: result.messages,
+        pageInfo: result.pageInfo,
+        meta: result.meta,
       });
       return c.json(response);
     },

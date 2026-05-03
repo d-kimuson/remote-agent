@@ -77,6 +77,8 @@ describe('applySessionStreamDeltaToMessages', () => {
         },
         baseMessage,
       ],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 2 },
     } satisfies SessionMessagesResponse;
 
     expect(applySessionStreamDeltaToMessages(current, baseTextDelta)).toEqual({
@@ -90,6 +92,8 @@ describe('applySessionStreamDeltaToMessages', () => {
           updatedAt: '2026-04-28T00:00:01.000Z',
         },
       ],
+      pageInfo: current.pageInfo,
+      meta: current.meta,
     });
   });
 
@@ -116,6 +120,8 @@ describe('applySessionStreamDeltaToMessages', () => {
           streamPartId: null,
         },
       ],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
     } satisfies SessionMessagesResponse;
 
     expect(applySessionStreamDeltaToMessages(current, baseTextDelta)).toEqual({
@@ -143,6 +149,8 @@ describe('applySessionStreamDeltaToMessages', () => {
           metadataJson: undefined,
         },
       ],
+      pageInfo: current.pageInfo,
+      meta: { totalMessageCount: 2 },
     });
   });
 
@@ -171,6 +179,8 @@ describe('applySessionStreamDeltaToMessages', () => {
           metadataJson: undefined,
         },
       ],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
     });
   });
 
@@ -199,6 +209,8 @@ describe('applySessionStreamDeltaToMessages', () => {
           metadataJson: undefined,
         },
       ],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
     });
   });
 });

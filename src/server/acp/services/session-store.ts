@@ -7,7 +7,7 @@ import type { ModelMessage, UserModelMessage } from 'ai';
 
 import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { createACPProvider, type ACPProvider } from '@mcpc-tech/acp-ai-provider';
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq, lt, or, sql } from 'drizzle-orm';
 import { readFile, rm } from 'node:fs/promises';
 import { array, parse, string } from 'valibot';
 
@@ -790,6 +790,39 @@ export const createSessionStore = ({
       });
   };
 
+  /** 表示用 transcript で除外する message kind */
+  const HIDDEN_MESSAGE_KINDS = [
+    'stream_start',
+    'stream_finish',
+    'step_start',
+    'step_finish',
+    'raw_meta',
+  ] as const;
+
+  const parseMessageRecord = (record: typeof sessionMessagesTable.$inferSelect): ChatMessage => {
+    const parsedJson = (() => {
+      try {
+        return parsePersistedMessageRaw(JSON.parse(record.rawJson));
+      } catch {
+        return null;
+      }
+    })();
+    if (parsedJson === null || !parsedJson.success) {
+      return xErrorMessageFromRow(record);
+    }
+    const kind = mapMessageKindFromDb(record.kind);
+    if (chatMessageRawKind(parsedJson.output) !== kind) {
+      return xErrorMessageFromRow(record);
+    }
+    return messageFromRaw({
+      id: record.id,
+      kind,
+      rawJson: parsedJson.output,
+      textForSearch: record.textForSearch,
+      createdAt: record.createdAt,
+    });
+  };
+
   const listMessages = async (sessionId: string): Promise<readonly ChatMessage[]> => {
     const selectMessages = async () =>
       await database.db
@@ -822,29 +855,101 @@ export const createSessionStore = ({
         const kindOrder = messageKindSortRank(left.kind) - messageKindSortRank(right.kind);
         return kindOrder !== 0 ? kindOrder : left.id.localeCompare(right.id);
       })
-      .map((record) => {
-        const parsedJson = (() => {
-          try {
-            return parsePersistedMessageRaw(JSON.parse(record.rawJson));
-          } catch {
-            return null;
-          }
-        })();
-        if (parsedJson === null || !parsedJson.success) {
-          return xErrorMessageFromRow(record);
+      .map(parseMessageRecord);
+  };
+
+  /**
+   * ページネーション対応メッセージ取得。
+   * - transcript view: 表示不要な kind を除外し、末尾から limit 件を昇順で返す
+   * - raw view: 全件を昇順で返す
+   */
+  const listMessagesPaginated = async (
+    sessionId: string,
+    options: {
+      readonly view: 'transcript' | 'raw';
+      readonly limit: number;
+      readonly before?: { readonly createdAt: string; readonly id: string } | null;
+    },
+  ): Promise<{
+    readonly messages: readonly ChatMessage[];
+    readonly pageInfo: {
+      readonly hasMoreBefore: boolean;
+      readonly beforeCursor: string | null;
+    };
+    readonly meta: {
+      readonly totalMessageCount: number;
+    };
+  }> => {
+    const { view, limit, before } = options;
+
+    // 全件数の取得
+    const [countResult] = await database.db
+      .select({ count: sql<number>`count(*)` })
+      .from(sessionMessagesTable)
+      .where(eq(sessionMessagesTable.sessionId, sessionId));
+    const totalCount = countResult?.count ?? 0;
+
+    // 表示用 view の場合は hidden kind を除外
+    const kindFilter =
+      view === 'transcript'
+        ? and(
+            eq(sessionMessagesTable.sessionId, sessionId),
+            sql`${sessionMessagesTable.kind} NOT IN (${HIDDEN_MESSAGE_KINDS.map((k) => `'${k}'`).join(', ')})`,
+          )
+        : eq(sessionMessagesTable.sessionId, sessionId);
+
+    // cursor ベースの前方ページネーション
+    const cursorFilter =
+      before !== null && before !== undefined
+        ? and(
+            kindFilter,
+            or(
+              lt(sessionMessagesTable.createdAt, before.createdAt),
+              and(
+                eq(sessionMessagesTable.createdAt, before.createdAt),
+                lt(sessionMessagesTable.id, before.id),
+              ),
+            ),
+          )
+        : kindFilter;
+
+    // 末尾から limit+1 件を降順で取得 (hasMore 判定用)
+    const pageRecords = await database.db
+      .select()
+      .from(sessionMessagesTable)
+      .where(cursorFilter)
+      .orderBy(desc(sessionMessagesTable.createdAt), desc(sessionMessagesTable.id))
+      .limit(limit + 1);
+
+    const hasMoreBefore = pageRecords.length > limit;
+    const targetRecords = hasMoreBefore ? pageRecords.slice(0, limit) : pageRecords;
+
+    // 昇順に並べ替えて ChatMessage に変換
+    const messages = targetRecords
+      .sort((left, right) => {
+        const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+        if (createdAtOrder !== 0) {
+          return createdAtOrder;
         }
-        const kind = mapMessageKindFromDb(record.kind);
-        if (chatMessageRawKind(parsedJson.output) !== kind) {
-          return xErrorMessageFromRow(record);
-        }
-        return messageFromRaw({
-          id: record.id,
-          kind,
-          rawJson: parsedJson.output,
-          textForSearch: record.textForSearch,
-          createdAt: record.createdAt,
-        });
-      });
+        const kindOrder = messageKindSortRank(left.kind) - messageKindSortRank(right.kind);
+        return kindOrder !== 0 ? kindOrder : left.id.localeCompare(right.id);
+      })
+      .map(parseMessageRecord);
+
+    const firstMessage = messages.length > 0 ? messages[0] : undefined;
+    const beforeCursor =
+      firstMessage !== undefined ? `${firstMessage.createdAt}__${firstMessage.id}` : null;
+
+    return {
+      messages,
+      pageInfo: {
+        hasMoreBefore,
+        beforeCursor,
+      },
+      meta: {
+        totalMessageCount: totalCount,
+      },
+    };
   };
 
   const persistMessage = async ({
@@ -1883,6 +1988,7 @@ export const createSessionStore = ({
   return {
     listSessions,
     listMessages,
+    listMessagesPaginated,
     createSession,
     loadSession,
     importSession,
@@ -1908,6 +2014,26 @@ export const listSessions = async (): Promise<readonly SessionSummary[]> => {
 
 export const listSessionMessages = async (sessionId: string): Promise<readonly ChatMessage[]> => {
   return getSessionStore().listMessages(sessionId);
+};
+
+export const listSessionMessagesPaginated = async (
+  sessionId: string,
+  options: {
+    readonly view: 'transcript' | 'raw';
+    readonly limit: number;
+    readonly before?: { readonly createdAt: string; readonly id: string } | null;
+  },
+): Promise<{
+  readonly messages: readonly ChatMessage[];
+  readonly pageInfo: {
+    readonly hasMoreBefore: boolean;
+    readonly beforeCursor: string | null;
+  };
+  readonly meta: {
+    readonly totalMessageCount: number;
+  };
+}> => {
+  return getSessionStore().listMessagesPaginated(sessionId, options);
 };
 
 export const createSession = async (options: {
