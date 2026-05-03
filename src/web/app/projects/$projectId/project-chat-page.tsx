@@ -921,6 +921,7 @@ export const ProjectChatPage: FC<{
   const [draftModelId, setDraftModelId] = useState<string | null>(null);
   const [draftModeId, setDraftModeId] = useState<string | null>(null);
   const [useDraftWorktree, setUseDraftWorktree] = useState(false);
+  const [useDraftSandbox, setUseDraftSandbox] = useState(projectSettings.sandbox.enabled);
   const [draftWorktreeName, setDraftWorktreeName] = useState(createDefaultWorktreeName);
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
@@ -1133,7 +1134,7 @@ export const ProjectChatPage: FC<{
   );
 
   const draftCatalogScopeKey = `${projectId}\0${activePresetId}`;
-  const preparedSessionScopeKey = `${projectId}\0${activePresetId}\0${project.workingDirectory}`;
+  const preparedSessionScopeKey = `${projectId}\0${activePresetId}\0${project.workingDirectory}\0${String(useDraftSandbox)}`;
   const shouldUsePreparedDraftSession = shouldUsePreparedDraftSessionForWorktree({
     shouldUseDraftSession,
     useDraftWorktree,
@@ -1180,6 +1181,7 @@ export const ProjectChatPage: FC<{
       projectId,
       presetId: activePresetId,
       cwd: project.workingDirectory,
+      sandboxEnabled: useDraftSandbox,
     })
       .then((response) => {
         if (ignore) {
@@ -1220,6 +1222,7 @@ export const ProjectChatPage: FC<{
     project.workingDirectory,
     projectId,
     shouldUsePreparedDraftSession,
+    useDraftSandbox,
   ]);
 
   /** draft の候補は provider catalog table 由来だけを見る。既存 session DB からは借りない。 */
@@ -2205,6 +2208,7 @@ export const ProjectChatPage: FC<{
           cwd: sessionCwd,
           modelId: modelIdForCreate,
           modeId: modeIdForCreate,
+          sandboxEnabled: useDraftSandbox,
         });
 
         activeSessionId = sessionResponse.session.sessionId;
@@ -2763,6 +2767,39 @@ export const ProjectChatPage: FC<{
                       </button>
                       <Label className="whitespace-nowrap" htmlFor="draft-worktree-enabled">
                         worktree
+                      </Label>
+                    </div>
+                    <div className="flex min-w-0 items-center gap-1.5 rounded-full border border-border/70 bg-background px-2 py-1">
+                      <button
+                        aria-checked={useDraftSandbox}
+                        aria-label={
+                          useDraftSandbox
+                            ? 'Disable sandbox for this session'
+                            : 'Enable sandbox for this session'
+                        }
+                        className={cn(
+                          'inline-flex h-6 min-w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                          useDraftSandbox
+                            ? 'border-primary bg-primary text-primary-foreground'
+                            : 'border-border bg-muted text-muted-foreground',
+                        )}
+                        id="draft-sandbox-enabled"
+                        onClick={() => {
+                          setUseDraftSandbox((current) => !current);
+                        }}
+                        role="switch"
+                        type="button"
+                      >
+                        <span
+                          className={cn(
+                            'size-[18px] rounded-full bg-background shadow-sm transition-transform',
+                            useDraftSandbox ? 'translate-x-5' : 'translate-x-0',
+                          )}
+                        />
+                        <span className="sr-only">{useDraftSandbox ? 'Enabled' : 'Disabled'}</span>
+                      </button>
+                      <Label className="whitespace-nowrap" htmlFor="draft-sandbox-enabled">
+                        sandbox
                       </Label>
                     </div>
                     {useDraftWorktree ? (

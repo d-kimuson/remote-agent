@@ -1,13 +1,24 @@
 import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link } from '@tanstack/react-router';
-import { History, Loader2, Save, Settings } from 'lucide-react';
+import { History, Loader2, Plus, Save, Settings, X } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 
+import { cn } from '@/web/lib/utils';
+
+import type { ProjectSandboxNetworkMode, ProjectSandboxSettings } from '../../../../shared/acp.ts';
+
 import { Button, buttonVariants } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '../../../components/ui/select.tsx';
 import { Textarea } from '../../../components/ui/textarea.tsx';
 import {
   fetchAgentProviders,
@@ -26,6 +37,123 @@ import {
   sessionsQueryKey,
 } from './queries.ts';
 import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
+
+type StringListEditorProps = {
+  readonly id: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly disabled: boolean;
+  readonly items: readonly string[];
+  readonly onItemsChange: (items: readonly string[]) => void;
+};
+
+const StringListEditor: FC<StringListEditorProps> = ({
+  id,
+  label,
+  placeholder,
+  disabled,
+  items,
+  onItemsChange,
+}) => {
+  const [value, setValue] = useState('');
+  const addValue = (): void => {
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || items.includes(trimmed)) {
+      setValue('');
+      return;
+    }
+    onItemsChange([...items, trimmed]);
+    setValue('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-2">
+        <Input
+          disabled={disabled}
+          id={id}
+          onChange={(event) => {
+            setValue(event.currentTarget.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              addValue();
+            }
+          }}
+          placeholder={placeholder}
+          value={value}
+        />
+        <Button
+          disabled={disabled || value.trim().length === 0}
+          onClick={addValue}
+          type="button"
+          variant="outline"
+        >
+          <Plus className="size-4" />
+          Add
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No entries.</p>
+      ) : (
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li
+              className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-sm"
+              key={item}
+            >
+              <span className="min-w-0 break-all font-mono text-xs">{item}</span>
+              <Button
+                aria-label={`Remove ${item}`}
+                disabled={disabled}
+                onClick={() => {
+                  onItemsChange(items.filter((entry) => entry !== item));
+                }}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <X className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
+
+const sandboxFromState = ({
+  enabled,
+  allowRead,
+  denyRead,
+  allowWrite,
+  denyWrite,
+  networkMode,
+  allowedDomains,
+}: {
+  readonly enabled: boolean;
+  readonly allowRead: readonly string[];
+  readonly denyRead: readonly string[];
+  readonly allowWrite: readonly string[];
+  readonly denyWrite: readonly string[];
+  readonly networkMode: ProjectSandboxNetworkMode;
+  readonly allowedDomains: readonly string[];
+}): ProjectSandboxSettings => ({
+  enabled,
+  filesystem: {
+    allowRead: [...allowRead],
+    denyRead: [...denyRead],
+    allowWrite: [...allowWrite],
+    denyWrite: [...denyWrite],
+  },
+  network: {
+    mode: networkMode,
+    allowedDomains: [...allowedDomains],
+  },
+});
 
 export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
   const { t } = useTranslation();
@@ -58,11 +186,40 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
   const [worktreeSetupScript, setWorktreeSetupScript] = useState(
     settingsData.settings.worktreeSetupScript,
   );
+  const [sandboxEnabled, setSandboxEnabled] = useState(settingsData.settings.sandbox.enabled);
+  const [sandboxAllowRead, setSandboxAllowRead] = useState<readonly string[]>(
+    settingsData.settings.sandbox.filesystem.allowRead,
+  );
+  const [sandboxDenyRead, setSandboxDenyRead] = useState<readonly string[]>(
+    settingsData.settings.sandbox.filesystem.denyRead,
+  );
+  const [sandboxAllowWrite, setSandboxAllowWrite] = useState<readonly string[]>(
+    settingsData.settings.sandbox.filesystem.allowWrite,
+  );
+  const [sandboxDenyWrite, setSandboxDenyWrite] = useState<readonly string[]>(
+    settingsData.settings.sandbox.filesystem.denyWrite,
+  );
+  const [sandboxNetworkMode, setSandboxNetworkMode] = useState<ProjectSandboxNetworkMode>(
+    settingsData.settings.sandbox.network.mode,
+  );
+  const [sandboxAllowedDomains, setSandboxAllowedDomains] = useState<readonly string[]>(
+    settingsData.settings.sandbox.network.allowedDomains,
+  );
+  const sandboxSettings = sandboxFromState({
+    enabled: sandboxEnabled,
+    allowRead: sandboxAllowRead,
+    denyRead: sandboxDenyRead,
+    allowWrite: sandboxAllowWrite,
+    denyWrite: sandboxDenyWrite,
+    networkMode: sandboxNetworkMode,
+    allowedDomains: sandboxAllowedDomains,
+  });
   const updateSettingsMutation = useMutation({
     mutationFn: () =>
       updateProjectSettingsRequest(projectId, {
         name: projectName,
         worktreeSetupScript,
+        sandbox: sandboxSettings,
       }),
     onSuccess: (response) => {
       queryClient.setQueryData(projectSettingsQueryKey(projectId), response);
@@ -73,7 +230,8 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
   });
   const settingsChanged =
     projectName !== projectData.project.name ||
-    worktreeSetupScript !== settingsData.settings.worktreeSetupScript;
+    worktreeSetupScript !== settingsData.settings.worktreeSetupScript ||
+    JSON.stringify(sandboxSettings) !== JSON.stringify(settingsData.settings.sandbox);
 
   return (
     <div className="app-page">
@@ -155,6 +313,127 @@ export const ProjectSettingsPage: FC<{ readonly projectId: string }> = ({ projec
                   placeholder={t('projectSettings.worktreeSetupPlaceholder')}
                   value={worktreeSetupScript}
                 />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h2 className="font-medium">Sandbox</h2>
+                    <p className="text-sm text-muted-foreground">
+                      Provider-level sandbox must also be enabled in global Settings.
+                    </p>
+                  </div>
+                  <button
+                    aria-checked={sandboxEnabled}
+                    aria-label={
+                      sandboxEnabled
+                        ? 'Disable sandbox by default for this project'
+                        : 'Enable sandbox by default for this project'
+                    }
+                    className={cn(
+                      'inline-flex h-6 min-w-11 items-center rounded-full border px-0.5 transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none',
+                      sandboxEnabled
+                        ? 'border-primary bg-primary text-primary-foreground'
+                        : 'border-border bg-muted text-muted-foreground',
+                    )}
+                    disabled={updateSettingsMutation.isPending}
+                    onClick={() => {
+                      setSandboxEnabled((current) => !current);
+                    }}
+                    role="switch"
+                    type="button"
+                  >
+                    <span
+                      className={cn(
+                        'size-[18px] rounded-full bg-background shadow-sm transition-transform',
+                        sandboxEnabled ? 'translate-x-5' : 'translate-x-0',
+                      )}
+                    />
+                    <span className="sr-only">{sandboxEnabled ? 'Enabled' : 'Disabled'}</span>
+                  </button>
+                </div>
+                {sandboxEnabled ? (
+                  <div className="space-y-5">
+                    <p className="text-sm text-muted-foreground">
+                      Relative paths are resolved from the session working directory.
+                    </p>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <StringListEditor
+                        disabled={updateSettingsMutation.isPending}
+                        id="sandbox-allow-read"
+                        items={sandboxAllowRead}
+                        label="Read allow paths"
+                        onItemsChange={setSandboxAllowRead}
+                        placeholder="."
+                      />
+                      <StringListEditor
+                        disabled={updateSettingsMutation.isPending}
+                        id="sandbox-deny-read"
+                        items={sandboxDenyRead}
+                        label="Read deny paths"
+                        onItemsChange={setSandboxDenyRead}
+                        placeholder="~/.ssh"
+                      />
+                      <StringListEditor
+                        disabled={updateSettingsMutation.isPending}
+                        id="sandbox-allow-write"
+                        items={sandboxAllowWrite}
+                        label="Write allow paths"
+                        onItemsChange={setSandboxAllowWrite}
+                        placeholder="."
+                      />
+                      <StringListEditor
+                        disabled={updateSettingsMutation.isPending}
+                        id="sandbox-deny-write"
+                        items={sandboxDenyWrite}
+                        label="Write deny paths"
+                        onItemsChange={setSandboxDenyWrite}
+                        placeholder=".env"
+                      />
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+                      <div className="space-y-1">
+                        <Label htmlFor="sandbox-network-mode">Network policy</Label>
+                        <p className="text-sm text-muted-foreground">
+                          Inherit uses the global network policy. Restrict uses this project's
+                          domain allowlist.
+                        </p>
+                      </div>
+                      <Select
+                        disabled={updateSettingsMutation.isPending}
+                        onValueChange={(value) => {
+                          setSandboxNetworkMode(
+                            value === 'restrict'
+                              ? 'restrict'
+                              : value === 'none'
+                                ? 'none'
+                                : 'inherit',
+                          );
+                        }}
+                        value={sandboxNetworkMode}
+                      >
+                        <SelectTrigger id="sandbox-network-mode">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="inherit">Inherit</SelectItem>
+                          <SelectItem value="restrict">Restrict</SelectItem>
+                          <SelectItem value="none">None</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {sandboxNetworkMode === 'restrict' ? (
+                      <StringListEditor
+                        disabled={updateSettingsMutation.isPending}
+                        id="sandbox-allowed-domains"
+                        items={sandboxAllowedDomains}
+                        label="Network allowed domains"
+                        onItemsChange={setSandboxAllowedDomains}
+                        placeholder="github.com"
+                      />
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
 
               {updateSettingsMutation.error === null ? null : (

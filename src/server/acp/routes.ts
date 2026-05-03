@@ -586,6 +586,7 @@ export const acpRoutes = new Hono()
           cwd: context.cwd,
           initialModelId,
           initialModeId,
+          sandboxEnabled: request.sandboxEnabled,
         }).then(async (session) => {
           await cacheCatalogFromSession(session);
           await markProjectSessionPreferencesUsed(session);
@@ -704,6 +705,7 @@ export const acpRoutes = new Hono()
           cwd: context.cwd,
           initialModelId,
           initialModeId,
+          sandboxEnabled: request.sandboxEnabled,
         });
         await cacheCatalogFromSession(session);
         await markProjectSessionPreferencesUsed(session);

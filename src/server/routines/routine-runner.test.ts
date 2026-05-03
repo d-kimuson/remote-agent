@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import type { ProjectSettings, SessionSummary } from '../../shared/acp.ts';
+import type { ProjectSandboxSettings, ProjectSettings, SessionSummary } from '../../shared/acp.ts';
 
 import { createRoutineRunner } from './routine-runner.ts';
 
@@ -25,11 +25,26 @@ const baseSession: SessionSummary = {
   configOptions: [],
 };
 
+const defaultProjectSandbox: ProjectSandboxSettings = {
+  enabled: false,
+  filesystem: {
+    allowRead: [],
+    denyRead: [],
+    allowWrite: ['.'],
+    denyWrite: [],
+  },
+  network: {
+    mode: 'inherit',
+    allowedDomains: [],
+  },
+};
+
 const emptyProjectSettings: ProjectSettings = {
   projectId: 'project-1',
   modelPreferences: [],
   modePreferences: [],
   worktreeSetupScript: '',
+  sandbox: defaultProjectSandbox,
 };
 
 describe('createRoutineRunner', () => {
@@ -209,6 +224,7 @@ describe('createRoutineRunner', () => {
       projectId: 'project-1',
       modelPreferences: [],
       worktreeSetupScript: '',
+      sandbox: defaultProjectSandbox,
       modePreferences: [
         {
           presetId: 'codex',

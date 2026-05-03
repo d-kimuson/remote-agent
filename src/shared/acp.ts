@@ -738,11 +738,68 @@ export const projectModePreferenceSchema = object({
 
 export type ProjectModePreference = InferOutput<typeof projectModePreferenceSchema>;
 
+export const sandboxFilesystemConfigSchema = object({
+  allowRead: array(pipe(string(), trim())),
+  denyRead: array(pipe(string(), trim())),
+  allowWrite: array(pipe(string(), trim())),
+  denyWrite: array(pipe(string(), trim())),
+});
+
+export type SandboxFilesystemConfig = InferOutput<typeof sandboxFilesystemConfigSchema>;
+
+export const appSandboxNetworkModeSchema = union([literal('restrict'), literal('none')]);
+export type AppSandboxNetworkMode = InferOutput<typeof appSandboxNetworkModeSchema>;
+
+export const projectSandboxNetworkModeSchema = union([
+  literal('inherit'),
+  literal('restrict'),
+  literal('none'),
+]);
+export type ProjectSandboxNetworkMode = InferOutput<typeof projectSandboxNetworkModeSchema>;
+
+export const appSandboxNetworkConfigSchema = object({
+  mode: appSandboxNetworkModeSchema,
+  allowedDomains: array(pipe(string(), trim())),
+});
+
+export type AppSandboxNetworkConfig = InferOutput<typeof appSandboxNetworkConfigSchema>;
+
+export const projectSandboxNetworkConfigSchema = object({
+  mode: projectSandboxNetworkModeSchema,
+  allowedDomains: array(pipe(string(), trim())),
+});
+
+export type ProjectSandboxNetworkConfig = InferOutput<typeof projectSandboxNetworkConfigSchema>;
+
+export const sandboxRuleConfigSchema = object({
+  filesystem: sandboxFilesystemConfigSchema,
+  network: appSandboxNetworkConfigSchema,
+});
+
+export type SandboxRuleConfig = InferOutput<typeof sandboxRuleConfigSchema>;
+
+export const projectSandboxSettingsSchema = object({
+  enabled: boolean(),
+  filesystem: sandboxFilesystemConfigSchema,
+  network: projectSandboxNetworkConfigSchema,
+});
+
+export type ProjectSandboxSettings = InferOutput<typeof projectSandboxSettingsSchema>;
+
+export const appSandboxSettingsSchema = object({
+  enabledProviderIds: array(pipe(string(), trim())),
+  filesystem: sandboxFilesystemConfigSchema,
+  network: appSandboxNetworkConfigSchema,
+});
+
+export type AppSandboxSettings = InferOutput<typeof appSandboxSettingsSchema>;
+
 export const projectSettingsSchema = object({
   projectId: pipe(string(), trim()),
   modelPreferences: array(projectModelPreferenceSchema),
   modePreferences: array(projectModePreferenceSchema),
   worktreeSetupScript: string(),
+  sandbox: projectSandboxSettingsSchema,
 });
 
 export type ProjectSettings = InferOutput<typeof projectSettingsSchema>;
@@ -756,6 +813,7 @@ export type ProjectSettingsResponse = InferOutput<typeof projectSettingsResponse
 export const updateProjectSettingsRequestSchema = object({
   name: pipe(string(), trim()),
   worktreeSetupScript: string(),
+  sandbox: projectSandboxSettingsSchema,
 });
 
 export type UpdateProjectSettingsRequest = InferOutput<typeof updateProjectSettingsRequestSchema>;
@@ -789,6 +847,7 @@ export const createSessionRequestSchema = object({
   cwd: nullable(optional(pipe(string(), trim()))),
   modelId: optional(nullable(pipe(string(), trim()))),
   modeId: optional(nullable(pipe(string(), trim()))),
+  sandboxEnabled: optional(nullable(boolean())),
 });
 
 export type CreateSessionRequest = InferOutput<typeof createSessionRequestSchema>;
@@ -928,6 +987,7 @@ export type AppLanguage = InferOutput<typeof appLanguageSchema>;
 export const appSettingsSchema = object({
   language: appLanguageSchema,
   submitKeyBinding: appSubmitKeyBindingSchema,
+  sandbox: appSandboxSettingsSchema,
 });
 
 export type AppSettings = InferOutput<typeof appSettingsSchema>;
@@ -941,6 +1001,7 @@ export type AppSettingsResponse = InferOutput<typeof appSettingsResponseSchema>;
 export const updateAppSettingsRequestSchema = object({
   language: appLanguageSchema,
   submitKeyBinding: appSubmitKeyBindingSchema,
+  sandbox: appSandboxSettingsSchema,
 });
 
 export type UpdateAppSettingsRequest = InferOutput<typeof updateAppSettingsRequestSchema>;
@@ -963,6 +1024,7 @@ export const prepareAgentSessionRequestSchema = object({
   cwd: nullable(optional(pipe(string(), trim()))),
   modelId: optional(nullable(pipe(string(), trim()))),
   modeId: optional(nullable(pipe(string(), trim()))),
+  sandboxEnabled: optional(nullable(boolean())),
 });
 
 export type PrepareAgentSessionRequest = InferOutput<typeof prepareAgentSessionRequestSchema>;

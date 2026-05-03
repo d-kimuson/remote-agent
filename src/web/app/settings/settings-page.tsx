@@ -12,6 +12,7 @@ import {
   LanguageSettingsPanel,
   NotificationsSettingsPanel,
   ProviderSettingsPanel,
+  SandboxSettingsPanel,
 } from './settings-panels.tsx';
 
 export const SettingsPage: FC = () => {
@@ -33,6 +34,7 @@ export const SettingsPage: FC = () => {
     <div className="space-y-6">
       <ApiConnectionSettingsPanel />
       <ProviderSettingsPanel />
+      <SandboxSettingsPanel />
       <LanguageSettingsPanel />
       <AppearanceSettingsPanel />
       <KeybindingSettingsPanel />

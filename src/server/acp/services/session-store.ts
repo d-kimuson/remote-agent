@@ -5,9 +5,10 @@ import type {
 } from '@agentclientprotocol/sdk';
 import type { ModelMessage, UserModelMessage } from 'ai';
 
+import { SandboxManager } from '@anthropic-ai/sandbox-runtime';
 import { createACPProvider, type ACPProvider } from '@mcpc-tech/acp-ai-provider';
 import { and, asc, eq } from 'drizzle-orm';
-import { readFile } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import { array, parse, string } from 'valibot';
 
 import {
@@ -76,6 +77,7 @@ import {
   cancelPermissionRequestsForSession,
   requestUserPermission,
 } from './permission-request-store.ts';
+import { resolveSandboxLaunchConfig } from './sandbox-launch.ts';
 import { emitAcpSse } from './sse-broadcast.ts';
 
 type SessionProvider = Pick<
@@ -115,6 +117,26 @@ const initAcpProviderSession = async (provider: SessionProvider): Promise<NewSes
   const response = await provider.initSession(tools);
   installProviderPermissionHandler(provider);
   return response;
+};
+
+const cleanupSandboxCommand = async (
+  sandboxed: boolean,
+  mountDirectory: string | null,
+): Promise<void> => {
+  if (sandboxed) {
+    SandboxManager.cleanupAfterCommand();
+  }
+  if (mountDirectory !== null) {
+    await rm(mountDirectory, { force: true, recursive: true });
+  }
+};
+
+const cleanupSessionProvider = async (entry: SessionEntry): Promise<void> => {
+  try {
+    await Promise.resolve(entry.provider.cleanup());
+  } finally {
+    await cleanupSandboxCommand(entry.sandboxed, entry.sandboxMountDirectory);
+  }
 };
 
 const hasSetPermissionRequestHandler = (value: unknown): value is PermissionRequestClient => {
@@ -226,6 +248,9 @@ const resolveSessionUpdateClient = (provider: SessionProvider): SessionUpdateCli
   return hasSetSessionUpdateHandler(modelClient) ? modelClient : null;
 };
 
+const isClosedStreamControllerError = (error: unknown): boolean =>
+  error instanceof Error && error.message.includes('Controller is already closed');
+
 const installProviderSessionUpdateTap = (
   provider: SessionProvider,
   onSessionUpdate: (params: SessionNotification) => Promise<void>,
@@ -239,7 +264,13 @@ const installProviderSessionUpdateTap = (
   client.setSessionUpdateHandler = (handler) => {
     originalSetSessionUpdateHandler((params) => {
       void onSessionUpdate(params);
-      handler(params);
+      try {
+        handler(params);
+      } catch (error) {
+        if (!isClosedStreamControllerError(error)) {
+          throw error;
+        }
+      }
     });
   };
 };
@@ -288,6 +319,8 @@ type SessionEntry = {
   activePromptControllers: Set<AbortController>;
   provider: SessionProvider;
   runningPromptCount: number;
+  sandboxMountDirectory: string | null;
+  sandboxed: boolean;
   session: SessionSummary;
 };
 
@@ -1069,6 +1102,7 @@ export const createSessionStore = ({
     cwd,
     initialModelId,
     initialModeId,
+    sandboxEnabled,
   }: {
     readonly persistInitial?: boolean;
     readonly projectId: string | null;
@@ -1078,6 +1112,7 @@ export const createSessionStore = ({
     readonly cwd: string;
     readonly initialModelId?: string | null;
     readonly initialModeId?: string | null;
+    readonly sandboxEnabled?: boolean | null;
   }): Promise<SessionSummary> => {
     const resolvedCommandPath = await resolveCommand(command);
     if (resolvedCommandPath === null) {
@@ -1086,11 +1121,20 @@ export const createSessionStore = ({
       );
     }
 
+    const sandbox = await resolveSandboxLaunchConfig({
+      command: resolvedCommandPath,
+      args,
+      cwd,
+      preset,
+      projectId,
+      sessionSandboxEnabled: sandboxEnabled,
+    });
     const launch = buildAgentLaunchCommand({
       providerCommand: resolvedCommandPath,
       providerArgs: args,
       cwd,
       env: buildAgentProcessEnv(),
+      sandbox,
     });
     const provider = createProvider({
       command: launch.command,
@@ -1099,7 +1143,17 @@ export const createSessionStore = ({
       cwd: launch.cwd,
       env: launch.env,
     });
-    const response = await initAcpProviderSession(provider);
+    let response: NewSessionResponse;
+    try {
+      response = await initAcpProviderSession(provider);
+    } catch (error) {
+      try {
+        await Promise.resolve(provider.cleanup());
+      } finally {
+        await cleanupSandboxCommand(sandbox !== null, sandbox?.mountDirectory ?? null);
+      }
+      throw error;
+    }
     installProviderSessionUpdateTap(provider, (notification) =>
       handleObservedSessionUpdate(response.sessionId, notification),
     );
@@ -1149,6 +1203,8 @@ export const createSessionStore = ({
       activePromptControllers: new Set(),
       provider,
       runningPromptCount: 0,
+      sandboxMountDirectory: sandbox?.mountDirectory ?? null,
+      sandboxed: sandbox !== null,
       session,
     });
     if (persistInitial) {
@@ -1195,11 +1251,19 @@ export const createSessionStore = ({
       );
     }
 
+    const sandbox = await resolveSandboxLaunchConfig({
+      command: resolvedCommandPath,
+      args,
+      cwd,
+      preset,
+      projectId,
+    });
     const launch = buildAgentLaunchCommand({
       providerCommand: resolvedCommandPath,
       providerArgs: args,
       cwd,
       env: buildAgentProcessEnv(),
+      sandbox,
     });
     const provider = createProvider({
       command: launch.command,
@@ -1209,7 +1273,17 @@ export const createSessionStore = ({
       env: launch.env,
       existingSessionId: sessionId,
     });
-    const response = await initAcpProviderSession(provider);
+    let response: NewSessionResponse;
+    try {
+      response = await initAcpProviderSession(provider);
+    } catch (error) {
+      try {
+        await Promise.resolve(provider.cleanup());
+      } finally {
+        await cleanupSandboxCommand(sandbox !== null, sandbox?.mountDirectory ?? null);
+      }
+      throw error;
+    }
     installProviderSessionUpdateTap(provider, (notification) =>
       handleObservedSessionUpdate(response.sessionId, notification),
     );
@@ -1269,6 +1343,8 @@ export const createSessionStore = ({
       activePromptControllers: new Set(),
       provider,
       runningPromptCount: 0,
+      sandboxMountDirectory: sandbox?.mountDirectory ?? null,
+      sandboxed: sandbox !== null,
       session: restoredSession,
     });
     await persistSession(restoredSession);
@@ -1769,7 +1845,7 @@ export const createSessionStore = ({
     }
 
     cancelPermissionRequestsForSession(sessionId);
-    await Promise.resolve(entry.provider.cleanup());
+    await cleanupSessionProvider(entry);
     runtimeSessions.delete(sessionId);
 
     const stoppedSession = parse(sessionSummarySchema, {
@@ -1791,7 +1867,7 @@ export const createSessionStore = ({
     const entry = runtimeSessions.get(sessionId);
     if (entry !== undefined) {
       cancelPermissionRequestsForSession(sessionId);
-      entry.provider.cleanup();
+      void cleanupSessionProvider(entry);
       runtimeSessions.delete(sessionId);
     }
 
@@ -1843,6 +1919,7 @@ export const createSession = async (options: {
   readonly cwd: string;
   readonly initialModelId?: string | null;
   readonly initialModeId?: string | null;
+  readonly sandboxEnabled?: boolean | null;
 }): Promise<SessionSummary> => {
   return getSessionStore().createSession(options);
 };
@@ -1855,6 +1932,7 @@ export const createPreparedSession = async (options: {
   readonly cwd: string;
   readonly initialModelId?: string | null;
   readonly initialModeId?: string | null;
+  readonly sandboxEnabled?: boolean | null;
 }): Promise<SessionSummary> => {
   return getSessionStore().createSession({ ...options, persistInitial: false });
 };

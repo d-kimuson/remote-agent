@@ -3,10 +3,26 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
+import type { ProjectSandboxSettings } from '../../shared/acp.ts';
+
 import { createDatabase } from '../db/sqlite.ts';
 import { createProjectStore } from './project-store.ts';
 
 const disposableClients: { close: () => void }[] = [];
+
+const defaultProjectSandbox: ProjectSandboxSettings = {
+  enabled: false,
+  filesystem: {
+    allowRead: [],
+    denyRead: [],
+    allowWrite: ['.'],
+    denyWrite: [],
+  },
+  network: {
+    mode: 'inherit',
+    allowedDomains: [],
+  },
+};
 
 afterEach(() => {
   for (const client of disposableClients.splice(0)) {
@@ -147,6 +163,7 @@ describe('createProjectStore', () => {
     const settings = await store.updateProjectSettings(project.id, {
       name: 'Renamed Workspace',
       worktreeSetupScript: script,
+      sandbox: defaultProjectSandbox,
     });
     const restoredProject = await store.getProject(project.id);
 

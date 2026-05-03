@@ -17,6 +17,8 @@ import type {
   AgentProvidersResponse,
   AgentPreset,
   AppLanguage,
+  AppSandboxNetworkMode,
+  AppSandboxSettings,
   AppSubmitKeyBinding,
   CreateRoutineRequest,
   ModeOption,
@@ -38,6 +40,7 @@ import {
   CardHeader,
   CardTitle,
 } from '../../components/ui/card.tsx';
+import { Checkbox } from '../../components/ui/checkbox.tsx';
 import {
   Dialog,
   DialogContent,
@@ -103,6 +106,93 @@ import {
 import { appendRichPromptText } from '../projects/$projectId/rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from '../projects/$projectId/rich-prompt-editor.tsx';
 import { appSettingsQueryKey, routinesQueryKey } from './queries.ts';
+
+type StringListEditorProps = {
+  readonly id: string;
+  readonly label: string;
+  readonly placeholder: string;
+  readonly disabled: boolean;
+  readonly items: readonly string[];
+  readonly onItemsChange: (items: readonly string[]) => void;
+};
+
+const StringListEditor: FC<StringListEditorProps> = ({
+  id,
+  label,
+  placeholder,
+  disabled,
+  items,
+  onItemsChange,
+}) => {
+  const [value, setValue] = useState('');
+  const addValue = (): void => {
+    const trimmed = value.trim();
+    if (trimmed.length === 0 || items.includes(trimmed)) {
+      setValue('');
+      return;
+    }
+    onItemsChange([...items, trimmed]);
+    setValue('');
+  };
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex gap-2">
+        <Input
+          disabled={disabled}
+          id={id}
+          onChange={(event) => {
+            setValue(event.currentTarget.value);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              addValue();
+            }
+          }}
+          placeholder={placeholder}
+          value={value}
+        />
+        <Button
+          disabled={disabled || value.trim().length === 0}
+          onClick={addValue}
+          type="button"
+          variant="outline"
+        >
+          <Plus className="size-4" />
+          Add
+        </Button>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-muted-foreground">No entries.</p>
+      ) : (
+        <ul className="space-y-1">
+          {items.map((item) => (
+            <li
+              className="flex items-center justify-between gap-2 rounded-md border bg-background px-2 py-1 text-sm"
+              key={item}
+            >
+              <span className="min-w-0 break-all font-mono text-xs">{item}</span>
+              <Button
+                aria-label={`Remove ${item}`}
+                disabled={disabled}
+                onClick={() => {
+                  onItemsChange(items.filter((entry) => entry !== item));
+                }}
+                size="icon-sm"
+                type="button"
+                variant="ghost"
+              >
+                <X className="size-4" />
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+};
 
 const optionalFieldValue = (value: string): string | null => {
   const trimmed = value.trim();
@@ -1187,7 +1277,6 @@ export const ProviderSettingsPanel: FC = () => {
     mutationFn: ({ presetId }: { readonly presetId: string }) =>
       checkAgentProviderRequest(presetId, { cwd: null }),
   });
-
   const handleProviderToggle = async ({
     enabled,
     presetId,
@@ -1491,6 +1580,193 @@ export const ProviderSettingsPanel: FC = () => {
   );
 };
 
+export const SandboxSettingsPanel: FC = () => {
+  const queryClient = useQueryClient();
+  const { data: providerData } = useSuspenseQuery({
+    queryKey: agentProvidersQueryKey,
+    queryFn: fetchAgentProviders,
+  });
+  const { data: appSettingsData } = useSuspenseQuery({
+    queryKey: appSettingsQueryKey,
+    queryFn: fetchAppSettings,
+  });
+  const [globalSandboxAllowRead, setGlobalSandboxAllowRead] = useState<readonly string[]>(
+    appSettingsData.settings.sandbox.filesystem.allowRead,
+  );
+  const [globalSandboxDenyRead, setGlobalSandboxDenyRead] = useState<readonly string[]>(
+    appSettingsData.settings.sandbox.filesystem.denyRead,
+  );
+  const [globalSandboxAllowWrite, setGlobalSandboxAllowWrite] = useState<readonly string[]>(
+    appSettingsData.settings.sandbox.filesystem.allowWrite,
+  );
+  const [globalSandboxDenyWrite, setGlobalSandboxDenyWrite] = useState<readonly string[]>(
+    appSettingsData.settings.sandbox.filesystem.denyWrite,
+  );
+  const [globalSandboxNetworkMode, setGlobalSandboxNetworkMode] = useState<AppSandboxNetworkMode>(
+    appSettingsData.settings.sandbox.network.mode,
+  );
+  const [globalSandboxAllowedDomains, setGlobalSandboxAllowedDomains] = useState<readonly string[]>(
+    appSettingsData.settings.sandbox.network.allowedDomains,
+  );
+  const updateAppSettingsMutation = useMutation({
+    mutationFn: updateAppSettingsRequest,
+    onSuccess: (response) => {
+      queryClient.setQueryData(appSettingsQueryKey, response);
+    },
+  });
+
+  const handleProviderSandboxToggle = (presetId: string): void => {
+    const currentIds = appSettingsData.settings.sandbox.enabledProviderIds;
+    const nextIds = currentIds.includes(presetId)
+      ? currentIds.filter((id) => id !== presetId)
+      : [...currentIds, presetId];
+    updateAppSettingsMutation.mutate({
+      ...appSettingsData.settings,
+      sandbox: {
+        ...appSettingsData.settings.sandbox,
+        enabledProviderIds: nextIds,
+      },
+    });
+  };
+
+  const globalSandboxFromState = (): AppSandboxSettings => ({
+    enabledProviderIds: appSettingsData.settings.sandbox.enabledProviderIds,
+    filesystem: {
+      allowRead: [...globalSandboxAllowRead],
+      denyRead: [...globalSandboxDenyRead],
+      allowWrite: [...globalSandboxAllowWrite],
+      denyWrite: [...globalSandboxDenyWrite],
+    },
+    network: {
+      mode: globalSandboxNetworkMode,
+      allowedDomains: [...globalSandboxAllowedDomains],
+    },
+  });
+
+  const saveGlobalSandboxRules = (): void => {
+    updateAppSettingsMutation.mutate({
+      ...appSettingsData.settings,
+      sandbox: globalSandboxFromState(),
+    });
+  };
+
+  const globalSandboxRulesChanged =
+    JSON.stringify(globalSandboxFromState()) !== JSON.stringify(appSettingsData.settings.sandbox);
+
+  return (
+    <Card className="app-panel">
+      <CardHeader>
+        <CardTitle>Sandbox</CardTitle>
+        <CardDescription>
+          Select providers that may use srt sandboxing and configure global rules merged into
+          project rules.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        <div className="space-y-2">
+          <Label>Sandbox providers</Label>
+          <div className="grid gap-2 md:grid-cols-2">
+            {providerData.providers.map((entry) => (
+              <label className="flex items-center gap-2 text-sm" key={entry.preset.id}>
+                <Checkbox
+                  checked={appSettingsData.settings.sandbox.enabledProviderIds.includes(
+                    entry.preset.id,
+                  )}
+                  disabled={updateAppSettingsMutation.isPending}
+                  onCheckedChange={() => {
+                    handleProviderSandboxToggle(entry.preset.id);
+                  }}
+                />
+                <span className="min-w-0 truncate">{entry.preset.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <StringListEditor
+            disabled={updateAppSettingsMutation.isPending}
+            id="global-sandbox-allow-read"
+            items={globalSandboxAllowRead}
+            label="Read allow paths"
+            onItemsChange={setGlobalSandboxAllowRead}
+            placeholder="."
+          />
+          <StringListEditor
+            disabled={updateAppSettingsMutation.isPending}
+            id="global-sandbox-deny-read"
+            items={globalSandboxDenyRead}
+            label="Read deny paths"
+            onItemsChange={setGlobalSandboxDenyRead}
+            placeholder="~/.ssh"
+          />
+          <StringListEditor
+            disabled={updateAppSettingsMutation.isPending}
+            id="global-sandbox-allow-write"
+            items={globalSandboxAllowWrite}
+            label="Write allow paths"
+            onItemsChange={setGlobalSandboxAllowWrite}
+            placeholder="."
+          />
+          <StringListEditor
+            disabled={updateAppSettingsMutation.isPending}
+            id="global-sandbox-deny-write"
+            items={globalSandboxDenyWrite}
+            label="Write deny paths"
+            onItemsChange={setGlobalSandboxDenyWrite}
+            placeholder=".env"
+          />
+        </div>
+        <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px] md:items-start">
+          <div className="space-y-1">
+            <Label htmlFor="global-sandbox-network-mode">Network policy</Label>
+            <p className="text-sm text-muted-foreground">
+              None leaves network unrestricted. Restrict uses the domain allowlist below.
+            </p>
+          </div>
+          <Select
+            disabled={updateAppSettingsMutation.isPending}
+            onValueChange={(value) => {
+              setGlobalSandboxNetworkMode(value === 'restrict' ? 'restrict' : 'none');
+            }}
+            value={globalSandboxNetworkMode}
+          >
+            <SelectTrigger id="global-sandbox-network-mode">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">None</SelectItem>
+              <SelectItem value="restrict">Restrict</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {globalSandboxNetworkMode === 'restrict' ? (
+          <StringListEditor
+            disabled={updateAppSettingsMutation.isPending}
+            id="global-sandbox-allowed-domains"
+            items={globalSandboxAllowedDomains}
+            label="Network allowed domains"
+            onItemsChange={setGlobalSandboxAllowedDomains}
+            placeholder="github.com"
+          />
+        ) : null}
+        <div className="flex justify-end">
+          <Button
+            disabled={!globalSandboxRulesChanged || updateAppSettingsMutation.isPending}
+            onClick={saveGlobalSandboxRules}
+            type="button"
+            variant="outline"
+          >
+            {updateAppSettingsMutation.isPending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : null}
+            Save sandbox rules
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
 export const AppearanceSettingsPanel: FC = () => {
   const { t } = useTranslation();
   const { preference, resolvedTheme, setPreference } = useTheme();
@@ -1593,6 +1869,7 @@ export const LanguageSettingsPanel: FC = () => {
               updateMutation.mutate({
                 language: parseAppLanguage(value),
                 submitKeyBinding: data.settings.submitKeyBinding,
+                sandbox: data.settings.sandbox,
               });
             }}
             value={data.settings.language}
@@ -1659,6 +1936,7 @@ export const KeybindingSettingsPanel: FC = () => {
               updateMutation.mutate({
                 language: data.settings.language,
                 submitKeyBinding: parseAppSubmitKeyBinding(value),
+                sandbox: data.settings.sandbox,
               });
             }}
             value={data.settings.submitKeyBinding}

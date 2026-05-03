@@ -3,6 +3,9 @@ export type AgentLaunchCommandInput = {
   readonly providerArgs: readonly string[];
   readonly cwd: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly sandbox?: {
+    readonly sandboxedCommand: string;
+  } | null;
 };
 
 export type AgentLaunchCommand = {
@@ -17,9 +20,18 @@ export const buildAgentLaunchCommand = ({
   providerArgs,
   cwd,
   env,
-}: AgentLaunchCommandInput): AgentLaunchCommand => ({
-  command: providerCommand,
-  args: [...providerArgs],
-  cwd,
-  env,
-});
+  sandbox,
+}: AgentLaunchCommandInput): AgentLaunchCommand =>
+  sandbox === null || sandbox === undefined
+    ? {
+        command: providerCommand,
+        args: [...providerArgs],
+        cwd,
+        env,
+      }
+    : {
+        command: '/usr/bin/env',
+        args: ['bash', '-lc', sandbox.sandboxedCommand],
+        cwd,
+        env,
+      };

@@ -5,7 +5,9 @@ import {
   appSettingsSchema,
   appLanguageSchema,
   appSubmitKeyBindingSchema,
+  appSandboxSettingsSchema,
   type AppSettings,
+  type AppSandboxSettings,
   type AppLanguage,
   type AppSubmitKeyBinding,
   type UpdateAppSettingsRequest,
@@ -15,8 +17,28 @@ import { type AppDatabase, getDefaultDatabase } from '../db/sqlite.ts';
 
 const submitKeyBindingKey = 'submit_key_binding';
 const languageKey = 'language';
+const sandboxKey = 'sandbox';
 const defaultSubmitKeyBinding: AppSubmitKeyBinding = 'mod-enter';
 const defaultLanguage: AppLanguage = 'ja';
+const defaultSandboxSettings: AppSandboxSettings = {
+  enabledProviderIds: [],
+  filesystem: {
+    allowRead: [],
+    denyRead: [],
+    allowWrite: ['.'],
+    denyWrite: [],
+  },
+  network: {
+    mode: 'none',
+    allowedDomains: [
+      'chatgpt.com',
+      '*.chatgpt.com',
+      'opencode.ai',
+      '*.opencode.ai',
+      'api.anthropic.com',
+    ],
+  },
+};
 
 const parseStoredSubmitKeyBinding = (value: string | null | undefined): AppSubmitKeyBinding => {
   const parsed = safeParse(appSubmitKeyBindingSchema, value);
@@ -26,6 +48,20 @@ const parseStoredSubmitKeyBinding = (value: string | null | undefined): AppSubmi
 const parseStoredLanguage = (value: string | null | undefined): AppLanguage => {
   const parsed = safeParse(appLanguageSchema, value);
   return parsed.success ? parsed.output : defaultLanguage;
+};
+
+const parseStoredSandboxSettings = (value: string | null | undefined): AppSandboxSettings => {
+  if (value === null || value === undefined) {
+    return defaultSandboxSettings;
+  }
+
+  try {
+    const parsedJson = JSON.parse(value) as unknown;
+    const parsed = safeParse(appSandboxSettingsSchema, parsedJson);
+    return parsed.success ? parsed.output : defaultSandboxSettings;
+  } catch {
+    return defaultSandboxSettings;
+  }
 };
 
 export const createAppSettingsStore = (database: AppDatabase = getDefaultDatabase()) => {
@@ -39,10 +75,16 @@ export const createAppSettingsStore = (database: AppDatabase = getDefaultDatabas
       .from(appSettingsTable)
       .where(eq(appSettingsTable.key, languageKey))
       .limit(1);
+    const [sandboxRecord] = await database.db
+      .select()
+      .from(appSettingsTable)
+      .where(eq(appSettingsTable.key, sandboxKey))
+      .limit(1);
 
     return parse(appSettingsSchema, {
       language: parseStoredLanguage(languageRecord?.value),
       submitKeyBinding: parseStoredSubmitKeyBinding(records.at(0)?.value),
+      sandbox: parseStoredSandboxSettings(sandboxRecord?.value),
     });
   };
 
@@ -73,6 +115,20 @@ export const createAppSettingsStore = (database: AppDatabase = getDefaultDatabas
         target: appSettingsTable.key,
         set: {
           value: request.submitKeyBinding,
+          updatedAt: now,
+        },
+      });
+    await database.db
+      .insert(appSettingsTable)
+      .values({
+        key: sandboxKey,
+        value: JSON.stringify(request.sandbox),
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: appSettingsTable.key,
+        set: {
+          value: JSON.stringify(request.sandbox),
           updatedAt: now,
         },
       });

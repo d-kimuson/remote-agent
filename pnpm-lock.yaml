@@ -19,6 +19,9 @@ importers:
       '@agentclientprotocol/claude-agent-acp':
         specifier: 0.31.4
         version: 0.31.4
+      '@anthropic-ai/sandbox-runtime':
+        specifier: 0.0.49
+        version: 0.0.49
       '@zed-industries/codex-acp':
         specifier: 0.12.0
         version: 0.12.0
@@ -308,6 +311,11 @@ packages:
     engines: {node: '>=18.0.0'}
     peerDependencies:
       zod: ^4.0.0
+
+  '@anthropic-ai/sandbox-runtime@0.0.49':
+    resolution: {integrity: sha512-t8Ggc0A7UizxMGPk/ANEH8nwnCqzNWIKpkdKgxDVUaKNMQnMzzWR6aErrqIdU03/ZP5RN6/OL/kjFOw/Vox3KQ==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   '@anthropic-ai/sdk@0.91.1':
     resolution: {integrity: sha512-LAmu761tSN9r66ixvmciswUj/ZC+1Q4iAfpedTfSVLeswRwnY3n2Nb6Tsk+cLPP28aLOPWeMgIuTuCcMC6W/iw==}
@@ -1846,6 +1854,9 @@ packages:
   '@polka/url@1.0.0-next.29':
     resolution: {integrity: sha512-wwQAWhWSuHaag8c4q/KN/vCoeOJYshAIvMQwD4GpSb3OiZklFfvAgmj0VCBBImRpuF/aFgIRzllXlVX93Jevww==}
 
+  '@pondwader/socks5-server@1.0.10':
+    resolution: {integrity: sha512-bQY06wzzR8D2+vVCUoBsr5QS2U6UgPUQRmErNwtsuI6vLcyRKkafjkr3KxbtGFf9aBBIV2mcvlsKD1UYaIV+sg==}
+
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
 
@@ -2831,6 +2842,10 @@ packages:
   commander@11.1.0:
     resolution: {integrity: sha512-yPVavfyCcRhmorC7rWlkHn15b4wDVgVmBA7kV4QVBsF7kv/9TKJAbAXVTxvTnwP8HHKjRCJDClKbciiYS7p0DQ==}
     engines: {node: '>=16'}
+
+  commander@12.1.0:
+    resolution: {integrity: sha512-Vw8qHK3bZM9y/P10u3Vib8o/DdkvA2OtPtZvD871QKjy74Wj1WSKFILMPRPSdUSx5RFK1arlJzEtA4PkFgnbuA==}
+    engines: {node: '>=18'}
 
   commander@14.0.3:
     resolution: {integrity: sha512-H+y0Jo/T1RZ9qPP4Eh1pkcQcLRglraJaSLoyOtHxu6AapkjWVCy2Sit1QQ4x3Dng8qDlSsZEet7g5Pq06MvTgw==}
@@ -5868,6 +5883,13 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
+  '@anthropic-ai/sandbox-runtime@0.0.49':
+    dependencies:
+      '@pondwader/socks5-server': 1.0.10
+      commander: 12.1.0
+      shell-quote: 1.8.3
+      zod: 3.25.76
+
   '@anthropic-ai/sdk@0.91.1(zod@4.4.1)':
     dependencies:
       json-schema-to-ts: 3.1.1
@@ -7375,6 +7397,8 @@ snapshots:
 
   '@polka/url@1.0.0-next.29': {}
 
+  '@pondwader/socks5-server@1.0.10': {}
+
   '@quansync/fs@1.0.0':
     dependencies:
       quansync: 1.0.0
@@ -8298,6 +8322,8 @@ snapshots:
   comma-separated-tokens@2.0.3: {}
 
   commander@11.1.0: {}
+
+  commander@12.1.0: {}
 
   commander@14.0.3: {}
 

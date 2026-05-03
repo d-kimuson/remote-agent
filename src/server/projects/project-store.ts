@@ -1,9 +1,10 @@
 import { and, eq } from 'drizzle-orm';
 import { stat } from 'node:fs/promises';
 import path from 'node:path';
-import { parse } from 'valibot';
+import { parse, safeParse } from 'valibot';
 
 import {
+  projectSandboxSettingsSchema,
   projectSettingsSchema,
   projectSchema,
   projectsResponseSchema,
@@ -11,12 +12,14 @@ import {
   type Project,
   type ProjectModePreference,
   type ProjectModelPreference,
+  type ProjectSandboxSettings,
   type ProjectSettings,
   type UpdateProjectSettingsRequest,
   type UpdateProjectModePreferenceRequest,
   type UpdateProjectModelPreferenceRequest,
 } from '../../shared/acp.ts';
 import {
+  appSettingsTable,
   projectModePreferencesTable,
   projectModelPreferencesTable,
   projectsTable,
@@ -31,6 +34,38 @@ const slugify = (value: string): string => {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '') || 'project'
   );
+};
+
+const defaultProjectSandboxSettings: ProjectSandboxSettings = {
+  enabled: false,
+  filesystem: {
+    allowRead: [],
+    denyRead: [],
+    allowWrite: ['.'],
+    denyWrite: [],
+  },
+  network: {
+    mode: 'inherit',
+    allowedDomains: [],
+  },
+};
+
+const projectSandboxSettingsKey = (projectId: string): string => `project_sandbox:${projectId}`;
+
+const parseStoredProjectSandboxSettings = (
+  value: string | null | undefined,
+): ProjectSandboxSettings => {
+  if (value === null || value === undefined) {
+    return defaultProjectSandboxSettings;
+  }
+
+  try {
+    const parsedJson = JSON.parse(value) as unknown;
+    const parsed = safeParse(projectSandboxSettingsSchema, parsedJson);
+    return parsed.success ? parsed.output : defaultProjectSandboxSettings;
+  } catch {
+    return defaultProjectSandboxSettings;
+  }
 };
 
 const assertDirectory = async (workingDirectory: string): Promise<string> => {
@@ -148,6 +183,11 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
       .select()
       .from(projectModePreferencesTable)
       .where(eq(projectModePreferencesTable.projectId, projectId));
+    const [sandboxRecord] = await database.db
+      .select()
+      .from(appSettingsTable)
+      .where(eq(appSettingsTable.key, projectSandboxSettingsKey(projectId)))
+      .limit(1);
 
     const modelPreferences = modelRecords
       .map(mapProjectModelPreferenceRecord)
@@ -172,6 +212,7 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
       modelPreferences,
       modePreferences,
       worktreeSetupScript: project.worktreeSetupScript ?? '',
+      sandbox: parseStoredProjectSandboxSettings(sandboxRecord?.value),
     });
   };
 
@@ -187,6 +228,20 @@ export const createProjectStore = (database: AppDatabase = getDefaultDatabase())
         worktreeSetupScript: request.worktreeSetupScript,
       })
       .where(eq(projectsTable.id, projectId));
+    await database.db
+      .insert(appSettingsTable)
+      .values({
+        key: projectSandboxSettingsKey(projectId),
+        value: JSON.stringify(request.sandbox),
+        updatedAt: new Date().toISOString(),
+      })
+      .onConflictDoUpdate({
+        target: appSettingsTable.key,
+        set: {
+          value: JSON.stringify(request.sandbox),
+          updatedAt: new Date().toISOString(),
+        },
+      });
 
     return getProjectSettings(projectId);
   };
