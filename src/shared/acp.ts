@@ -513,6 +513,7 @@ export const parsePersistedMessageRaw = (value: unknown) =>
 
 export const appInfoSchema = object({
   appName: pipe(string(), trim()),
+  version: pipe(string(), trim()),
   workingDirectory: pipe(string(), trim()),
   projectsFilePath: pipe(string(), trim()),
   agentPresets: array(agentPresetSchema),

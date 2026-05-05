@@ -1,15 +1,9 @@
-import { createFileRoute } from '@tanstack/react-router';
-import { Suspense } from 'react';
+import { createFileRoute, Navigate } from '@tanstack/react-router';
+import { type FC } from 'react';
 
-import { ProjectSettingsPage } from '../../../app/projects/$projectId/project-settings-page.tsx';
-
-const ProjectSettingsRoute = () => {
+const ProjectSettingsRoute: FC = () => {
   const { projectId } = Route.useParams();
-  return (
-    <Suspense>
-      <ProjectSettingsPage key={projectId} projectId={projectId} />
-    </Suspense>
-  );
+  return <Navigate replace search={{ projectId }} to="/settings" />;
 };
 
 export const Route = createFileRoute('/projects/$projectId/settings')({
