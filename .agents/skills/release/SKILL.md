@@ -102,29 +102,16 @@ TAG="v0.0.0" # replace
 gh release view "$TAG" --json body --jq .body
 ```
 
-Rewrite the notes into a concise human-facing changelog. Keep the language consistent with previous releases, usually English. A simple structure is:
+Rewrite the notes according to `docs/release-note-guideline.md`. The generated draft is based on commit logs, so categories and wording may be wrong from the remote-agent product perspective. Remove internal-only updates, move entries to the correct category, merge intermediate same-release fixes into their related feature, and rewrite commit-message phrasing into release-note prose.
 
-```markdown
-## Highlights
+For a second-pass review before publishing, delegate a focused review to another agent:
 
-- ...
-
-## Changes
-
-### Features
-
-- ...
-
-### Fixes
-
-- ...
-
-### Performance
-
-- ...
-
-[View changes on GitHub](https://github.com/d-kimuson/remote-agent/compare/vPREV...vNEXT)
+```bash
+RELEASE_URL="https://github.com/d-kimuson/remote-agent/releases/tag/v0.0.0" # replace
+pi -p "Read docs/release-note-guideline.md, review the Release Note at $RELEASE_URL, and identify concrete changes that should be made. Do not edit files or GitHub releases; only report findings."
 ```
+
+Apply the review findings when they are consistent with the guideline.
 
 Publish the draft with the rewritten notes:
 
