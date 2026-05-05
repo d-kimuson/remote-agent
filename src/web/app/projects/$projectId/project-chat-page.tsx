@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQueryClient,
-  useSuspenseInfiniteQuery,
-  useSuspenseQuery,
-} from '@tanstack/react-query';
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
@@ -63,7 +58,6 @@ import { Badge } from '../../../components/ui/badge.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
-import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 import {
   Select,
   SelectContent,
@@ -75,6 +69,7 @@ import {
   SelectValue,
 } from '../../../components/ui/select.tsx';
 import { ACP_SSE_BROWSER_EVENT } from '../../../lib/api/acp-sse-browser-event.ts';
+import { applySessionMessageEventToMessages } from '../../../lib/api/acp-sse-cache.pure.ts';
 import {
   cancelSessionRequest,
   createProjectWorktreeRequest,
@@ -867,24 +862,151 @@ const SlashCommandsLoader: FC<{
 };
 
 const SESSION_MESSAGES_PAGE_SIZE = 50;
-const initiallyPrefetchedSessionMessageKeys = new Set<string>();
 
 const compareChatMessageOrder = (left: ChatMessage, right: ChatMessage): number => {
   const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
   return createdAtOrder !== 0 ? createdAtOrder : left.id.localeCompare(right.id);
 };
 
-const mergeHydratedMessages = ({
+const OPTIMISTIC_USER_MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+const timestampMillisOrNull = (value: string): number | null => {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : time;
+};
+
+const userAttachmentIdentitySignature = (message: ChatMessage): string => {
+  if (message.rawJson.type !== 'user') {
+    return '';
+  }
+  return (message.rawJson.attachments ?? [])
+    .map((attachment) =>
+      [
+        attachment.attachmentId ?? '',
+        attachment.name ?? '',
+        String(attachment.sizeInBytes ?? ''),
+        attachment.source.type,
+        attachment.source.media_type,
+      ].join('\u0000'),
+    )
+    .join('\u0001');
+};
+
+const isOptimisticUserMessageDuplicate = ({
   fetched,
   local,
 }: {
+  readonly fetched: ChatMessage;
+  readonly local: ChatMessage;
+}): boolean => {
+  if (fetched.role !== 'user' || local.role !== 'user') {
+    return false;
+  }
+  if (fetched.text !== local.text) {
+    return false;
+  }
+  if (userAttachmentIdentitySignature(fetched) !== userAttachmentIdentitySignature(local)) {
+    return false;
+  }
+
+  const fetchedTime = timestampMillisOrNull(fetched.createdAt);
+  const localTime = timestampMillisOrNull(local.createdAt);
+  if (fetchedTime === null || localTime === null) {
+    return false;
+  }
+  return Math.abs(fetchedTime - localTime) <= OPTIMISTIC_USER_MESSAGE_DUPLICATE_WINDOW_MS;
+};
+
+const mergeHydratedMessages = ({
+  fetched,
+  local,
+  optimisticUserMessageIds,
+}: {
   readonly fetched: readonly ChatMessage[];
   readonly local: readonly ChatMessage[];
+  readonly optimisticUserMessageIds: ReadonlySet<string>;
 }): readonly ChatMessage[] => {
   const fetchedIds = new Set(fetched.map((message) => message.id));
-  return [...fetched, ...local.filter((message) => !fetchedIds.has(message.id))].toSorted(
-    compareChatMessageOrder,
-  );
+  return [
+    ...fetched,
+    ...local.filter(
+      (message) =>
+        !fetchedIds.has(message.id) &&
+        (!optimisticUserMessageIds.has(message.id) ||
+          !fetched.some((fetchedMessage) =>
+            isOptimisticUserMessageDuplicate({ fetched: fetchedMessage, local: message }),
+          )),
+    ),
+  ].toSorted(compareChatMessageOrder);
+};
+
+const REMAINING_SESSION_MESSAGES_PAGE_SIZE = 100;
+
+const ChunkedRemainingSessionMessagesLoader: FC<{
+  readonly before: string;
+  readonly latestMessages: readonly ChatMessage[];
+  readonly sessionId: string;
+  readonly onBeforeHydrateRemaining: () => void;
+  readonly onHydrated: (sessionId: string, messages: readonly ChatMessage[]) => void;
+  readonly onReady: () => void;
+}> = ({ before, latestMessages, onBeforeHydrateRemaining, onHydrated, onReady, sessionId }) => {
+  const [cursor, setCursor] = useState(before);
+  const [loadedPages, setLoadedPages] = useState<readonly SessionMessagesResponse[]>([]);
+  const processedCursorsRef = useRef(new Set<string>());
+  const capturedAnchorRef = useRef(false);
+
+  useLayoutEffect(() => {
+    setCursor(before);
+    setLoadedPages([]);
+    processedCursorsRef.current = new Set<string>();
+    capturedAnchorRef.current = false;
+  }, [before, sessionId]);
+
+  const { data } = useSuspenseQuery({
+    queryKey: [...sessionMessagesInfiniteQueryKey(sessionId), 'remaining-chunk', cursor],
+    queryFn: () =>
+      fetchSessionMessages(sessionId, {
+        view: 'transcript',
+        limit: REMAINING_SESSION_MESSAGES_PAGE_SIZE,
+        before: cursor,
+      }),
+  });
+
+  useLayoutEffect(() => {
+    if (processedCursorsRef.current.has(cursor)) {
+      return;
+    }
+    processedCursorsRef.current.add(cursor);
+    if (!capturedAnchorRef.current) {
+      capturedAnchorRef.current = true;
+      onBeforeHydrateRemaining();
+    }
+
+    const nextLoadedPages = [...loadedPages, data];
+    onHydrated(sessionId, [
+      ...[...nextLoadedPages].reverse().flatMap((page) => page.messages),
+      ...latestMessages,
+    ]);
+
+    const nextCursor = data.pageInfo.beforeCursor ?? null;
+    if (data.pageInfo.hasMoreBefore && nextCursor !== null) {
+      setLoadedPages(nextLoadedPages);
+      setCursor(nextCursor);
+      return;
+    }
+    onReady();
+  }, [
+    cursor,
+    data,
+    latestMessages,
+    loadedPages,
+    onBeforeHydrateRemaining,
+    onHydrated,
+    onReady,
+    sessionId,
+  ]);
+
+  return null;
 };
 
 const SessionMessagesHydrator: FC<{
@@ -896,59 +1018,54 @@ const SessionMessagesHydrator: FC<{
     isFetchingNextPage: boolean,
     loadedPageCount: number,
   ) => void;
-}> = ({ sessionId, onHydrated, onFetchNextPageReady }) => {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSuspenseInfiniteQuery({
-    queryKey: sessionMessagesInfiniteQueryKey(sessionId),
-    queryFn: ({ pageParam }) =>
+  readonly onBeforeFetchRemaining: () => void;
+}> = ({ sessionId, onBeforeFetchRemaining, onHydrated, onFetchNextPageReady }) => {
+  const [remainingLoaded, setRemainingLoaded] = useState(false);
+  const latestMessagesQuery = useSuspenseQuery({
+    queryKey: [...sessionMessagesInfiniteQueryKey(sessionId), 'latest'],
+    queryFn: () =>
       fetchSessionMessages(sessionId, {
         view: 'transcript',
         limit: SESSION_MESSAGES_PAGE_SIZE,
-        before: pageParam ?? undefined,
       }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) =>
-      lastPage.pageInfo.hasMoreBefore ? lastPage.pageInfo.beforeCursor : undefined,
   });
-
-  const allMessages = useMemo(
-    () => [...data.pages].reverse().flatMap((page) => page.messages),
-    [data.pages],
-  );
+  const beforeCursor = latestMessagesQuery.data.pageInfo.beforeCursor ?? null;
+  const shouldFetchRemaining =
+    latestMessagesQuery.data.pageInfo.hasMoreBefore && beforeCursor !== null;
 
   useLayoutEffect(() => {
-    onHydrated(sessionId, allMessages);
-  }, [allMessages, onHydrated, sessionId]);
-
-  const fetchNextMessagesPage = useCallback(
-    () => fetchNextPage({ cancelRefetch: false }),
-    [fetchNextPage],
-  );
+    setRemainingLoaded(false);
+  }, [sessionId, beforeCursor]);
 
   useLayoutEffect(() => {
-    onFetchNextPageReady(fetchNextMessagesPage, hasNextPage, isFetchingNextPage, data.pages.length);
-  }, [
-    data.pages.length,
-    fetchNextMessagesPage,
-    hasNextPage,
-    isFetchingNextPage,
-    onFetchNextPageReady,
-  ]);
+    onHydrated(sessionId, latestMessagesQuery.data.messages);
+  }, [latestMessagesQuery.data.messages, onHydrated, sessionId]);
 
-  useEffect(() => {
-    const prefetchKey = sessionId;
-    if (
-      data.pages.length !== 1 ||
-      !hasNextPage ||
-      isFetchingNextPage ||
-      initiallyPrefetchedSessionMessageKeys.has(prefetchKey)
-    ) {
-      return;
-    }
-    initiallyPrefetchedSessionMessageKeys.add(prefetchKey);
-    void fetchNextMessagesPage();
-  }, [data.pages.length, fetchNextMessagesPage, hasNextPage, isFetchingNextPage, sessionId]);
+  const noopFetchNextPage = useCallback(async () => {}, []);
 
-  return null;
+  useLayoutEffect(() => {
+    onFetchNextPageReady(
+      noopFetchNextPage,
+      shouldFetchRemaining && !remainingLoaded,
+      shouldFetchRemaining && !remainingLoaded,
+      remainingLoaded ? 2 : 1,
+    );
+  }, [noopFetchNextPage, onFetchNextPageReady, remainingLoaded, shouldFetchRemaining]);
+
+  return shouldFetchRemaining && !remainingLoaded ? (
+    <Suspense fallback={null}>
+      <ChunkedRemainingSessionMessagesLoader
+        before={beforeCursor}
+        latestMessages={latestMessagesQuery.data.messages}
+        onBeforeHydrateRemaining={onBeforeFetchRemaining}
+        onHydrated={onHydrated}
+        onReady={() => {
+          setRemainingLoaded(true);
+        }}
+        sessionId={sessionId}
+      />
+    </Suspense>
+  ) : null;
 };
 
 export const ProjectChatPage: FC<{
@@ -1011,6 +1128,7 @@ export const ProjectChatPage: FC<{
     value: '',
   });
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
+  const optimisticUserMessageIdsRef = useRef(new Set<string>());
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
     readonly string[]
@@ -1039,7 +1157,6 @@ export const ProjectChatPage: FC<{
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechListeningDesiredRef = useRef(false);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
-  const olderMessagesPrefetchRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const lastActiveTranscriptKeyRef = useRef<string | null>(null);
@@ -1056,8 +1173,10 @@ export const ProjectChatPage: FC<{
   const fetchNextPageRef = useRef<(() => Promise<unknown>) | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
-  const [loadedSessionMessagePageCount, setLoadedSessionMessagePageCount] = useState(0);
-  const fetchingNextPageRef = useRef(false);
+  const pendingPrependAnchorRef = useRef<{
+    readonly messageId: string;
+    readonly top: number;
+  } | null>(null);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
@@ -1727,15 +1846,52 @@ export const ProjectChatPage: FC<{
       setAwaitingAssistantTranscriptKeys((current) =>
         current.includes(nextSessionId) ? current : [...current, nextSessionId],
       );
-      setTranscripts((current) =>
-        current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
-          ? moveTranscript({
-              from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
-              to: nextSessionId,
-              transcripts: current,
-            })
-          : current,
-      );
+      setTranscripts((current) => {
+        const moved =
+          current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
+            ? moveTranscript({
+                from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
+                to: nextSessionId,
+                transcripts: current,
+              })
+            : current;
+
+        if (sseEvent.type !== 'message-add' && sseEvent.type !== 'message-delta') {
+          return moved;
+        }
+
+        const local = moved[nextSessionId] ?? [];
+        const patchedFromEvent = applySessionMessageEventToMessages(
+          {
+            messages: [...local],
+            pageInfo: { hasMoreBefore: false, beforeCursor: null },
+            meta: { totalMessageCount: local.length },
+          },
+          sseEvent,
+        ).messages;
+        const patched =
+          sseEvent.type === 'message-add' && sseEvent.message.role === 'user'
+            ? patchedFromEvent.filter((message) => {
+                const shouldDrop =
+                  optimisticUserMessageIdsRef.current.has(message.id) &&
+                  isOptimisticUserMessageDuplicate({ fetched: sseEvent.message, local: message });
+                if (shouldDrop) {
+                  optimisticUserMessageIdsRef.current.delete(message.id);
+                }
+                return !shouldDrop;
+              })
+            : patchedFromEvent;
+        if (
+          patched.length === local.length &&
+          patched.every((message, index) => message === local[index])
+        ) {
+          return moved;
+        }
+        return {
+          ...moved,
+          [nextSessionId]: patched.map((message) => ({ ...message })),
+        };
+      });
       navigateToStartedDraftSession(nextSessionId);
     };
 
@@ -1761,17 +1917,61 @@ export const ProjectChatPage: FC<{
         ) {
           return current;
         }
+        const merged = mergeHydratedMessages({
+          fetched: messages,
+          local,
+          optimisticUserMessageIds: optimisticUserMessageIdsRef.current,
+        });
+        if (
+          merged.length === local.length &&
+          merged.every((message, index) => {
+            const currentMessage = local[index];
+            return (
+              currentMessage !== undefined &&
+              currentMessage.id === message.id &&
+              currentMessage.updatedAt === message.updatedAt &&
+              currentMessage.text === message.text
+            );
+          })
+        ) {
+          return current;
+        }
         return {
           ...current,
-          [targetSessionId]: mergeHydratedMessages({
-            fetched: messages,
-            local,
-          }).map((message) => ({ ...message })),
+          [targetSessionId]: merged.map((message) => ({ ...message })),
         };
       });
     },
     [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
+  const handleBeforeFetchRemainingMessages = useCallback(() => {
+    const viewport = chatViewportElement;
+    if (
+      viewport === null ||
+      shouldStickToBottomRef.current ||
+      pendingPrependAnchorRef.current !== null
+    ) {
+      return;
+    }
+
+    const viewportTop = viewport.getBoundingClientRect().top;
+    const messageElements = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')];
+    const anchorElement =
+      messageElements.find((element) => element.getBoundingClientRect().bottom >= viewportTop) ??
+      messageElements[0];
+    if (anchorElement === undefined) {
+      return;
+    }
+    const messageId = anchorElement.dataset['messageId'];
+    if (messageId === undefined) {
+      return;
+    }
+    pendingPrependAnchorRef.current = {
+      messageId,
+      top: anchorElement.getBoundingClientRect().top,
+    };
+  }, [chatViewportElement]);
+
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
   const canSendPrompt = useCallback(
     (value: string) =>
@@ -2204,6 +2404,7 @@ export const ProjectChatPage: FC<{
       kind: 'user',
       attachments: userAttachmentsFromUploaded(attachedFiles),
     });
+    optimisticUserMessageIdsRef.current.add(userMessage.id);
     const initialTranscriptKey = activeTranscriptKey;
     let requestAwaitingTranscriptKeys: readonly string[] = [initialTranscriptKey];
 
@@ -2434,13 +2635,10 @@ export const ProjectChatPage: FC<{
       fetchNextPage: () => Promise<unknown>,
       nextPageExists: boolean,
       nextIsFetchingNextPage: boolean,
-      loadedPageCount: number,
     ) => {
       fetchNextPageRef.current = fetchNextPage;
       setHasNextPage(nextPageExists);
       setIsFetchingNextPage(nextIsFetchingNextPage);
-      setLoadedSessionMessagePageCount(loadedPageCount);
-      fetchingNextPageRef.current = nextIsFetchingNextPage;
     },
     [],
   );
@@ -2480,38 +2678,23 @@ export const ProjectChatPage: FC<{
     }
   };
 
-  useEffect(() => {
-    if (
-      sessionId === null ||
-      chatViewportElement === null ||
-      !hasNextPage ||
-      loadedSessionMessagePageCount < 2
-    ) {
-      return;
-    }
-    const sentinel = olderMessagesPrefetchRef.current;
-    if (sentinel === null) {
+  useLayoutEffect(() => {
+    const pendingAnchor = pendingPrependAnchorRef.current;
+    const viewport = chatViewportElement;
+    if (pendingAnchor === null || viewport === null) {
       return;
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting) && !fetchingNextPageRef.current) {
-          fetchingNextPageRef.current = true;
-          void fetchNextPageRef.current?.();
-        }
-      },
-      {
-        root: chatViewportElement,
-        rootMargin: '200px 0px 0px 0px',
-        threshold: 0,
-      },
+    const anchorElement = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')].find(
+      (element) => element.dataset['messageId'] === pendingAnchor.messageId,
     );
-    observer.observe(sentinel);
-    return () => {
-      observer.disconnect();
-    };
-  }, [chatViewportElement, hasNextPage, loadedSessionMessagePageCount, sessionId]);
+    if (anchorElement === undefined) {
+      return;
+    }
+
+    pendingPrependAnchorRef.current = null;
+    viewport.scrollTop += anchorElement.getBoundingClientRect().top - pendingAnchor.top;
+  }, [chatViewportElement, visibleTranscript.length]);
 
   const handleJumpToLatest = () => {
     shouldStickToBottomRef.current = true;
@@ -2536,6 +2719,7 @@ export const ProjectChatPage: FC<{
     const didSessionChange = lastActiveTranscriptKeyRef.current !== activeTranscriptKey;
     if (didSessionChange) {
       lastActiveTranscriptKeyRef.current = activeTranscriptKey;
+      pendingPrependAnchorRef.current = null;
       shouldStickToBottomRef.current = true;
       setIsChatFollowingTail(true);
       setUnreadMessageCount(0);
@@ -2573,6 +2757,7 @@ export const ProjectChatPage: FC<{
         <Suspense fallback={null}>
           <SessionMessagesHydrator
             key={sessionId}
+            onBeforeFetchRemaining={handleBeforeFetchRemainingMessages}
             onHydrated={handleMessagesHydrated}
             onFetchNextPageReady={handleFetchNextPageReady}
             sessionId={sessionId}
@@ -2661,9 +2846,11 @@ export const ProjectChatPage: FC<{
         <section className="min-h-0 flex-1">
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             <div className="relative min-h-0 flex-1">
-              <ScrollArea
-                className="app-transcript-surface h-full"
+              <div
+                className="app-transcript-surface h-full overflow-auto rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+                data-slot="scroll-area-viewport"
                 onScrollCapture={handleChatScroll}
+                ref={setChatViewportElement}
               >
                 <div
                   className={cn(
@@ -2740,9 +2927,6 @@ export const ProjectChatPage: FC<{
                       セッションを読み込み中...
                     </div>
                   ) : null}
-                  {loadedSessionMessagePageCount > 1 && hasNextPage ? (
-                    <div aria-hidden className="h-px" ref={olderMessagesPrefetchRef} />
-                  ) : null}
                   {visibleTranscript.map((message, index) => {
                     const isUser = message.role === 'user';
                     const displayEvents = filterDisplayableRawEvents(message.rawEvents);
@@ -2758,10 +2942,11 @@ export const ProjectChatPage: FC<{
                     return (
                       <div
                         className={cn(
-                          'group/message flex w-full',
+                          'group/message flex w-full [content-visibility:auto] [contain-intrinsic-size:auto_180px]',
                           isUser ? 'justify-end' : 'justify-start',
                           isToolOnly && isAfterToolOnly ? '-mt-3 md:-mt-4' : '',
                         )}
+                        data-message-id={message.id}
                         key={message.id}
                       >
                         <div
@@ -2843,7 +3028,7 @@ export const ProjectChatPage: FC<{
                   ) : null}
                   <div aria-hidden ref={scrollAnchorRef} />
                 </div>
-              </ScrollArea>
+              </div>
               {shouldShowScrollBanner ? (
                 <Button
                   aria-label="Jump to latest message"

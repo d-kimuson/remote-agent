@@ -48,10 +48,20 @@ const applyMessageEvent = (queryClient: QueryClient, event: AcpSseEvent): boolea
     (current) => applySessionMessageEventToMessages(current, event),
   );
 
+  queryClient.setQueriesData<SessionMessagesResponse>(
+    { queryKey: sessionMessagesInfiniteQueryKey(event.sessionId) },
+    (current) => {
+      if (current === undefined || !Array.isArray(current.messages)) {
+        return current;
+      }
+      return applySessionMessageEventToMessages(current, event);
+    },
+  );
+
   queryClient.setQueriesData<InfiniteData<SessionMessagesResponse>>(
     { queryKey: sessionMessagesInfiniteQueryKey(event.sessionId) },
     (current) => {
-      if (current === undefined) {
+      if (current === undefined || !Array.isArray(current.pages)) {
         return current;
       }
       const firstPage = current.pages[0];

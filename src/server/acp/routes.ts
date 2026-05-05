@@ -898,7 +898,7 @@ export const acpRoutes = new Hono()
       const beforeParam = c.req.query('before');
 
       const view = viewParam === 'raw' ? 'raw' : 'transcript';
-      const limit = limitParam !== undefined ? Math.min(Number(limitParam), 1000) : 200;
+      const limit = limitParam !== undefined ? Math.min(Number(limitParam), 10_000) : 200;
       const before =
         beforeParam !== undefined && beforeParam.includes('__')
           ? (() => {

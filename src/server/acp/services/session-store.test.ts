@@ -1719,16 +1719,21 @@ describe('createSessionStore', () => {
         availableCommands: [{ name: 'review', description: 'Review current changes' }],
       },
     });
+    const toolUpdate = {
+      sessionUpdate: 'tool_call_update' as const,
+      toolCallId: 'tool-1',
+      title: 'Edit file',
+      kind: 'edit' as const,
+      status: 'in_progress' as const,
+      locations: [{ path: 'src/app.ts', line: 12 }],
+    };
     installedHandler({
       sessionId: 'session-updates',
-      update: {
-        sessionUpdate: 'tool_call_update',
-        toolCallId: 'tool-1',
-        title: 'Edit file',
-        kind: 'edit',
-        status: 'in_progress',
-        locations: [{ path: 'src/app.ts', line: 12 }],
-      },
+      update: toolUpdate,
+    });
+    installedHandler({
+      sessionId: 'session-updates',
+      update: toolUpdate,
     });
 
     await new Promise((resolve) => {
@@ -1742,19 +1747,17 @@ describe('createSessionStore', () => {
     });
     const messages = await store.listMessages('session-updates');
     expect(messages.map((message) => message.kind)).toContain('raw_meta');
+    const toolUpdateText = JSON.stringify({
+      toolCallId: 'tool-1',
+      title: 'Edit file',
+      kind: 'edit',
+      status: 'in_progress',
+      locations: [{ path: 'src/app.ts', line: 12 }],
+    });
     expect(messages.map((message) => message.text)).toEqual(
-      expect.arrayContaining([
-        'context 1200/4000 tokens (30%)',
-        '/review',
-        JSON.stringify({
-          toolCallId: 'tool-1',
-          title: 'Edit file',
-          kind: 'edit',
-          status: 'in_progress',
-          locations: [{ path: 'src/app.ts', line: 12 }],
-        }),
-      ]),
+      expect.arrayContaining(['context 1200/4000 tokens (30%)', '/review', toolUpdateText]),
     );
+    expect(messages.filter((message) => message.text === toolUpdateText)).toHaveLength(1);
   });
 
   test('cancels a running prompt and persists an abort message', async () => {

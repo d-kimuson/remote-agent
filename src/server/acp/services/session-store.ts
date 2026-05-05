@@ -654,6 +654,7 @@ export const createSessionStore = ({
   installAcpProviderToolResultPatch();
 
   const runtimeSessions = new Map<string, SessionEntry>();
+  const lastPersistedToolUpdateTextByKey = new Map<string, string>();
 
   const emitSessionUpdated = (session: SessionSummary): void => {
     emitAcpSse({
@@ -978,6 +979,45 @@ export const createSessionStore = ({
     });
   };
 
+  const persistMutableMessage = async ({
+    id,
+    sessionId,
+    message,
+  }: {
+    readonly id: string;
+    readonly sessionId: string;
+    readonly message: ChatMessage;
+  }): Promise<void> => {
+    const created = message.createdAt;
+    const kind: ChatMessageKind =
+      message.kind ?? (message.role === 'user' ? 'user' : 'legacy_assistant_turn');
+    await database.db
+      .insert(sessionMessagesTable)
+      .values({
+        id,
+        sessionId,
+        kind,
+        textForSearch: message.textForSearch ?? message.text,
+        rawJson: JSON.stringify(message.rawJson),
+        createdAt: created,
+      })
+      .onConflictDoUpdate({
+        target: sessionMessagesTable.id,
+        set: {
+          kind,
+          textForSearch: message.textForSearch ?? message.text,
+          rawJson: JSON.stringify(message.rawJson),
+          createdAt: created,
+        },
+      });
+    emitAcpSse({
+      type: 'message-add',
+      sessionId,
+      sequence: nextAcpSseSequence(),
+      message: { ...message, id },
+    });
+  };
+
   const hasStoredMessages = async (sessionId: string): Promise<boolean> => {
     const rows = await database.db
       .select({ id: sessionMessagesTable.id })
@@ -1105,23 +1145,49 @@ export const createSessionStore = ({
       return;
     }
 
+    const text = sessionUpdateText(notification);
+    if (
+      notification.update.sessionUpdate === 'tool_call' ||
+      notification.update.sessionUpdate === 'tool_call_update'
+    ) {
+      const dedupeKey = `${notification.sessionId}:${notification.update.toolCallId}`;
+      if (lastPersistedToolUpdateTextByKey.get(dedupeKey) === text) {
+        return;
+      }
+      lastPersistedToolUpdateTextByKey.set(dedupeKey, text);
+    }
+
     const rawText = JSON.stringify(notification.update);
+    const message = buildMessage({
+      role: 'assistant',
+      text,
+      rawEvents: [
+        {
+          type: 'streamPart',
+          partType: updateType,
+          text,
+          rawText,
+        },
+      ],
+      kind: 'raw_meta',
+      metadataJson: JSON.stringify({ acpSessionUpdate: notification.update }),
+    });
+
+    if (
+      notification.update.sessionUpdate === 'tool_call' ||
+      notification.update.sessionUpdate === 'tool_call_update'
+    ) {
+      await persistMutableMessage({
+        id: `raw-meta:tool:${notification.sessionId}:${notification.update.toolCallId}`,
+        sessionId: notification.sessionId,
+        message,
+      });
+      return;
+    }
+
     await persistMessage({
       sessionId: notification.sessionId,
-      message: buildMessage({
-        role: 'assistant',
-        text: sessionUpdateText(notification),
-        rawEvents: [
-          {
-            type: 'streamPart',
-            partType: updateType,
-            text: sessionUpdateText(notification),
-            rawText,
-          },
-        ],
-        kind: 'raw_meta',
-        metadataJson: JSON.stringify({ acpSessionUpdate: notification.update }),
-      }),
+      message,
     });
   };
 
