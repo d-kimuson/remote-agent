@@ -1,6 +1,6 @@
 import type { FC } from 'react';
 
-import { Link } from '@tanstack/react-router';
+import { Link, useLocation } from '@tanstack/react-router';
 import { CalendarClock, History, Info, MessageSquare, Plus, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
@@ -21,7 +21,7 @@ import {
 } from './project-session-list.pure.ts';
 
 const menuLinkClassName =
-  'flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground';
+  'flex h-10 relative items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground';
 
 const formatDateTime = (iso: string): string =>
   new Intl.DateTimeFormat('ja-JP', {
@@ -49,17 +49,33 @@ export const ProjectMenuContent: FC<{
   const { t } = useTranslation();
   const closeAppMenu = useCloseAppMenu();
   const sortedSessions = sortSessionsNewestFirst(sessions);
+  const location = useLocation();
+  const isSessionsActive = location.pathname.endsWith('/sessions');
+  const isRoutinesActive = location.pathname.endsWith('/routines');
+  const isSettingsActive =
+    location.pathname === '/settings' &&
+    (location.search as { projectId?: string }).projectId === projectId;
+  const isInformationActive =
+    location.pathname === '/information' &&
+    (location.search as { projectId?: string }).projectId === projectId;
 
   return (
     <AppMenuPortal>
       <div className="flex h-full min-h-0 flex-col gap-4 p-3">
         <div className="space-y-1">
           <Link
-            className={cn(menuLinkClassName, 'justify-between')}
+            className={cn(
+              menuLinkClassName,
+              'justify-between',
+              isSessionsActive && 'bg-sidebar-primary/15',
+            )}
             onClick={closeAppMenu}
             params={{ projectId }}
             to="/projects/$projectId/sessions"
           >
+            {isSessionsActive && (
+              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+            )}
             <span className="flex min-w-0 items-center gap-2">
               <MessageSquare className="size-4 shrink-0" />
               <span className="truncate">{t('menu.sessions')}</span>
@@ -67,29 +83,38 @@ export const ProjectMenuContent: FC<{
             <Badge variant="secondary">{sessionCount}</Badge>
           </Link>
           <Link
-            className={menuLinkClassName}
+            className={cn(menuLinkClassName, isRoutinesActive && 'bg-sidebar-primary/15')}
             onClick={closeAppMenu}
             params={{ projectId }}
             to="/projects/$projectId/routines"
           >
+            {isRoutinesActive && (
+              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+            )}
             <CalendarClock className="size-4" />
             {t('menu.routines')}
           </Link>
           <Link
-            className={menuLinkClassName}
+            className={cn(menuLinkClassName, isSettingsActive && 'bg-sidebar-primary/15')}
             onClick={closeAppMenu}
             search={{ projectId }}
             to="/settings"
           >
+            {isSettingsActive && (
+              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+            )}
             <Settings className="size-4" />
             {t('menu.settings')}
           </Link>
           <Link
-            className={menuLinkClassName}
+            className={cn(menuLinkClassName, isInformationActive && 'bg-sidebar-primary/15')}
             onClick={closeAppMenu}
             search={{ projectId }}
             to="/information"
           >
+            {isInformationActive && (
+              <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+            )}
             <Info className="size-4" />
             {t('menu.information')}
           </Link>
