@@ -1,7 +1,7 @@
 import type { FC } from 'react';
 
 import { Link } from '@tanstack/react-router';
-import { CalendarClock, FolderKanban, History, MessageSquare, Plus, Settings } from 'lucide-react';
+import { CalendarClock, History, MessageSquare, Plus, Settings } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import type { SessionSummary } from '../../../../shared/acp.ts';
@@ -83,10 +83,6 @@ export const ProjectMenuContent: FC<{
           >
             <Settings className="size-4" />
             {t('menu.settings')}
-          </Link>
-          <Link className={menuLinkClassName} onClick={closeAppMenu} to="/projects">
-            <FolderKanban className="size-4" />
-            {t('menu.projects')}
           </Link>
         </div>
 

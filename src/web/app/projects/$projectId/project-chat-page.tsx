@@ -861,7 +861,26 @@ const SlashCommandsLoader: FC<{
   return null;
 };
 
-const SESSION_MESSAGES_PAGE_SIZE = 100;
+const SESSION_MESSAGES_PAGE_SIZE = 50;
+const initiallyPrefetchedSessionMessageKeys = new Set<string>();
+
+const compareChatMessageOrder = (left: ChatMessage, right: ChatMessage): number => {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  return createdAtOrder !== 0 ? createdAtOrder : left.id.localeCompare(right.id);
+};
+
+const mergeHydratedMessages = ({
+  fetched,
+  local,
+}: {
+  readonly fetched: readonly ChatMessage[];
+  readonly local: readonly ChatMessage[];
+}): readonly ChatMessage[] => {
+  const fetchedIds = new Set(fetched.map((message) => message.id));
+  return [...fetched, ...local.filter((message) => !fetchedIds.has(message.id))].toSorted(
+    compareChatMessageOrder,
+  );
+};
 
 const SessionMessagesHydrator: FC<{
   readonly sessionId: string;
@@ -870,6 +889,7 @@ const SessionMessagesHydrator: FC<{
     fetchNextPage: () => Promise<unknown>,
     hasNextPage: boolean,
     isFetchingNextPage: boolean,
+    loadedPageCount: number,
   ) => void;
 }> = ({ sessionId, onHydrated, onFetchNextPageReady }) => {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSuspenseInfiniteQuery({
@@ -894,9 +914,34 @@ const SessionMessagesHydrator: FC<{
     onHydrated(sessionId, allMessages);
   }, [allMessages, onHydrated, sessionId]);
 
+  const fetchNextMessagesPage = useCallback(
+    () => fetchNextPage({ cancelRefetch: false }),
+    [fetchNextPage],
+  );
+
   useLayoutEffect(() => {
-    onFetchNextPageReady(fetchNextPage, hasNextPage, isFetchingNextPage);
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, onFetchNextPageReady]);
+    onFetchNextPageReady(fetchNextMessagesPage, hasNextPage, isFetchingNextPage, data.pages.length);
+  }, [
+    data.pages.length,
+    fetchNextMessagesPage,
+    hasNextPage,
+    isFetchingNextPage,
+    onFetchNextPageReady,
+  ]);
+
+  useEffect(() => {
+    const prefetchKey = sessionId;
+    if (
+      data.pages.length !== 1 ||
+      !hasNextPage ||
+      isFetchingNextPage ||
+      initiallyPrefetchedSessionMessageKeys.has(prefetchKey)
+    ) {
+      return;
+    }
+    initiallyPrefetchedSessionMessageKeys.add(prefetchKey);
+    void fetchNextMessagesPage();
+  }, [data.pages.length, fetchNextMessagesPage, hasNextPage, isFetchingNextPage, sessionId]);
 
   return null;
 };
@@ -988,6 +1033,7 @@ export const ProjectChatPage: FC<{
   const attachFileInputRef = useRef<HTMLInputElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
+  const olderMessagesPrefetchRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const lastActiveTranscriptKeyRef = useRef<string | null>(null);
@@ -997,12 +1043,14 @@ export const ProjectChatPage: FC<{
   const activeTranscriptKeyRef = useRef<string | null>(null);
   const draftSessionRedirectRequestRef = useRef<DraftSessionRedirectRequest | null>(null);
   const previousVisibleMessageCountRef = useRef(0);
+  const [chatViewportElement, setChatViewportElement] = useState<HTMLElement | null>(null);
   const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [messagesBelowScroll, setMessagesBelowScroll] = useState(0);
-  const fetchNextPageRef = useRef<(() => void) | null>(null);
+  const fetchNextPageRef = useRef<(() => Promise<unknown>) | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
+  const [loadedSessionMessagePageCount, setLoadedSessionMessagePageCount] = useState(0);
   const fetchingNextPageRef = useRef(false);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
@@ -1706,17 +1754,12 @@ export const ProjectChatPage: FC<{
         ) {
           return current;
         }
-        /**
-         * 送信中に SSE 由来の再取得で、新メッセージ行が未コミットの古いスナップショット
-         * （本より短い行数）が届くと、ここで上書きすると履歴を全部失ったように見える。
-         * 行は append-only の前提なので、短い取得ではローカルより退けない。
-         */
-        if (local.length > 0 && messages.length < local.length) {
-          return current;
-        }
         return {
           ...current,
-          [targetSessionId]: messages.map((message) => ({ ...message })),
+          [targetSessionId]: mergeHydratedMessages({
+            fetched: messages,
+            local,
+          }).map((message) => ({ ...message })),
         };
       });
     },
@@ -2368,10 +2411,16 @@ export const ProjectChatPage: FC<{
       'custom');
 
   const handleFetchNextPageReady = useCallback(
-    (fetchNextPage: () => void, nextPageExists: boolean, nextIsFetchingNextPage: boolean) => {
+    (
+      fetchNextPage: () => Promise<unknown>,
+      nextPageExists: boolean,
+      nextIsFetchingNextPage: boolean,
+      loadedPageCount: number,
+    ) => {
       fetchNextPageRef.current = fetchNextPage;
       setHasNextPage(nextPageExists);
       setIsFetchingNextPage(nextIsFetchingNextPage);
+      setLoadedSessionMessagePageCount(loadedPageCount);
       fetchingNextPageRef.current = nextIsFetchingNextPage;
     },
     [],
@@ -2384,6 +2433,9 @@ export const ProjectChatPage: FC<{
     }
     if (target.dataset['slot'] !== 'scroll-area-viewport') {
       return;
+    }
+    if (chatViewportElement !== target) {
+      setChatViewportElement(target);
     }
 
     const nextIsFollowing = isNearScrollBottom({
@@ -2407,14 +2459,40 @@ export const ProjectChatPage: FC<{
         Math.max(0, Math.round(visibleTranscript.length * (1 - scrollPercentage))),
       );
     }
-
-    // 上端に近づいたら古いメッセージを読み込む
-    const nearTopThreshold = 800;
-    if (target.scrollTop < nearTopThreshold && hasNextPage && !fetchingNextPageRef.current) {
-      fetchingNextPageRef.current = true;
-      fetchNextPageRef.current?.();
-    }
   };
+
+  useEffect(() => {
+    if (
+      sessionId === null ||
+      chatViewportElement === null ||
+      !hasNextPage ||
+      loadedSessionMessagePageCount < 2
+    ) {
+      return;
+    }
+    const sentinel = olderMessagesPrefetchRef.current;
+    if (sentinel === null) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting) && !fetchingNextPageRef.current) {
+          fetchingNextPageRef.current = true;
+          void fetchNextPageRef.current?.();
+        }
+      },
+      {
+        root: chatViewportElement,
+        rootMargin: '200px 0px 0px 0px',
+        threshold: 0,
+      },
+    );
+    observer.observe(sentinel);
+    return () => {
+      observer.disconnect();
+    };
+  }, [chatViewportElement, hasNextPage, loadedSessionMessagePageCount, sessionId]);
 
   const handleJumpToLatest = () => {
     shouldStickToBottomRef.current = true;
@@ -2635,12 +2713,17 @@ export const ProjectChatPage: FC<{
                     </div>
                   ) : null}
 
-                  {isFetchingNextPage && hasNextPage && sessionId !== null && (
+                  {hasNextPage && sessionId !== null ? (
                     <div className="flex w-full justify-center py-2 text-xs text-muted-foreground">
-                      <Loader2 className="mr-1.5 size-3 animate-spin" />
-                      古いメッセージを読み込み中...
+                      {isFetchingNextPage ? (
+                        <Loader2 className="mr-1.5 size-3 animate-spin" />
+                      ) : null}
+                      セッションを読み込み中...
                     </div>
-                  )}
+                  ) : null}
+                  {loadedSessionMessagePageCount > 1 && hasNextPage ? (
+                    <div aria-hidden className="h-px" ref={olderMessagesPrefetchRef} />
+                  ) : null}
                   {visibleTranscript.map((message, index) => {
                     const isUser = message.role === 'user';
                     const displayEvents = filterDisplayableRawEvents(message.rawEvents);

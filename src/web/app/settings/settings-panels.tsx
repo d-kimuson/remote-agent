@@ -1875,7 +1875,14 @@ export const LanguageSettingsPanel: FC = () => {
             value={data.settings.language}
           >
             <SelectTrigger className="w-full" id="app-language">
-              <SelectValue placeholder={t('settings.language.label')} />
+              <SelectValue placeholder={t('settings.language.label')}>
+                {(value) => {
+                  const selected = languageChoices.find((choice) => choice.value === value);
+                  return selected === undefined
+                    ? t('settings.language.label')
+                    : t(selected.labelKey);
+                }}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent align="end">
               {languageChoices.map((choice) => (
