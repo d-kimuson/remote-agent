@@ -596,6 +596,144 @@ describe('createSessionStore', () => {
     expect(restoredMessages.map((message) => message.text)).toEqual(['ping', 'pong']);
   });
 
+  test('stores send-prompt selection metadata on user messages', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-msgs-meta',
+            modes: {
+              currentModeId: 'full-access',
+              availableModes: [{ id: 'full-access', name: 'full-access' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [
+                { modelId: 'gpt-5-codex', name: 'GPT-5 Codex' },
+                { modelId: 'gpt-5.4-codex-spark', name: 'gpt-5.4-codex-spark' },
+              ],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: 'pong',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    await store.sendPrompt('session-msgs-meta', {
+      prompt: 'ping',
+      attachmentIds: [],
+      modelId: 'gpt-5.4-codex-spark',
+      modeId: 'full-access',
+    });
+
+    const userMessage = (await store.listMessages('session-msgs-meta')).find(
+      (entry) => entry.role === 'user',
+    );
+    if (userMessage?.rawJson.type !== 'user') {
+      throw new Error('expected user message');
+    }
+    expect(userMessage.rawJson).toEqual(
+      expect.objectContaining({
+        metadata: {
+          source: 'send-prompt',
+          presetId: 'codex',
+          modelId: 'gpt-5.4-codex-spark',
+          modelName: 'gpt-5.4-codex-spark',
+          modeId: 'full-access',
+          modeName: 'full-access',
+        },
+      }),
+    );
+  });
+
+  test('stores current session model/mode when send-prompt overrides are omitted', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-msgs-meta-inherit',
+            modes: {
+              currentModeId: 'full-access',
+              availableModes: [{ id: 'full-access', name: 'full-access' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: 'pong',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    await store.sendPrompt('session-msgs-meta-inherit', { prompt: 'ping', attachmentIds: [] });
+
+    const userMessage = (await store.listMessages('session-msgs-meta-inherit')).find(
+      (entry) => entry.role === 'user',
+    );
+    if (userMessage?.rawJson.type !== 'user') {
+      throw new Error('expected user message');
+    }
+    expect(userMessage.rawJson).toEqual(
+      expect.objectContaining({
+        metadata: {
+          source: 'send-prompt',
+          presetId: 'codex',
+          modelId: 'gpt-5-codex',
+          modelName: 'GPT-5 Codex',
+          modeId: 'full-access',
+          modeName: 'full-access',
+        },
+      }),
+    );
+  });
+
   test('persists image attachments on the user message as base64 image blocks', async () => {
     const database = createMemoryDatabase();
     disposableClients.push(database.client);

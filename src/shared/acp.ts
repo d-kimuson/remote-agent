@@ -247,6 +247,7 @@ export const userRawSchema = object({
   type: literal('user'),
   role: literal('user'),
   text: string(),
+  metadata: optional(unknown()),
   attachments: optional(array(userAttachmentSchema)),
   promptPlan: optional(unknown()),
 });
@@ -1250,6 +1251,17 @@ export const chatMessageSchema = object({
 });
 
 export type ChatMessage = InferOutput<typeof chatMessageSchema>;
+
+export const sendPromptSelectionMetadataSchema = object({
+  source: literal('send-prompt'),
+  presetId: optional(nullable(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modelName: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
+  modeName: optional(nullable(pipe(string(), trim()))),
+});
+
+export type SendPromptSelectionMetadata = InferOutput<typeof sendPromptSelectionMetadataSchema>;
 
 export const messageResponseSchema = object({
   session: sessionSummarySchema,
