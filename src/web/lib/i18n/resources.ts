@@ -27,6 +27,9 @@ export const resources = {
         custom: 'カスタム',
         enabled: '有効',
         disabled: '無効',
+        enable: '有効にする',
+        disable: '無効にする',
+        saveFailed: '保存に失敗しました。',
         never: 'なし',
       },
       settings: {
@@ -350,6 +353,9 @@ export const resources = {
         custom: 'Custom',
         enabled: 'Enabled',
         disabled: 'Disabled',
+        enable: 'Enable',
+        disable: 'Disable',
+        saveFailed: 'Failed to save.',
         never: 'Never',
       },
       settings: {
