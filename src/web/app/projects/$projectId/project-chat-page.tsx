@@ -166,6 +166,7 @@ import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from './rich-prompt-editor.tsx';
 import {
   filterDisplayableRawEvents,
+  formatUserMessageSelectionMetadata,
   isToolOnlyTranscriptMessage,
   shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
@@ -423,8 +424,12 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
   if (message.role === 'user') {
     const text = message.rawJson.type === 'user' ? message.rawJson.text : message.text;
     const attachments = message.rawJson.type === 'user' ? (message.rawJson.attachments ?? []) : [];
+    const selectionMetadata = formatUserMessageSelectionMetadata(message);
     return (
       <div>
+        {selectionMetadata === null ? null : (
+          <div className="mb-2 truncate text-xs text-muted-foreground">{selectionMetadata}</div>
+        )}
         {text.trim().length === 0 ? null : <ChatMarkdown>{text}</ChatMarkdown>}
         <UserAttachmentPreview attachments={attachments} />
       </div>

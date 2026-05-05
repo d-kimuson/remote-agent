@@ -1026,6 +1026,7 @@ export const createSessionStore = ({
             type: 'user',
             role: 'user',
             text,
+            metadata: metadataJson === '{}' ? undefined : JSON.parse(metadataJson),
             attachments: [...attachments],
             createdAt: t,
           }
@@ -1680,6 +1681,17 @@ export const createSessionStore = ({
     return session;
   };
 
+  const normalizeSelectionId = (value: string | null | undefined): string | null =>
+    value === null || value === undefined || value.length === 0 ? null : value;
+
+  const lookupModelName = (
+    entry: { readonly availableModels: readonly ModelOption[] },
+    id: string,
+  ) => entry.availableModels.find((model) => model.id === id)?.name ?? id;
+
+  const lookupModeName = (entry: { readonly availableModes: readonly ModeOption[] }, id: string) =>
+    entry.availableModes.find((mode) => mode.id === id)?.name ?? id;
+
   const sendPrompt = async (
     sessionId: string,
     request: SendMessageRequest,
@@ -1697,6 +1709,22 @@ export const createSessionStore = ({
     const effectivePrompt = attachmentPromptPlan.promptText;
     const promptMessages = await attachmentPromptMessagesFromPlan(attachmentPromptPlan);
     const userAttachments = userAttachmentsFromPromptPlan(attachmentPromptPlan);
+    const selectedModelId =
+      normalizeSelectionId(request.modelId) ??
+      normalizeSelectionId(entry.session.currentModelId) ??
+      null;
+    const selectedModeId =
+      normalizeSelectionId(request.modeId) ??
+      normalizeSelectionId(entry.session.currentModeId) ??
+      null;
+    const selectionMetadata = {
+      source: 'send-prompt' as const,
+      presetId: entry.session.presetId,
+      modelId: selectedModelId,
+      modelName: selectedModelId === null ? null : lookupModelName(entry.session, selectedModelId),
+      modeId: selectedModeId,
+      modeName: selectedModeId === null ? null : lookupModeName(entry.session, selectedModeId),
+    };
 
     await persistSession(entry.session);
     await persistMessage({
@@ -1706,6 +1734,7 @@ export const createSessionStore = ({
         text: request.prompt,
         rawEvents: [],
         kind: 'user',
+        metadataJson: JSON.stringify(selectionMetadata),
         attachments: userAttachments,
       }),
     });
