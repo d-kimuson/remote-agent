@@ -50,9 +50,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "0.31.4",
+    "@agentclientprotocol/claude-agent-acp": "0.32.0",
     "@anthropic-ai/sandbox-runtime": "0.0.49",
-    "@zed-industries/codex-acp": "0.12.0",
+    "@zed-industries/codex-acp": "0.13.0",
     "pi-acp": "0.0.26"
   },
   "devDependencies": {

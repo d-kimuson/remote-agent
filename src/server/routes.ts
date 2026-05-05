@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { describeRoute } from 'hono-openapi';
 import { parse } from 'valibot';
 
+import pkg from '../../package.json' with { type: 'json' };
 import { appInfoSchema } from '../shared/acp.ts';
 import { agentPresets } from './acp/presets.ts';
 import { acpRoutes } from './acp/routes.ts';
@@ -24,6 +25,7 @@ export const routes = new Hono()
     (c) => {
       const response = parse(appInfoSchema, {
         appName: 'Remote Agent',
+        version: pkg.version,
         workingDirectory: process.cwd(),
         projectsFilePath: getProjectsFilePath(),
         agentPresets,

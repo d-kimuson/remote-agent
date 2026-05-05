@@ -987,6 +987,7 @@ export const ProjectChatPage: FC<{
   const preparingScopeKeysRef = useRef(new Set<string>());
   const attachFileInputRef = useRef<HTMLInputElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechListeningDesiredRef = useRef(false);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -1044,6 +1045,7 @@ export const ProjectChatPage: FC<{
 
   useEffect(() => {
     return () => {
+      speechListeningDesiredRef.current = false;
       speechRecognitionRef.current?.abort();
     };
   }, []);
@@ -1851,6 +1853,7 @@ export const ProjectChatPage: FC<{
     }
     const currentRecognition = speechRecognitionRef.current;
     if (isListeningToSpeech) {
+      speechListeningDesiredRef.current = false;
       currentRecognition?.stop();
       setIsListeningToSpeech(false);
       return;
@@ -1863,7 +1866,7 @@ export const ProjectChatPage: FC<{
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = navigator.language.length > 0 ? navigator.language : 'ja-JP';
     recognition.onresult = (event) => {
@@ -1876,22 +1879,39 @@ export const ProjectChatPage: FC<{
       );
     };
     recognition.onerror = (event) => {
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        return;
+      }
+      speechListeningDesiredRef.current = false;
       setIsListeningToSpeech(false);
       speechRecognitionRef.current = null;
-      if (event.error !== 'aborted') {
-        toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
-      }
+      toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
     };
     recognition.onend = () => {
-      setIsListeningToSpeech(false);
-      speechRecognitionRef.current = null;
+      if (speechRecognitionRef.current !== recognition) {
+        return;
+      }
+      if (!speechListeningDesiredRef.current) {
+        setIsListeningToSpeech(false);
+        speechRecognitionRef.current = null;
+        return;
+      }
+      try {
+        recognition.start();
+      } catch {
+        speechListeningDesiredRef.current = false;
+        setIsListeningToSpeech(false);
+        speechRecognitionRef.current = null;
+      }
     };
 
     speechRecognitionRef.current = recognition;
+    speechListeningDesiredRef.current = true;
     setIsListeningToSpeech(true);
     try {
       recognition.start();
     } catch {
+      speechListeningDesiredRef.current = false;
       speechRecognitionRef.current = null;
       setIsListeningToSpeech(false);
       toast.error(t('chat.voiceStartFailed'));
@@ -2143,6 +2163,7 @@ export const ProjectChatPage: FC<{
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
+    speechListeningDesiredRef.current = false;
     speechRecognitionRef.current?.stop();
     setIsListeningToSpeech(false);
     replacePrompt('');

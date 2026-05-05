@@ -1,11 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { type FC } from 'react';
+import { Suspense, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
+import { ProjectSettingsPage } from '../app/projects/$projectId/project-settings-page.tsx';
 import { SettingsPage } from '../app/settings/settings-page.tsx';
+
+type SettingsSearch = {
+  readonly projectId?: string;
+};
 
 const SettingsRoute: FC = () => {
   const { t } = useTranslation();
+  const search = Route.useSearch();
+
+  if (search.projectId !== undefined) {
+    return (
+      <Suspense>
+        <ProjectSettingsPage key={search.projectId} projectId={search.projectId} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="app-page">
@@ -23,4 +37,10 @@ const SettingsRoute: FC = () => {
 
 export const Route = createFileRoute('/settings')({
   component: SettingsRoute,
+  validateSearch: (search: Record<string, unknown>): SettingsSearch => {
+    const projectId = search['projectId'];
+    return {
+      projectId: typeof projectId === 'string' && projectId.length > 0 ? projectId : undefined,
+    };
+  },
 });

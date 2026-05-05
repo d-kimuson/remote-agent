@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { FolderKanban, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
+import { FolderKanban, Info, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -55,6 +55,14 @@ const DefaultMenuContent: FC<{ readonly closeMobileMenu: () => void }> = ({ clos
       >
         <Settings className="size-4" />
         {t('menu.settings')}
+      </Link>
+      <Link
+        className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        onClick={closeMobileMenu}
+        to="/information"
+      >
+        <Info className="size-4" />
+        {t('menu.information')}
       </Link>
     </div>
   );
