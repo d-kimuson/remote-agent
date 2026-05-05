@@ -78,7 +78,7 @@ import {
   requestUserPermission,
 } from './permission-request-store.ts';
 import { resolveSandboxLaunchConfig } from './sandbox-launch.ts';
-import { emitAcpSse } from './sse-broadcast.ts';
+import { emitAcpSse, nextAcpSseSequence } from './sse-broadcast.ts';
 
 type SessionProvider = Pick<
   ACPProvider,
@@ -970,7 +970,12 @@ export const createSessionStore = ({
       rawJson: JSON.stringify(message.rawJson),
       createdAt: created,
     });
-    emitAcpSse({ type: 'session_messages_updated', sessionId });
+    emitAcpSse({
+      type: 'message-add',
+      sessionId,
+      sequence: nextAcpSseSequence(),
+      message,
+    });
   };
 
   const hasStoredMessages = async (sessionId: string): Promise<boolean> => {
@@ -1194,7 +1199,8 @@ export const createSessionStore = ({
           ),
         );
       if (input.notify !== 'none') {
-        emitAcpSse({ type: 'session_messages_updated', sessionId: input.sessionId });
+        // Stream content is delivered via message-delta events. Final persistence updates are
+        // intentionally not invalidation-driven.
       }
     },
   };
@@ -1794,12 +1800,15 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: 'session_text_delta',
+              type: 'message-delta',
               sessionId: deltaSessionId,
+              sequence: nextAcpSseSequence(),
+              deltaIndex:
+                message.rawJson.type === 'assistant_text' ? (message.rawJson.deltaCount ?? 0) : 0,
               messageId: message.id,
               streamPartId: message.streamPartId,
-              delta,
-              text: message.text,
+              kind: 'assistant_text',
+              contentDelta: delta,
               createdAt: message.createdAt,
               updatedAt: message.updatedAt ?? message.createdAt,
               metadataJson: message.metadataJson,
@@ -1810,12 +1819,15 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: 'session_reasoning_delta',
+              type: 'message-delta',
               sessionId: deltaSessionId,
+              sequence: nextAcpSseSequence(),
+              deltaIndex:
+                message.rawJson.type === 'reasoning' ? (message.rawJson.deltaCount ?? 0) : 0,
               messageId: message.id,
               streamPartId: message.streamPartId,
-              delta,
-              text: message.text,
+              kind: 'reasoning',
+              contentDelta: delta,
               createdAt: message.createdAt,
               updatedAt: message.updatedAt ?? message.createdAt,
               metadataJson: message.metadataJson,

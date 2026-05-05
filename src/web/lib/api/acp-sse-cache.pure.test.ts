@@ -7,15 +7,17 @@ import type {
   SessionMessagesResponse,
 } from '../../../shared/acp.ts';
 
-import { applySessionStreamDeltaToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
+import { applySessionMessageEventToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
 
 const baseTextDelta = {
-  type: 'session_text_delta',
+  type: 'message-delta',
   sessionId: 'session-1',
+  sequence: 2,
+  deltaIndex: 2,
   messageId: 'message-1',
   streamPartId: 'turn-1::text-1',
-  delta: 'lo',
-  text: 'hello',
+  kind: 'assistant_text',
+  contentDelta: 'lo',
   createdAt: '2026-04-28T00:00:00.000Z',
   updatedAt: '2026-04-28T00:00:01.000Z',
 } satisfies AcpSseEvent;
@@ -31,6 +33,7 @@ const baseMessage = {
     streamPartId: 'turn-1::text-1',
     providerStreamId: 'turn-1::text-1',
     text: 'hel',
+    deltaCount: 1,
     createdAt: '2026-04-28T00:00:00.000Z',
   },
   textForSearch: 'hel',
@@ -42,51 +45,52 @@ const baseMessage = {
 } satisfies ChatMessage;
 
 const baseReasoningDelta = {
-  type: 'session_reasoning_delta',
+  type: 'message-delta',
   sessionId: 'session-1',
+  sequence: 3,
+  deltaIndex: 1,
   messageId: 'reasoning-1',
   streamPartId: 'turn-1::reasoning-1',
-  delta: 'inking',
-  text: 'thinking',
+  kind: 'reasoning',
+  contentDelta: 'thinking',
   createdAt: '2026-04-28T00:00:02.000Z',
   updatedAt: '2026-04-28T00:00:03.000Z',
 } satisfies AcpSseEvent;
 
-describe('applySessionStreamDeltaToMessages', () => {
-  test('replaces the matching assistant text with the server snapshot', () => {
+const userMessage = {
+  id: 'user-1',
+  role: 'user',
+  kind: 'user',
+  rawJson: {
+    schemaVersion: 1,
+    type: 'user',
+    role: 'user',
+    text: 'prompt',
+    attachments: [],
+    createdAt: '2026-04-28T00:00:00.000Z',
+  },
+  textForSearch: 'prompt',
+  text: 'prompt',
+  rawEvents: [],
+  createdAt: '2026-04-28T00:00:00.000Z',
+  updatedAt: '2026-04-28T00:00:00.000Z',
+  streamPartId: null,
+} satisfies ChatMessage;
+
+describe('applySessionMessageEventToMessages', () => {
+  test('appends a delta to the matching assistant text', () => {
     const current = {
-      messages: [
-        {
-          id: 'user-1',
-          role: 'user',
-          kind: 'user',
-          rawJson: {
-            schemaVersion: 1,
-            type: 'user',
-            role: 'user',
-            text: 'prompt',
-            attachments: [],
-            createdAt: '2026-04-28T00:00:00.000Z',
-          },
-          textForSearch: 'prompt',
-          text: 'prompt',
-          rawEvents: [],
-          createdAt: '2026-04-28T00:00:00.000Z',
-          updatedAt: '2026-04-28T00:00:00.000Z',
-          streamPartId: null,
-        },
-        baseMessage,
-      ],
+      messages: [userMessage, baseMessage],
       pageInfo: { hasMoreBefore: false, beforeCursor: null },
       meta: { totalMessageCount: 2 },
     } satisfies SessionMessagesResponse;
 
-    expect(applySessionStreamDeltaToMessages(current, baseTextDelta)).toEqual({
+    expect(applySessionMessageEventToMessages(current, baseTextDelta)).toEqual({
       messages: [
-        current.messages[0],
+        userMessage,
         {
           ...baseMessage,
-          rawJson: { ...baseMessage.rawJson, text: 'hello' },
+          rawJson: { ...baseMessage.rawJson, text: 'hello', deltaCount: 2 },
           textForSearch: 'hello',
           text: 'hello',
           updatedAt: '2026-04-28T00:00:01.000Z',
@@ -97,36 +101,33 @@ describe('applySessionStreamDeltaToMessages', () => {
     });
   });
 
-  test('appends a text message when the start row was fetched before the delta patch', () => {
+  test('discards duplicate or older deltas by per-message deltaIndex', () => {
     const current = {
       messages: [
         {
-          id: 'user-1',
-          role: 'user',
-          kind: 'user',
-          rawJson: {
-            schemaVersion: 1,
-            type: 'user',
-            role: 'user',
-            text: 'prompt',
-            attachments: [],
-            createdAt: '2026-04-28T00:00:00.000Z',
-          },
-          textForSearch: 'prompt',
-          text: 'prompt',
-          rawEvents: [],
-          createdAt: '2026-04-28T00:00:00.000Z',
-          updatedAt: '2026-04-28T00:00:00.000Z',
-          streamPartId: null,
+          ...baseMessage,
+          rawJson: { ...baseMessage.rawJson, text: 'hello', deltaCount: 2 },
+          text: 'hello',
+          textForSearch: 'hello',
         },
       ],
       pageInfo: { hasMoreBefore: false, beforeCursor: null },
       meta: { totalMessageCount: 1 },
     } satisfies SessionMessagesResponse;
 
-    expect(applySessionStreamDeltaToMessages(current, baseTextDelta)).toEqual({
+    expect(applySessionMessageEventToMessages(current, baseTextDelta)).toBe(current);
+  });
+
+  test('appends a text message when the start row was not fetched before the delta patch', () => {
+    const current = {
+      messages: [userMessage],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
+    } satisfies SessionMessagesResponse;
+
+    expect(applySessionMessageEventToMessages(current, baseTextDelta)).toEqual({
       messages: [
-        current.messages[0],
+        userMessage,
         {
           id: 'message-1',
           role: 'assistant',
@@ -137,11 +138,12 @@ describe('applySessionStreamDeltaToMessages', () => {
             role: 'assistant',
             streamPartId: 'turn-1::text-1',
             providerStreamId: 'turn-1::text-1',
-            text: 'hello',
+            text: 'lo',
+            deltaCount: 2,
             createdAt: '2026-04-28T00:00:00.000Z',
           },
-          textForSearch: 'hello',
-          text: 'hello',
+          textForSearch: 'lo',
+          text: 'lo',
           rawEvents: [],
           createdAt: '2026-04-28T00:00:00.000Z',
           updatedAt: '2026-04-28T00:00:01.000Z',
@@ -155,7 +157,7 @@ describe('applySessionStreamDeltaToMessages', () => {
   });
 
   test('creates a text message when the cache has not been loaded yet', () => {
-    expect(applySessionStreamDeltaToMessages(undefined, baseTextDelta)).toEqual({
+    expect(applySessionMessageEventToMessages(undefined, baseTextDelta)).toEqual({
       messages: [
         {
           id: 'message-1',
@@ -167,11 +169,12 @@ describe('applySessionStreamDeltaToMessages', () => {
             role: 'assistant',
             streamPartId: 'turn-1::text-1',
             providerStreamId: 'turn-1::text-1',
-            text: 'hello',
+            text: 'lo',
+            deltaCount: 2,
             createdAt: '2026-04-28T00:00:00.000Z',
           },
-          textForSearch: 'hello',
-          text: 'hello',
+          textForSearch: 'lo',
+          text: 'lo',
           rawEvents: [],
           createdAt: '2026-04-28T00:00:00.000Z',
           updatedAt: '2026-04-28T00:00:01.000Z',
@@ -185,7 +188,7 @@ describe('applySessionStreamDeltaToMessages', () => {
   });
 
   test('creates a reasoning message when a reasoning delta arrives before cache hydration', () => {
-    expect(applySessionStreamDeltaToMessages(undefined, baseReasoningDelta)).toEqual({
+    expect(applySessionMessageEventToMessages(undefined, baseReasoningDelta)).toEqual({
       messages: [
         {
           id: 'reasoning-1',
@@ -198,6 +201,7 @@ describe('applySessionStreamDeltaToMessages', () => {
             streamPartId: 'turn-1::reasoning-1',
             providerStreamId: 'turn-1::reasoning-1',
             text: 'thinking',
+            deltaCount: 1,
             createdAt: '2026-04-28T00:00:02.000Z',
           },
           textForSearch: 'thinking',
@@ -213,32 +217,52 @@ describe('applySessionStreamDeltaToMessages', () => {
       meta: { totalMessageCount: 1 },
     });
   });
+
+  test('upserts message-add events by id', () => {
+    const event = {
+      type: 'message-add',
+      sessionId: 'session-1',
+      sequence: 1,
+      message: userMessage,
+    } satisfies AcpSseEvent;
+
+    expect(applySessionMessageEventToMessages(undefined, event)).toEqual({
+      messages: [userMessage],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
+    });
+
+    const current = {
+      messages: [userMessage],
+      pageInfo: { hasMoreBefore: false, beforeCursor: null },
+      meta: { totalMessageCount: 1 },
+    } satisfies SessionMessagesResponse;
+
+    expect(applySessionMessageEventToMessages(current, event)).toEqual(current);
+  });
 });
 
 describe('newPermissionRequests', () => {
   const request = {
     id: 'request-1',
     sessionId: 'session-1',
-    toolCallId: 'tool-1',
-    title: 'Allow shell command',
-    kind: 'tool',
-    rawInputText: null,
-    options: [{ id: 'allow', kind: 'allow_once', name: 'Allow' }],
-    createdAt: '2026-04-30T00:00:00.000Z',
+    toolCallId: 'tool-call-1',
+    title: 'Approve command',
+    kind: 'tool_call',
+    rawInputText: '{"foo":"bar"}',
+    options: [],
+    createdAt: '2026-04-29T00:00:00.000Z',
   } satisfies AcpPermissionRequest;
 
-  test('returns only unseen permission requests', () => {
+  test('returns requests whose ids were not known', () => {
+    expect(newPermissionRequests({ current: [request], knownRequestIds: new Set() })).toEqual([
+      request,
+    ]);
+  });
+
+  test('filters requests whose ids were already known', () => {
     expect(
-      newPermissionRequests({
-        current: [
-          request,
-          {
-            ...request,
-            id: 'request-2',
-          },
-        ],
-        knownRequestIds: new Set(['request-1']),
-      }).map((entry) => entry.id),
-    ).toEqual(['request-2']);
+      newPermissionRequests({ current: [request], knownRequestIds: new Set(['request-1']) }),
+    ).toEqual([]);
   });
 });

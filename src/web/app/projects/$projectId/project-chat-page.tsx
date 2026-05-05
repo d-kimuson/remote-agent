@@ -2157,7 +2157,6 @@ export const ProjectChatPage: FC<{
       upsertSessionInCache(response.session);
       void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
-      void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(targetSessionId) });
     } catch {
       queryClient.setQueryData(sessionsQueryKey, previousSessions);
     }
@@ -2305,9 +2304,6 @@ export const ProjectChatPage: FC<{
           }
           void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
           void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
-          void queryClient.invalidateQueries({
-            queryKey: sessionMessagesQueryKey(response.session.sessionId),
-          });
           setPendingTuningModelId(null);
           setPendingTuningModeId(null);
           removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
@@ -2377,9 +2373,6 @@ export const ProjectChatPage: FC<{
 
       void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
-      void queryClient.invalidateQueries({
-        queryKey: sessionMessagesQueryKey(resolvedActiveSessionId),
-      });
       setPendingTuningModelId(null);
       setPendingTuningModeId(null);
       removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
