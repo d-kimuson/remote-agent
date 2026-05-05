@@ -26,6 +26,59 @@ const readGitConfig = (key: string): string => {
   }
 };
 
+type CliOptions = {
+  readonly yes: boolean;
+  readonly version: string | undefined;
+};
+
+const parseCliArgs = (args: readonly string[]): CliOptions => {
+  let yes = false;
+  let version: string | undefined;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+
+    if (arg === undefined) {
+      continue;
+    }
+
+    if (arg === '-y' || arg === '--yes') {
+      yes = true;
+      continue;
+    }
+
+    if (arg === '--version') {
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith('-')) {
+        console.error('x --version requires a value.');
+        process.exit(1);
+      }
+      version = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith('--version=')) {
+      version = arg.slice('--version='.length);
+      continue;
+    }
+
+    if (arg === '-h' || arg === '--help') {
+      console.log(
+        'Usage: pnpm release [-y|--yes] [--version patch|minor|major|beta|x.y.z[-tag.n]]',
+      );
+      process.exit(0);
+    }
+
+    console.error(`x Unknown argument: ${arg}`);
+    process.exit(1);
+  }
+
+  return { yes, version };
+};
+
+const cliOptions = parseCliArgs(process.argv.slice(2));
+
 const pkgPath = path.join(root, 'package.json');
 const parsedPackageJson: unknown = JSON.parse(readFileSync(pkgPath, 'utf-8'));
 
@@ -110,34 +163,99 @@ const bumpChoices = (v: string): { name: string; value: string }[] => {
   ];
 };
 
-const { version } = await inquirer.prompt<{ version: string }>([
-  {
-    type: 'rawlist',
-    name: 'version',
-    message: 'Select release version:',
-    choices: [...bumpChoices(current), { name: 'Custom', value: 'custom' }],
-  },
-]);
+type VersionResolveResult =
+  | { readonly type: 'ok'; readonly version: string }
+  | { readonly type: 'error'; readonly message: string };
+
+const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+const resolveVersion = (versionSpec: string, fromVersion: string): VersionResolveResult => {
+  const { major, minor, patch, pre } = parseVersion(fromVersion);
+  const nextPatch = `${major}.${minor}.${patch + 1}`;
+
+  if (versionSpec === 'patch') {
+    return {
+      type: 'ok',
+      version: pre === undefined ? nextPatch : `${major}.${minor}.${patch}`,
+    };
+  }
+
+  if (versionSpec === 'minor') {
+    return { type: 'ok', version: `${major}.${minor + 1}.0` };
+  }
+
+  if (versionSpec === 'major') {
+    return { type: 'ok', version: `${major + 1}.0.0` };
+  }
+
+  if (versionSpec === 'beta') {
+    if (pre === undefined) {
+      return { type: 'ok', version: `${nextPatch}-beta.0` };
+    }
+
+    const preParts = pre.split('.');
+    const preTag = preParts[0] ?? 'beta';
+    const preNum = Number(preParts[1] ?? 0);
+    return { type: 'ok', version: `${major}.${minor}.${patch}-${preTag}.${preNum + 1}` };
+  }
+
+  if (semverPattern.test(versionSpec)) {
+    return { type: 'ok', version: versionSpec };
+  }
+
+  return {
+    type: 'error',
+    message:
+      'Unsupported --version value. Use patch, minor, major, beta, or an explicit semver like 1.2.3-beta.0.',
+  };
+};
+
+const promptVersion = async (): Promise<string> => {
+  const { version } = await inquirer.prompt<{ version: string }>([
+    {
+      type: 'rawlist',
+      name: 'version',
+      message: 'Select release version:',
+      choices: [...bumpChoices(current), { name: 'Custom', value: 'custom' }],
+    },
+  ]);
+
+  if (version !== 'custom') {
+    return version;
+  }
+
+  const { custom } = await inquirer.prompt<{ custom: string }>([
+    { type: 'input', name: 'custom', message: 'Enter version:' },
+  ]);
+  return custom;
+};
 
 const nextVersion =
-  version === 'custom'
-    ? (
-        await inquirer.prompt<{ custom: string }>([
-          { type: 'input', name: 'custom', message: 'Enter version:' },
-        ])
-      ).custom
-    : version;
+  cliOptions.version === undefined
+    ? await promptVersion()
+    : (() => {
+        const result = resolveVersion(cliOptions.version, current);
+        if (result.type === 'error') {
+          console.error(`x ${result.message}`);
+          process.exit(1);
+        }
+        return result.version;
+      })();
 
 const tag = `v${nextVersion}`;
 
-const { confirmed } = await inquirer.prompt<{ confirmed: boolean }>([
-  {
-    type: 'confirm',
-    name: 'confirmed',
-    message: `Release ${tag}? This will commit, tag (signed), and push.`,
-    default: false,
-  },
-]);
+const confirmed = cliOptions.yes
+  ? true
+  : (
+      await inquirer.prompt<{ confirmed: boolean }>([
+        {
+          type: 'confirm',
+          name: 'confirmed',
+          message: `Release ${tag}? This will commit, tag (signed), and push.`,
+          default: false,
+        },
+      ])
+    ).confirmed;
 
 if (!confirmed) {
   console.log('Aborted.');
