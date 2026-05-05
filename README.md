@@ -70,10 +70,15 @@ Then clients must send the API key as a bearer token for `/api/*` requests. You 
 - 🛠️ Visual tool viewers: inspect common tool calls such as Bash, Read, Write, and Edit with
   terminal, file, and diff viewers.
 - ✅ Tool approval: approve or reject tool-approval requests from supported agents.
+- 🧱 Sandboxed execution: optionally run agent CLIs through `srt` sandboxing with global,
+  project-level, and per-session controls.
 - 🔔 Notifications: receive task-completion and approval-request notifications. When installed as a
   PWA, device notifications are available through the service worker.
 - 🔊 Completion sound: play an audible notification when an agent task finishes.
-- ✍️ Efficient prompt input: use agent command completion, file-path completion, and voice input.
+- ✍️ Efficient prompt input: use agent command completion, file-path completion, voice input, and
+  image attachments.
+- 🎚️ Model and mode controls: switch supported providers' model/mode from the UI, remember the last
+  used choices per project/provider, and pin favorite models.
 - 🧑‍💻 Code review: open a GitHub-like diff viewer, leave line comments, and seamlessly turn them
   into review instructions for the agent.
 - 🌿 Git worktree support: start sessions in a selected worktree. Supports `.worktreeinclude`,
@@ -127,6 +132,33 @@ Want to use another agent? Add it as a Custom Provider through ACP.
 See the ACP agent list at https://agentclientprotocol.com/get-started/agents to find an available
 agent. If the agent you want is not listed, implement an ACP-compatible agent server and register
 its command as a Custom Provider.
+
+## Sandboxed Agent Execution
+
+`remote-agent` can launch agent CLIs through `@anthropic-ai/sandbox-runtime` (`srt`) so agent
+processes run with explicit filesystem and network rules.
+
+Sandboxing is opt-in and has three layers:
+
+1. **Global Settings → Sandbox**: choose which provider presets are allowed to use sandboxing and
+   define global filesystem/network rules.
+2. **Project Settings → Sandbox**: enable sandboxing by default for that project and add project
+   rules. Relative paths are resolved from the session working directory.
+3. **New session toolbar**: toggle sandboxing for an individual session before it starts.
+
+Filesystem rules support read/write allowlists and denylists. Network policy can be unrestricted
+(`none`) or restricted to an allowlist of domains. Project network policy can inherit the global
+policy, override it with its own restricted allowlist, or disable network restriction for that
+project.
+
+For agent runtime files, `remote-agent` automatically grants read access to common local agent
+configuration directories such as `~/.codex`, `~/.pi`, `~/.claude`, `~/.github`, and `~/.copilot`.
+Provider-specific writable runtime directories are added where needed, such as `~/.codex` for Codex
+and `~/.pi` for pi-coding-agent. The default write allowlist includes the session working directory
+(`.`).
+
+Sandboxing is a defense-in-depth feature, not a replacement for normal security controls. Keep using
+private networks, API key authentication, IP restrictions, and trusted agent credentials.
 
 ## How It Works
 
