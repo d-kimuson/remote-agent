@@ -21,12 +21,28 @@ import {
   useNotificationCenter,
 } from '@/web/pwa/notification-center';
 
-const currentProjectIdFromPath = (pathname: string): string | null => {
+const currentProjectIdFromPath = (pathname: string, search: unknown): string | null => {
   const match = /^\/projects\/([^/]+)/.exec(pathname);
-  return match?.[1] ?? null;
+  if (match !== null && match[1] !== undefined) {
+    return match[1];
+  }
+
+  if (pathname === '/settings' || pathname === '/information') {
+    if (
+      typeof search === 'object' &&
+      search !== null &&
+      'projectId' in search &&
+      typeof search['projectId'] === 'string' &&
+      search['projectId'].length > 0
+    ) {
+      return search['projectId'];
+    }
+  }
+
+  return null;
 };
 
-type ProjectPathTarget = 'chat' | 'routines' | 'sessions' | 'settings';
+type ProjectPathTarget = 'chat' | 'routines' | 'sessions' | 'settings' | 'information';
 
 const projectPathTargetFromPath = (pathname: string): ProjectPathTarget => {
   if (pathname.endsWith('/sessions')) {
@@ -35,8 +51,11 @@ const projectPathTargetFromPath = (pathname: string): ProjectPathTarget => {
   if (pathname.endsWith('/routines')) {
     return 'routines';
   }
-  if (pathname.endsWith('/settings')) {
+  if (pathname === '/settings' || pathname.endsWith('/settings')) {
     return 'settings';
+  }
+  if (pathname === '/information' || pathname.endsWith('/information')) {
+    return 'information';
   }
   return 'chat';
 };
@@ -174,7 +193,7 @@ export const AppHeader: FC<{
   const { t } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
-  const currentProjectId = currentProjectIdFromPath(location.pathname);
+  const currentProjectId = currentProjectIdFromPath(location.pathname, location.search);
   const { data } = useSuspenseQuery({
     queryKey: projectsQueryKey,
     queryFn: fetchProjects,
@@ -194,7 +213,9 @@ export const AppHeader: FC<{
       >
         <Menu className="size-4" />
       </Button>
-      <img alt="Remote Agent" className="size-5 shrink-0 opacity-80" src="/logo.png" />
+      <Link to="/projects">
+        <img alt="Remote Agent" className="size-5 shrink-0 opacity-80" src="/logo.png" />
+      </Link>
       {currentProjectId === null ? (
         <div className="flex min-w-0 flex-1 items-center">
           <p className="truncate text-sm font-semibold tracking-tight">{t('common.appName')}</p>
@@ -207,17 +228,21 @@ export const AppHeader: FC<{
                 if (nextProjectId === null || nextProjectId === currentProjectId) {
                   return;
                 }
-                void navigate({
-                  to:
-                    projectPathTarget === 'sessions'
-                      ? '/projects/$projectId/sessions'
-                      : projectPathTarget === 'routines'
-                        ? '/projects/$projectId/routines'
-                        : projectPathTarget === 'settings'
-                          ? '/projects/$projectId/settings'
+                if (projectPathTarget === 'settings') {
+                  void navigate({ to: '/settings', search: { projectId: nextProjectId } });
+                } else if (projectPathTarget === 'information') {
+                  void navigate({ to: '/information', search: { projectId: nextProjectId } });
+                } else {
+                  void navigate({
+                    to:
+                      projectPathTarget === 'sessions'
+                        ? '/projects/$projectId/sessions'
+                        : projectPathTarget === 'routines'
+                          ? '/projects/$projectId/routines'
                           : '/projects/$projectId',
-                  params: { projectId: nextProjectId },
-                });
+                    params: { projectId: nextProjectId },
+                  });
+                }
               }}
               value={currentProjectId}
             >

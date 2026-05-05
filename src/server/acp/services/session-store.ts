@@ -78,7 +78,7 @@ import {
   requestUserPermission,
 } from './permission-request-store.ts';
 import { resolveSandboxLaunchConfig } from './sandbox-launch.ts';
-import { emitAcpSse } from './sse-broadcast.ts';
+import { emitAcpSse, nextAcpSseSequence } from './sse-broadcast.ts';
 
 type SessionProvider = Pick<
   ACPProvider,
@@ -654,6 +654,7 @@ export const createSessionStore = ({
   installAcpProviderToolResultPatch();
 
   const runtimeSessions = new Map<string, SessionEntry>();
+  const lastPersistedToolUpdateTextByKey = new Map<string, string>();
 
   const emitSessionUpdated = (session: SessionSummary): void => {
     emitAcpSse({
@@ -970,7 +971,51 @@ export const createSessionStore = ({
       rawJson: JSON.stringify(message.rawJson),
       createdAt: created,
     });
-    emitAcpSse({ type: 'session_messages_updated', sessionId });
+    emitAcpSse({
+      type: 'message-add',
+      sessionId,
+      sequence: nextAcpSseSequence(),
+      message,
+    });
+  };
+
+  const persistMutableMessage = async ({
+    id,
+    sessionId,
+    message,
+  }: {
+    readonly id: string;
+    readonly sessionId: string;
+    readonly message: ChatMessage;
+  }): Promise<void> => {
+    const created = message.createdAt;
+    const kind: ChatMessageKind =
+      message.kind ?? (message.role === 'user' ? 'user' : 'legacy_assistant_turn');
+    await database.db
+      .insert(sessionMessagesTable)
+      .values({
+        id,
+        sessionId,
+        kind,
+        textForSearch: message.textForSearch ?? message.text,
+        rawJson: JSON.stringify(message.rawJson),
+        createdAt: created,
+      })
+      .onConflictDoUpdate({
+        target: sessionMessagesTable.id,
+        set: {
+          kind,
+          textForSearch: message.textForSearch ?? message.text,
+          rawJson: JSON.stringify(message.rawJson),
+          createdAt: created,
+        },
+      });
+    emitAcpSse({
+      type: 'message-add',
+      sessionId,
+      sequence: nextAcpSseSequence(),
+      message: { ...message, id },
+    });
   };
 
   const hasStoredMessages = async (sessionId: string): Promise<boolean> => {
@@ -1026,6 +1071,7 @@ export const createSessionStore = ({
             type: 'user',
             role: 'user',
             text,
+            metadata: metadataJson === '{}' ? undefined : JSON.parse(metadataJson),
             attachments: [...attachments],
             createdAt: t,
           }
@@ -1099,23 +1145,49 @@ export const createSessionStore = ({
       return;
     }
 
+    const text = sessionUpdateText(notification);
+    if (
+      notification.update.sessionUpdate === 'tool_call' ||
+      notification.update.sessionUpdate === 'tool_call_update'
+    ) {
+      const dedupeKey = `${notification.sessionId}:${notification.update.toolCallId}`;
+      if (lastPersistedToolUpdateTextByKey.get(dedupeKey) === text) {
+        return;
+      }
+      lastPersistedToolUpdateTextByKey.set(dedupeKey, text);
+    }
+
     const rawText = JSON.stringify(notification.update);
+    const message = buildMessage({
+      role: 'assistant',
+      text,
+      rawEvents: [
+        {
+          type: 'streamPart',
+          partType: updateType,
+          text,
+          rawText,
+        },
+      ],
+      kind: 'raw_meta',
+      metadataJson: JSON.stringify({ acpSessionUpdate: notification.update }),
+    });
+
+    if (
+      notification.update.sessionUpdate === 'tool_call' ||
+      notification.update.sessionUpdate === 'tool_call_update'
+    ) {
+      await persistMutableMessage({
+        id: `raw-meta:tool:${notification.sessionId}:${notification.update.toolCallId}`,
+        sessionId: notification.sessionId,
+        message,
+      });
+      return;
+    }
+
     await persistMessage({
       sessionId: notification.sessionId,
-      message: buildMessage({
-        role: 'assistant',
-        text: sessionUpdateText(notification),
-        rawEvents: [
-          {
-            type: 'streamPart',
-            partType: updateType,
-            text: sessionUpdateText(notification),
-            rawText,
-          },
-        ],
-        kind: 'raw_meta',
-        metadataJson: JSON.stringify({ acpSessionUpdate: notification.update }),
-      }),
+      message,
     });
   };
 
@@ -1193,7 +1265,8 @@ export const createSessionStore = ({
           ),
         );
       if (input.notify !== 'none') {
-        emitAcpSse({ type: 'session_messages_updated', sessionId: input.sessionId });
+        // Stream content is delivered via message-delta events. Final persistence updates are
+        // intentionally not invalidation-driven.
       }
     },
   };
@@ -1680,6 +1753,17 @@ export const createSessionStore = ({
     return session;
   };
 
+  const normalizeSelectionId = (value: string | null | undefined): string | null =>
+    value === null || value === undefined || value.length === 0 ? null : value;
+
+  const lookupModelName = (
+    entry: { readonly availableModels: readonly ModelOption[] },
+    id: string,
+  ) => entry.availableModels.find((model) => model.id === id)?.name ?? id;
+
+  const lookupModeName = (entry: { readonly availableModes: readonly ModeOption[] }, id: string) =>
+    entry.availableModes.find((mode) => mode.id === id)?.name ?? id;
+
   const sendPrompt = async (
     sessionId: string,
     request: SendMessageRequest,
@@ -1697,6 +1781,22 @@ export const createSessionStore = ({
     const effectivePrompt = attachmentPromptPlan.promptText;
     const promptMessages = await attachmentPromptMessagesFromPlan(attachmentPromptPlan);
     const userAttachments = userAttachmentsFromPromptPlan(attachmentPromptPlan);
+    const selectedModelId =
+      normalizeSelectionId(request.modelId) ??
+      normalizeSelectionId(entry.session.currentModelId) ??
+      null;
+    const selectedModeId =
+      normalizeSelectionId(request.modeId) ??
+      normalizeSelectionId(entry.session.currentModeId) ??
+      null;
+    const selectionMetadata = {
+      source: 'send-prompt' as const,
+      presetId: entry.session.presetId,
+      modelId: selectedModelId,
+      modelName: selectedModelId === null ? null : lookupModelName(entry.session, selectedModelId),
+      modeId: selectedModeId,
+      modeName: selectedModeId === null ? null : lookupModeName(entry.session, selectedModeId),
+    };
 
     await persistSession(entry.session);
     await persistMessage({
@@ -1706,6 +1806,7 @@ export const createSessionStore = ({
         text: request.prompt,
         rawEvents: [],
         kind: 'user',
+        metadataJson: JSON.stringify(selectionMetadata),
         attachments: userAttachments,
       }),
     });
@@ -1765,12 +1866,15 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: 'session_text_delta',
+              type: 'message-delta',
               sessionId: deltaSessionId,
+              sequence: nextAcpSseSequence(),
+              deltaIndex:
+                message.rawJson.type === 'assistant_text' ? (message.rawJson.deltaCount ?? 0) : 0,
               messageId: message.id,
               streamPartId: message.streamPartId,
-              delta,
-              text: message.text,
+              kind: 'assistant_text',
+              contentDelta: delta,
               createdAt: message.createdAt,
               updatedAt: message.updatedAt ?? message.createdAt,
               metadataJson: message.metadataJson,
@@ -1781,12 +1885,15 @@ export const createSessionStore = ({
               return;
             }
             emitAcpSse({
-              type: 'session_reasoning_delta',
+              type: 'message-delta',
               sessionId: deltaSessionId,
+              sequence: nextAcpSseSequence(),
+              deltaIndex:
+                message.rawJson.type === 'reasoning' ? (message.rawJson.deltaCount ?? 0) : 0,
               messageId: message.id,
               streamPartId: message.streamPartId,
-              delta,
-              text: message.text,
+              kind: 'reasoning',
+              contentDelta: delta,
               createdAt: message.createdAt,
               updatedAt: message.updatedAt ?? message.createdAt,
               metadataJson: message.metadataJson,

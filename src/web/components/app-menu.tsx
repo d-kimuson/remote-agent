@@ -1,5 +1,5 @@
-import { Link } from '@tanstack/react-router';
-import { FolderKanban, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
+import { Link, useLocation, useRouterState } from '@tanstack/react-router';
+import { FolderKanban, Info, Menu, PanelLeftClose, Settings, X } from 'lucide-react';
 import {
   createContext,
   useCallback,
@@ -36,25 +36,50 @@ const maxDesktopMenuWidth = 520;
 const clampDesktopMenuWidth = (width: number): number =>
   Math.min(maxDesktopMenuWidth, Math.max(minDesktopMenuWidth, width));
 
+const menuLinkClassName =
+  'flex h-9 relative items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground';
+
 const DefaultMenuContent: FC<{ readonly closeMobileMenu: () => void }> = ({ closeMobileMenu }) => {
   const { t } = useTranslation();
+  const location = useLocation();
+  const isProjectsActive = location.pathname.startsWith('/projects');
+  const isSettingsActive = location.pathname === '/settings';
+  const isInformationActive = location.pathname === '/information';
+
   return (
     <div className="space-y-2 p-3">
       <Link
-        className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        className={cn(menuLinkClassName, isProjectsActive && 'bg-sidebar-primary/15')}
         onClick={closeMobileMenu}
         to="/projects"
       >
+        {isProjectsActive && (
+          <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+        )}
         <FolderKanban className="size-4" />
         {t('menu.projects')}
       </Link>
       <Link
-        className="flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        className={cn(menuLinkClassName, isSettingsActive && 'bg-sidebar-primary/15')}
         onClick={closeMobileMenu}
         to="/settings"
       >
+        {isSettingsActive && (
+          <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+        )}
         <Settings className="size-4" />
         {t('menu.settings')}
+      </Link>
+      <Link
+        className={cn(menuLinkClassName, isInformationActive && 'bg-sidebar-primary/15')}
+        onClick={closeMobileMenu}
+        to="/information"
+      >
+        {isInformationActive && (
+          <span className="absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-r-full bg-sidebar-primary" />
+        )}
+        <Info className="size-4" />
+        {t('menu.information')}
       </Link>
     </div>
   );
@@ -64,9 +89,17 @@ const AppMenuBody: FC<{
   readonly closeMobileMenu: () => void;
   readonly hasCustomContent: boolean;
   readonly isMobile: boolean;
+  readonly isProjectScopedRoute: boolean;
   readonly setTarget: (target: HTMLDivElement | null) => void;
   readonly onCollapse?: () => void;
-}> = ({ closeMobileMenu, hasCustomContent, isMobile, onCollapse, setTarget }) => {
+}> = ({
+  closeMobileMenu,
+  hasCustomContent,
+  isMobile,
+  isProjectScopedRoute,
+  onCollapse,
+  setTarget,
+}) => {
   const { t } = useTranslation();
 
   return (
@@ -106,7 +139,13 @@ const AppMenuBody: FC<{
         )}
       </div>
       <div className="min-h-0 flex-1 overflow-hidden" ref={setTarget}>
-        {hasCustomContent ? null : <DefaultMenuContent closeMobileMenu={closeMobileMenu} />}
+        {hasCustomContent ? null : isProjectScopedRoute ? (
+          <div className="space-y-2 p-3">
+            <p className="h-9 px-3 text-xs text-muted-foreground">{t('common.loading')}</p>
+          </div>
+        ) : (
+          <DefaultMenuContent closeMobileMenu={closeMobileMenu} />
+        )}
       </div>
     </div>
   );
@@ -153,6 +192,20 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
   const [desktopExpanded, setDesktopExpanded] = useState(true);
   const [desktopMenuWidth, setDesktopMenuWidth] = useState(300);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const location = useRouterState({ select: (s) => s.location });
+  const isProjectScopedRoute = useMemo(() => {
+    if (location.pathname.startsWith('/projects/')) return true;
+    const search = location.search as Record<string, unknown> | undefined;
+    const projectId = search?.['projectId'];
+    if (
+      (location.pathname === '/settings' || location.pathname === '/information') &&
+      typeof projectId === 'string' &&
+      projectId.length > 0
+    ) {
+      return true;
+    }
+    return false;
+  }, [location.pathname, location.search]);
   const desktopResizeStartRef = useRef<{
     readonly startWidth: number;
     readonly startX: number;
@@ -214,6 +267,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
               closeMobileMenu={closeMobileMenu}
               hasCustomContent={hasCustomContent}
               isMobile={false}
+              isProjectScopedRoute={isProjectScopedRoute}
               onCollapse={() => {
                 setDesktopExpanded(false);
               }}
@@ -254,6 +308,7 @@ export const AppMenuLayout: FC<{ readonly children: ReactNode }> = ({ children }
               closeMobileMenu={closeMobileMenu}
               hasCustomContent={hasCustomContent}
               isMobile
+              isProjectScopedRoute={isProjectScopedRoute}
               setTarget={setMobileTarget}
             />
           </div>

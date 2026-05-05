@@ -1,5 +1,11 @@
-import type { ChatMessage, ChatMessageKind, RawEvent } from '../../../../shared/acp';
+import { safeParse } from 'valibot';
 
+import {
+  sendPromptSelectionMetadataSchema,
+  type ChatMessage,
+  type ChatMessageKind,
+  type RawEvent,
+} from '../../../../shared/acp';
 import { planRawEventsForRender } from './acp-event-plan.pure.ts';
 
 /**
@@ -59,4 +65,29 @@ export const isToolOnlyTranscriptMessage = (
     return false;
   }
   return planRawEventsForRender(displayableEvents).every((item) => item.type === 'tool');
+};
+
+const resolveSelectionMetadataFromMessage = (message: ChatMessage) => {
+  if (message.role !== 'user' || message.rawJson.type !== 'user') {
+    return null;
+  }
+  if (message.rawJson.metadata === undefined) {
+    return null;
+  }
+  const parsed = safeParse(sendPromptSelectionMetadataSchema, message.rawJson.metadata);
+  return parsed.success ? parsed.output : null;
+};
+
+export const formatUserMessageSelectionMetadata = (message: ChatMessage): string | null => {
+  const metadata = resolveSelectionMetadataFromMessage(message);
+  if (metadata === null || metadata.source !== 'send-prompt') {
+    return null;
+  }
+  const preset = metadata.presetId?.trim();
+  const model = metadata.modelName?.trim() ?? metadata.modelId?.trim();
+  const mode = metadata.modeName?.trim() ?? metadata.modeId?.trim();
+  const chunks: string[] = [preset, model, mode].filter((value): value is string => {
+    return value !== undefined && value !== null && value.length > 0;
+  });
+  return chunks.length > 0 ? chunks.join(' / ') : null;
 };

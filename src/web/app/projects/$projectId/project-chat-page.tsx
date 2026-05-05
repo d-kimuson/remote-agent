@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQueryClient,
-  useSuspenseInfiniteQuery,
-  useSuspenseQuery,
-} from '@tanstack/react-query';
+import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   ArrowDown,
@@ -63,7 +58,6 @@ import { Badge } from '../../../components/ui/badge.tsx';
 import { Button } from '../../../components/ui/button.tsx';
 import { Input } from '../../../components/ui/input.tsx';
 import { Label } from '../../../components/ui/label.tsx';
-import { ScrollArea } from '../../../components/ui/scroll-area.tsx';
 import {
   Select,
   SelectContent,
@@ -75,6 +69,7 @@ import {
   SelectValue,
 } from '../../../components/ui/select.tsx';
 import { ACP_SSE_BROWSER_EVENT } from '../../../lib/api/acp-sse-browser-event.ts';
+import { applySessionMessageEventToMessages } from '../../../lib/api/acp-sse-cache.pure.ts';
 import {
   cancelSessionRequest,
   createProjectWorktreeRequest,
@@ -166,6 +161,7 @@ import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
 import { RichPromptEditor } from './rich-prompt-editor.tsx';
 import {
   filterDisplayableRawEvents,
+  formatUserMessageSelectionMetadata,
   isToolOnlyTranscriptMessage,
   shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
@@ -423,8 +419,12 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
   if (message.role === 'user') {
     const text = message.rawJson.type === 'user' ? message.rawJson.text : message.text;
     const attachments = message.rawJson.type === 'user' ? (message.rawJson.attachments ?? []) : [];
+    const selectionMetadata = formatUserMessageSelectionMetadata(message);
     return (
       <div>
+        {selectionMetadata === null ? null : (
+          <div className="mb-2 truncate text-xs text-muted-foreground">{selectionMetadata}</div>
+        )}
         {text.trim().length === 0 ? null : <ChatMarkdown>{text}</ChatMarkdown>}
         <UserAttachmentPreview attachments={attachments} />
       </div>
@@ -861,7 +861,153 @@ const SlashCommandsLoader: FC<{
   return null;
 };
 
-const SESSION_MESSAGES_PAGE_SIZE = 100;
+const SESSION_MESSAGES_PAGE_SIZE = 50;
+
+const compareChatMessageOrder = (left: ChatMessage, right: ChatMessage): number => {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  return createdAtOrder !== 0 ? createdAtOrder : left.id.localeCompare(right.id);
+};
+
+const OPTIMISTIC_USER_MESSAGE_DUPLICATE_WINDOW_MS = 2 * 60 * 1000;
+
+const timestampMillisOrNull = (value: string): number | null => {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? null : time;
+};
+
+const userAttachmentIdentitySignature = (message: ChatMessage): string => {
+  if (message.rawJson.type !== 'user') {
+    return '';
+  }
+  return (message.rawJson.attachments ?? [])
+    .map((attachment) =>
+      [
+        attachment.attachmentId ?? '',
+        attachment.name ?? '',
+        String(attachment.sizeInBytes ?? ''),
+        attachment.source.type,
+        attachment.source.media_type,
+      ].join('\u0000'),
+    )
+    .join('\u0001');
+};
+
+const isOptimisticUserMessageDuplicate = ({
+  fetched,
+  local,
+}: {
+  readonly fetched: ChatMessage;
+  readonly local: ChatMessage;
+}): boolean => {
+  if (fetched.role !== 'user' || local.role !== 'user') {
+    return false;
+  }
+  if (fetched.text !== local.text) {
+    return false;
+  }
+  if (userAttachmentIdentitySignature(fetched) !== userAttachmentIdentitySignature(local)) {
+    return false;
+  }
+
+  const fetchedTime = timestampMillisOrNull(fetched.createdAt);
+  const localTime = timestampMillisOrNull(local.createdAt);
+  if (fetchedTime === null || localTime === null) {
+    return false;
+  }
+  return Math.abs(fetchedTime - localTime) <= OPTIMISTIC_USER_MESSAGE_DUPLICATE_WINDOW_MS;
+};
+
+const mergeHydratedMessages = ({
+  fetched,
+  local,
+  optimisticUserMessageIds,
+}: {
+  readonly fetched: readonly ChatMessage[];
+  readonly local: readonly ChatMessage[];
+  readonly optimisticUserMessageIds: ReadonlySet<string>;
+}): readonly ChatMessage[] => {
+  const fetchedIds = new Set(fetched.map((message) => message.id));
+  return [
+    ...fetched,
+    ...local.filter(
+      (message) =>
+        !fetchedIds.has(message.id) &&
+        (!optimisticUserMessageIds.has(message.id) ||
+          !fetched.some((fetchedMessage) =>
+            isOptimisticUserMessageDuplicate({ fetched: fetchedMessage, local: message }),
+          )),
+    ),
+  ].toSorted(compareChatMessageOrder);
+};
+
+const REMAINING_SESSION_MESSAGES_PAGE_SIZE = 100;
+
+const ChunkedRemainingSessionMessagesLoader: FC<{
+  readonly before: string;
+  readonly latestMessages: readonly ChatMessage[];
+  readonly sessionId: string;
+  readonly onBeforeHydrateRemaining: () => void;
+  readonly onHydrated: (sessionId: string, messages: readonly ChatMessage[]) => void;
+  readonly onReady: () => void;
+}> = ({ before, latestMessages, onBeforeHydrateRemaining, onHydrated, onReady, sessionId }) => {
+  const [cursor, setCursor] = useState(before);
+  const [loadedPages, setLoadedPages] = useState<readonly SessionMessagesResponse[]>([]);
+  const processedCursorsRef = useRef(new Set<string>());
+  const capturedAnchorRef = useRef(false);
+
+  useLayoutEffect(() => {
+    setCursor(before);
+    setLoadedPages([]);
+    processedCursorsRef.current = new Set<string>();
+    capturedAnchorRef.current = false;
+  }, [before, sessionId]);
+
+  const { data } = useSuspenseQuery({
+    queryKey: [...sessionMessagesInfiniteQueryKey(sessionId), 'remaining-chunk', cursor],
+    queryFn: () =>
+      fetchSessionMessages(sessionId, {
+        view: 'transcript',
+        limit: REMAINING_SESSION_MESSAGES_PAGE_SIZE,
+        before: cursor,
+      }),
+  });
+
+  useLayoutEffect(() => {
+    if (processedCursorsRef.current.has(cursor)) {
+      return;
+    }
+    processedCursorsRef.current.add(cursor);
+    if (!capturedAnchorRef.current) {
+      capturedAnchorRef.current = true;
+      onBeforeHydrateRemaining();
+    }
+
+    const nextLoadedPages = [...loadedPages, data];
+    onHydrated(sessionId, [
+      ...[...nextLoadedPages].reverse().flatMap((page) => page.messages),
+      ...latestMessages,
+    ]);
+
+    const nextCursor = data.pageInfo.beforeCursor ?? null;
+    if (data.pageInfo.hasMoreBefore && nextCursor !== null) {
+      setLoadedPages(nextLoadedPages);
+      setCursor(nextCursor);
+      return;
+    }
+    onReady();
+  }, [
+    cursor,
+    data,
+    latestMessages,
+    loadedPages,
+    onBeforeHydrateRemaining,
+    onHydrated,
+    onReady,
+    sessionId,
+  ]);
+
+  return null;
+};
 
 const SessionMessagesHydrator: FC<{
   readonly sessionId: string;
@@ -870,35 +1016,56 @@ const SessionMessagesHydrator: FC<{
     fetchNextPage: () => Promise<unknown>,
     hasNextPage: boolean,
     isFetchingNextPage: boolean,
+    loadedPageCount: number,
   ) => void;
-}> = ({ sessionId, onHydrated, onFetchNextPageReady }) => {
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage } = useSuspenseInfiniteQuery({
-    queryKey: sessionMessagesInfiniteQueryKey(sessionId),
-    queryFn: ({ pageParam }) =>
+  readonly onBeforeFetchRemaining: () => void;
+}> = ({ sessionId, onBeforeFetchRemaining, onHydrated, onFetchNextPageReady }) => {
+  const [remainingLoaded, setRemainingLoaded] = useState(false);
+  const latestMessagesQuery = useSuspenseQuery({
+    queryKey: [...sessionMessagesInfiniteQueryKey(sessionId), 'latest'],
+    queryFn: () =>
       fetchSessionMessages(sessionId, {
         view: 'transcript',
         limit: SESSION_MESSAGES_PAGE_SIZE,
-        before: pageParam ?? undefined,
       }),
-    initialPageParam: null as string | null,
-    getNextPageParam: (lastPage) =>
-      lastPage.pageInfo.hasMoreBefore ? lastPage.pageInfo.beforeCursor : undefined,
   });
-
-  const allMessages = useMemo(
-    () => [...data.pages].reverse().flatMap((page) => page.messages),
-    [data.pages],
-  );
+  const beforeCursor = latestMessagesQuery.data.pageInfo.beforeCursor ?? null;
+  const shouldFetchRemaining =
+    latestMessagesQuery.data.pageInfo.hasMoreBefore && beforeCursor !== null;
 
   useLayoutEffect(() => {
-    onHydrated(sessionId, allMessages);
-  }, [allMessages, onHydrated, sessionId]);
+    setRemainingLoaded(false);
+  }, [sessionId, beforeCursor]);
 
   useLayoutEffect(() => {
-    onFetchNextPageReady(fetchNextPage, hasNextPage, isFetchingNextPage);
-  }, [fetchNextPage, hasNextPage, isFetchingNextPage, onFetchNextPageReady]);
+    onHydrated(sessionId, latestMessagesQuery.data.messages);
+  }, [latestMessagesQuery.data.messages, onHydrated, sessionId]);
 
-  return null;
+  const noopFetchNextPage = useCallback(async () => {}, []);
+
+  useLayoutEffect(() => {
+    onFetchNextPageReady(
+      noopFetchNextPage,
+      shouldFetchRemaining && !remainingLoaded,
+      shouldFetchRemaining && !remainingLoaded,
+      remainingLoaded ? 2 : 1,
+    );
+  }, [noopFetchNextPage, onFetchNextPageReady, remainingLoaded, shouldFetchRemaining]);
+
+  return shouldFetchRemaining && !remainingLoaded ? (
+    <Suspense fallback={null}>
+      <ChunkedRemainingSessionMessagesLoader
+        before={beforeCursor}
+        latestMessages={latestMessagesQuery.data.messages}
+        onBeforeHydrateRemaining={onBeforeFetchRemaining}
+        onHydrated={onHydrated}
+        onReady={() => {
+          setRemainingLoaded(true);
+        }}
+        sessionId={sessionId}
+      />
+    </Suspense>
+  ) : null;
 };
 
 export const ProjectChatPage: FC<{
@@ -961,6 +1128,7 @@ export const ProjectChatPage: FC<{
     value: '',
   });
   const [transcripts, setTranscripts] = useState<TranscriptMap>({});
+  const optimisticUserMessageIdsRef = useRef(new Set<string>());
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
     readonly string[]
@@ -987,6 +1155,7 @@ export const ProjectChatPage: FC<{
   const preparingScopeKeysRef = useRef(new Set<string>());
   const attachFileInputRef = useRef<HTMLInputElement | null>(null);
   const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const speechListeningDesiredRef = useRef(false);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
@@ -997,13 +1166,17 @@ export const ProjectChatPage: FC<{
   const activeTranscriptKeyRef = useRef<string | null>(null);
   const draftSessionRedirectRequestRef = useRef<DraftSessionRedirectRequest | null>(null);
   const previousVisibleMessageCountRef = useRef(0);
+  const [chatViewportElement, setChatViewportElement] = useState<HTMLElement | null>(null);
   const [isChatFollowingTail, setIsChatFollowingTail] = useState(true);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [messagesBelowScroll, setMessagesBelowScroll] = useState(0);
-  const fetchNextPageRef = useRef<(() => void) | null>(null);
+  const fetchNextPageRef = useRef<(() => Promise<unknown>) | null>(null);
   const [hasNextPage, setHasNextPage] = useState(false);
   const [isFetchingNextPage, setIsFetchingNextPage] = useState(false);
-  const fetchingNextPageRef = useRef(false);
+  const pendingPrependAnchorRef = useRef<{
+    readonly messageId: string;
+    readonly top: number;
+  } | null>(null);
 
   const onAgentCatalogReady = useCallback((catalog: AgentModelCatalogResponse) => {
     setProbedModelCatalog(catalog);
@@ -1044,6 +1217,7 @@ export const ProjectChatPage: FC<{
 
   useEffect(() => {
     return () => {
+      speechListeningDesiredRef.current = false;
       speechRecognitionRef.current?.abort();
     };
   }, []);
@@ -1672,15 +1846,52 @@ export const ProjectChatPage: FC<{
       setAwaitingAssistantTranscriptKeys((current) =>
         current.includes(nextSessionId) ? current : [...current, nextSessionId],
       );
-      setTranscripts((current) =>
-        current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
-          ? moveTranscript({
-              from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
-              to: nextSessionId,
-              transcripts: current,
-            })
-          : current,
-      );
+      setTranscripts((current) => {
+        const moved =
+          current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
+            ? moveTranscript({
+                from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
+                to: nextSessionId,
+                transcripts: current,
+              })
+            : current;
+
+        if (sseEvent.type !== 'message-add' && sseEvent.type !== 'message-delta') {
+          return moved;
+        }
+
+        const local = moved[nextSessionId] ?? [];
+        const patchedFromEvent = applySessionMessageEventToMessages(
+          {
+            messages: [...local],
+            pageInfo: { hasMoreBefore: false, beforeCursor: null },
+            meta: { totalMessageCount: local.length },
+          },
+          sseEvent,
+        ).messages;
+        const patched =
+          sseEvent.type === 'message-add' && sseEvent.message.role === 'user'
+            ? patchedFromEvent.filter((message) => {
+                const shouldDrop =
+                  optimisticUserMessageIdsRef.current.has(message.id) &&
+                  isOptimisticUserMessageDuplicate({ fetched: sseEvent.message, local: message });
+                if (shouldDrop) {
+                  optimisticUserMessageIdsRef.current.delete(message.id);
+                }
+                return !shouldDrop;
+              })
+            : patchedFromEvent;
+        if (
+          patched.length === local.length &&
+          patched.every((message, index) => message === local[index])
+        ) {
+          return moved;
+        }
+        return {
+          ...moved,
+          [nextSessionId]: patched.map((message) => ({ ...message })),
+        };
+      });
       navigateToStartedDraftSession(nextSessionId);
     };
 
@@ -1706,22 +1917,61 @@ export const ProjectChatPage: FC<{
         ) {
           return current;
         }
-        /**
-         * 送信中に SSE 由来の再取得で、新メッセージ行が未コミットの古いスナップショット
-         * （本より短い行数）が届くと、ここで上書きすると履歴を全部失ったように見える。
-         * 行は append-only の前提なので、短い取得ではローカルより退けない。
-         */
-        if (local.length > 0 && messages.length < local.length) {
+        const merged = mergeHydratedMessages({
+          fetched: messages,
+          local,
+          optimisticUserMessageIds: optimisticUserMessageIdsRef.current,
+        });
+        if (
+          merged.length === local.length &&
+          merged.every((message, index) => {
+            const currentMessage = local[index];
+            return (
+              currentMessage !== undefined &&
+              currentMessage.id === message.id &&
+              currentMessage.updatedAt === message.updatedAt &&
+              currentMessage.text === message.text
+            );
+          })
+        ) {
           return current;
         }
         return {
           ...current,
-          [targetSessionId]: messages.map((message) => ({ ...message })),
+          [targetSessionId]: merged.map((message) => ({ ...message })),
         };
       });
     },
     [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
+  const handleBeforeFetchRemainingMessages = useCallback(() => {
+    const viewport = chatViewportElement;
+    if (
+      viewport === null ||
+      shouldStickToBottomRef.current ||
+      pendingPrependAnchorRef.current !== null
+    ) {
+      return;
+    }
+
+    const viewportTop = viewport.getBoundingClientRect().top;
+    const messageElements = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')];
+    const anchorElement =
+      messageElements.find((element) => element.getBoundingClientRect().bottom >= viewportTop) ??
+      messageElements[0];
+    if (anchorElement === undefined) {
+      return;
+    }
+    const messageId = anchorElement.dataset['messageId'];
+    if (messageId === undefined) {
+      return;
+    }
+    pendingPrependAnchorRef.current = {
+      messageId,
+      top: anchorElement.getBoundingClientRect().top,
+    };
+  }, [chatViewportElement]);
+
   const attachmentNames = attachedFiles.map((attachment) => attachment.name);
   const canSendPrompt = useCallback(
     (value: string) =>
@@ -1851,6 +2101,7 @@ export const ProjectChatPage: FC<{
     }
     const currentRecognition = speechRecognitionRef.current;
     if (isListeningToSpeech) {
+      speechListeningDesiredRef.current = false;
       currentRecognition?.stop();
       setIsListeningToSpeech(false);
       return;
@@ -1863,7 +2114,7 @@ export const ProjectChatPage: FC<{
     }
 
     const recognition = new SpeechRecognition();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = false;
     recognition.lang = navigator.language.length > 0 ? navigator.language : 'ja-JP';
     recognition.onresult = (event) => {
@@ -1876,22 +2127,39 @@ export const ProjectChatPage: FC<{
       );
     };
     recognition.onerror = (event) => {
+      if (event.error === 'aborted' || event.error === 'no-speech') {
+        return;
+      }
+      speechListeningDesiredRef.current = false;
       setIsListeningToSpeech(false);
       speechRecognitionRef.current = null;
-      if (event.error !== 'aborted') {
-        toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
-      }
+      toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
     };
     recognition.onend = () => {
-      setIsListeningToSpeech(false);
-      speechRecognitionRef.current = null;
+      if (speechRecognitionRef.current !== recognition) {
+        return;
+      }
+      if (!speechListeningDesiredRef.current) {
+        setIsListeningToSpeech(false);
+        speechRecognitionRef.current = null;
+        return;
+      }
+      try {
+        recognition.start();
+      } catch {
+        speechListeningDesiredRef.current = false;
+        setIsListeningToSpeech(false);
+        speechRecognitionRef.current = null;
+      }
     };
 
     speechRecognitionRef.current = recognition;
+    speechListeningDesiredRef.current = true;
     setIsListeningToSpeech(true);
     try {
       recognition.start();
     } catch {
+      speechListeningDesiredRef.current = false;
       speechRecognitionRef.current = null;
       setIsListeningToSpeech(false);
       toast.error(t('chat.voiceStartFailed'));
@@ -2089,7 +2357,6 @@ export const ProjectChatPage: FC<{
       upsertSessionInCache(response.session);
       void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
-      void queryClient.invalidateQueries({ queryKey: sessionMessagesQueryKey(targetSessionId) });
     } catch {
       queryClient.setQueryData(sessionsQueryKey, previousSessions);
     }
@@ -2137,12 +2404,14 @@ export const ProjectChatPage: FC<{
       kind: 'user',
       attachments: userAttachmentsFromUploaded(attachedFiles),
     });
+    optimisticUserMessageIdsRef.current.add(userMessage.id);
     const initialTranscriptKey = activeTranscriptKey;
     let requestAwaitingTranscriptKeys: readonly string[] = [initialTranscriptKey];
 
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
+    speechListeningDesiredRef.current = false;
     speechRecognitionRef.current?.stop();
     setIsListeningToSpeech(false);
     replacePrompt('');
@@ -2236,9 +2505,6 @@ export const ProjectChatPage: FC<{
           }
           void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
           void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
-          void queryClient.invalidateQueries({
-            queryKey: sessionMessagesQueryKey(response.session.sessionId),
-          });
           setPendingTuningModelId(null);
           setPendingTuningModeId(null);
           removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
@@ -2308,9 +2574,6 @@ export const ProjectChatPage: FC<{
 
       void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
       void queryClient.invalidateQueries({ queryKey: projectSettingsQueryKey(projectId) });
-      void queryClient.invalidateQueries({
-        queryKey: sessionMessagesQueryKey(resolvedActiveSessionId),
-      });
       setPendingTuningModelId(null);
       setPendingTuningModeId(null);
       removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
@@ -2368,11 +2631,14 @@ export const ProjectChatPage: FC<{
       'custom');
 
   const handleFetchNextPageReady = useCallback(
-    (fetchNextPage: () => void, nextPageExists: boolean, nextIsFetchingNextPage: boolean) => {
+    (
+      fetchNextPage: () => Promise<unknown>,
+      nextPageExists: boolean,
+      nextIsFetchingNextPage: boolean,
+    ) => {
       fetchNextPageRef.current = fetchNextPage;
       setHasNextPage(nextPageExists);
       setIsFetchingNextPage(nextIsFetchingNextPage);
-      fetchingNextPageRef.current = nextIsFetchingNextPage;
     },
     [],
   );
@@ -2384,6 +2650,9 @@ export const ProjectChatPage: FC<{
     }
     if (target.dataset['slot'] !== 'scroll-area-viewport') {
       return;
+    }
+    if (chatViewportElement !== target) {
+      setChatViewportElement(target);
     }
 
     const nextIsFollowing = isNearScrollBottom({
@@ -2407,14 +2676,25 @@ export const ProjectChatPage: FC<{
         Math.max(0, Math.round(visibleTranscript.length * (1 - scrollPercentage))),
       );
     }
-
-    // 上端に近づいたら古いメッセージを読み込む
-    const nearTopThreshold = 800;
-    if (target.scrollTop < nearTopThreshold && hasNextPage && !fetchingNextPageRef.current) {
-      fetchingNextPageRef.current = true;
-      fetchNextPageRef.current?.();
-    }
   };
+
+  useLayoutEffect(() => {
+    const pendingAnchor = pendingPrependAnchorRef.current;
+    const viewport = chatViewportElement;
+    if (pendingAnchor === null || viewport === null) {
+      return;
+    }
+
+    const anchorElement = [...viewport.querySelectorAll<HTMLElement>('[data-message-id]')].find(
+      (element) => element.dataset['messageId'] === pendingAnchor.messageId,
+    );
+    if (anchorElement === undefined) {
+      return;
+    }
+
+    pendingPrependAnchorRef.current = null;
+    viewport.scrollTop += anchorElement.getBoundingClientRect().top - pendingAnchor.top;
+  }, [chatViewportElement, visibleTranscript.length]);
 
   const handleJumpToLatest = () => {
     shouldStickToBottomRef.current = true;
@@ -2439,6 +2719,7 @@ export const ProjectChatPage: FC<{
     const didSessionChange = lastActiveTranscriptKeyRef.current !== activeTranscriptKey;
     if (didSessionChange) {
       lastActiveTranscriptKeyRef.current = activeTranscriptKey;
+      pendingPrependAnchorRef.current = null;
       shouldStickToBottomRef.current = true;
       setIsChatFollowingTail(true);
       setUnreadMessageCount(0);
@@ -2476,6 +2757,7 @@ export const ProjectChatPage: FC<{
         <Suspense fallback={null}>
           <SessionMessagesHydrator
             key={sessionId}
+            onBeforeFetchRemaining={handleBeforeFetchRemainingMessages}
             onHydrated={handleMessagesHydrated}
             onFetchNextPageReady={handleFetchNextPageReady}
             sessionId={sessionId}
@@ -2564,9 +2846,11 @@ export const ProjectChatPage: FC<{
         <section className="min-h-0 flex-1">
           <div className="flex h-full min-h-0 flex-col overflow-hidden">
             <div className="relative min-h-0 flex-1">
-              <ScrollArea
-                className="app-transcript-surface h-full"
+              <div
+                className="app-transcript-surface h-full overflow-auto rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+                data-slot="scroll-area-viewport"
                 onScrollCapture={handleChatScroll}
+                ref={setChatViewportElement}
               >
                 <div
                   className={cn(
@@ -2635,12 +2919,14 @@ export const ProjectChatPage: FC<{
                     </div>
                   ) : null}
 
-                  {isFetchingNextPage && hasNextPage && sessionId !== null && (
+                  {hasNextPage && sessionId !== null ? (
                     <div className="flex w-full justify-center py-2 text-xs text-muted-foreground">
-                      <Loader2 className="mr-1.5 size-3 animate-spin" />
-                      古いメッセージを読み込み中...
+                      {isFetchingNextPage ? (
+                        <Loader2 className="mr-1.5 size-3 animate-spin" />
+                      ) : null}
+                      セッションを読み込み中...
                     </div>
-                  )}
+                  ) : null}
                   {visibleTranscript.map((message, index) => {
                     const isUser = message.role === 'user';
                     const displayEvents = filterDisplayableRawEvents(message.rawEvents);
@@ -2656,10 +2942,11 @@ export const ProjectChatPage: FC<{
                     return (
                       <div
                         className={cn(
-                          'group/message flex w-full',
+                          'group/message flex w-full [content-visibility:auto] [contain-intrinsic-size:auto_180px]',
                           isUser ? 'justify-end' : 'justify-start',
                           isToolOnly && isAfterToolOnly ? '-mt-3 md:-mt-4' : '',
                         )}
+                        data-message-id={message.id}
                         key={message.id}
                       >
                         <div
@@ -2741,7 +3028,7 @@ export const ProjectChatPage: FC<{
                   ) : null}
                   <div aria-hidden ref={scrollAnchorRef} />
                 </div>
-              </ScrollArea>
+              </div>
               {shouldShowScrollBanner ? (
                 <Button
                   aria-label="Jump to latest message"

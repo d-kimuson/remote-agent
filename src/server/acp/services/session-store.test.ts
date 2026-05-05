@@ -596,6 +596,144 @@ describe('createSessionStore', () => {
     expect(restoredMessages.map((message) => message.text)).toEqual(['ping', 'pong']);
   });
 
+  test('stores send-prompt selection metadata on user messages', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-msgs-meta',
+            modes: {
+              currentModeId: 'full-access',
+              availableModes: [{ id: 'full-access', name: 'full-access' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [
+                { modelId: 'gpt-5-codex', name: 'GPT-5 Codex' },
+                { modelId: 'gpt-5.4-codex-spark', name: 'gpt-5.4-codex-spark' },
+              ],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: 'pong',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    await store.sendPrompt('session-msgs-meta', {
+      prompt: 'ping',
+      attachmentIds: [],
+      modelId: 'gpt-5.4-codex-spark',
+      modeId: 'full-access',
+    });
+
+    const userMessage = (await store.listMessages('session-msgs-meta')).find(
+      (entry) => entry.role === 'user',
+    );
+    if (userMessage?.rawJson.type !== 'user') {
+      throw new Error('expected user message');
+    }
+    expect(userMessage.rawJson).toEqual(
+      expect.objectContaining({
+        metadata: {
+          source: 'send-prompt',
+          presetId: 'codex',
+          modelId: 'gpt-5.4-codex-spark',
+          modelName: 'gpt-5.4-codex-spark',
+          modeId: 'full-access',
+          modeName: 'full-access',
+        },
+      }),
+    );
+  });
+
+  test('stores current session model/mode when send-prompt overrides are omitted', async () => {
+    const database = createMemoryDatabase();
+    disposableClients.push(database.client);
+
+    const store = createSessionStore({
+      database,
+      resolveCommand: () => Promise.resolve('/bin/codex'),
+      createProvider: () => ({
+        cleanup: () => {},
+        initSession: () =>
+          Promise.resolve({
+            sessionId: 'session-msgs-meta-inherit',
+            modes: {
+              currentModeId: 'full-access',
+              availableModes: [{ id: 'full-access', name: 'full-access' }],
+            },
+            models: {
+              currentModelId: 'gpt-5-codex',
+              availableModels: [{ modelId: 'gpt-5-codex', name: 'GPT-5 Codex' }],
+            },
+          }),
+        languageModel: stubLanguageModel,
+        setMode: async () => {},
+        setModel: async () => {},
+        tools: {},
+      }),
+      promptCollector: () =>
+        Promise.resolve({
+          text: 'pong',
+          rawEvents: [],
+          alreadyPersisted: false,
+          assistantSegmentMessages: [],
+        }),
+    });
+
+    await store.createSession({
+      projectId: null,
+      preset: codexPreset,
+      command: 'npx',
+      args: ['-y', '@zed-industries/codex-acp'],
+      cwd: process.cwd(),
+    });
+
+    await store.sendPrompt('session-msgs-meta-inherit', { prompt: 'ping', attachmentIds: [] });
+
+    const userMessage = (await store.listMessages('session-msgs-meta-inherit')).find(
+      (entry) => entry.role === 'user',
+    );
+    if (userMessage?.rawJson.type !== 'user') {
+      throw new Error('expected user message');
+    }
+    expect(userMessage.rawJson).toEqual(
+      expect.objectContaining({
+        metadata: {
+          source: 'send-prompt',
+          presetId: 'codex',
+          modelId: 'gpt-5-codex',
+          modelName: 'GPT-5 Codex',
+          modeId: 'full-access',
+          modeName: 'full-access',
+        },
+      }),
+    );
+  });
+
   test('persists image attachments on the user message as base64 image blocks', async () => {
     const database = createMemoryDatabase();
     disposableClients.push(database.client);
@@ -1581,16 +1719,21 @@ describe('createSessionStore', () => {
         availableCommands: [{ name: 'review', description: 'Review current changes' }],
       },
     });
+    const toolUpdate = {
+      sessionUpdate: 'tool_call_update' as const,
+      toolCallId: 'tool-1',
+      title: 'Edit file',
+      kind: 'edit' as const,
+      status: 'in_progress' as const,
+      locations: [{ path: 'src/app.ts', line: 12 }],
+    };
     installedHandler({
       sessionId: 'session-updates',
-      update: {
-        sessionUpdate: 'tool_call_update',
-        toolCallId: 'tool-1',
-        title: 'Edit file',
-        kind: 'edit',
-        status: 'in_progress',
-        locations: [{ path: 'src/app.ts', line: 12 }],
-      },
+      update: toolUpdate,
+    });
+    installedHandler({
+      sessionId: 'session-updates',
+      update: toolUpdate,
     });
 
     await new Promise((resolve) => {
@@ -1604,19 +1747,17 @@ describe('createSessionStore', () => {
     });
     const messages = await store.listMessages('session-updates');
     expect(messages.map((message) => message.kind)).toContain('raw_meta');
+    const toolUpdateText = JSON.stringify({
+      toolCallId: 'tool-1',
+      title: 'Edit file',
+      kind: 'edit',
+      status: 'in_progress',
+      locations: [{ path: 'src/app.ts', line: 12 }],
+    });
     expect(messages.map((message) => message.text)).toEqual(
-      expect.arrayContaining([
-        'context 1200/4000 tokens (30%)',
-        '/review',
-        JSON.stringify({
-          toolCallId: 'tool-1',
-          title: 'Edit file',
-          kind: 'edit',
-          status: 'in_progress',
-          locations: [{ path: 'src/app.ts', line: 12 }],
-        }),
-      ]),
+      expect.arrayContaining(['context 1200/4000 tokens (30%)', '/review', toolUpdateText]),
     );
+    expect(messages.filter((message) => message.text === toolUpdateText)).toHaveLength(1);
   });
 
   test('cancels a running prompt and persists an abort message', async () => {

@@ -4,6 +4,7 @@ import type { ChatMessage, RawEvent } from '../../../../shared/acp';
 
 import {
   filterDisplayableRawEvents,
+  formatUserMessageSelectionMetadata,
   isToolOnlyTranscriptMessage,
   shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
@@ -45,6 +46,58 @@ describe('filterDisplayableRawEvents', () => {
   test('空でない start は残す', () => {
     const events: RawEvent[] = [{ type: 'streamPart', partType: 'start', text: 'x', rawText: 'x' }];
     expect(filterDisplayableRawEvents(events).length).toBe(1);
+  });
+});
+
+describe('formatUserMessageSelectionMetadata', () => {
+  test('send-prompt 選択情報を期待フォーマットで返す', () => {
+    const message: ChatMessage = {
+      id: 'user-1',
+      role: 'user',
+      kind: 'user',
+      rawJson: {
+        schemaVersion: 1,
+        type: 'user',
+        role: 'user',
+        text: 'hello',
+        metadata: {
+          source: 'send-prompt',
+          presetId: 'codex',
+          modelId: 'gpt-5.4-codex-spark',
+          modelName: 'gpt-5.4-codex-spark',
+          modeId: 'full-access',
+          modeName: 'full-access',
+        },
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      textForSearch: '',
+      text: 'hello',
+      rawEvents: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+    };
+    expect(formatUserMessageSelectionMetadata(message)).toBe(
+      'codex / gpt-5.4-codex-spark / full-access',
+    );
+  });
+
+  test('metadata が無い user メッセージでは null', () => {
+    const message: ChatMessage = {
+      id: 'user-2',
+      role: 'user',
+      kind: 'user',
+      rawJson: {
+        schemaVersion: 1,
+        type: 'user',
+        role: 'user',
+        text: 'hello',
+        createdAt: '2025-01-01T00:00:00.000Z',
+      },
+      textForSearch: '',
+      text: 'hello',
+      rawEvents: [],
+      createdAt: '2025-01-01T00:00:00.000Z',
+    };
+    expect(formatUserMessageSelectionMetadata(message)).toBeNull();
   });
 });
 

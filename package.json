@@ -1,6 +1,6 @@
 {
   "name": "@kimuson/remote-agent",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "A CLI that serves a web UI and bridge server for interacting with ACP-compatible agents",
   "license": "MIT",
   "repository": {
@@ -50,9 +50,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@agentclientprotocol/claude-agent-acp": "0.31.4",
+    "@agentclientprotocol/claude-agent-acp": "0.32.0",
     "@anthropic-ai/sandbox-runtime": "0.0.49",
-    "@zed-industries/codex-acp": "0.12.0",
+    "@zed-industries/codex-acp": "0.13.0",
     "pi-acp": "0.0.26"
   },
   "devDependencies": {

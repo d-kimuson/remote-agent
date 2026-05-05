@@ -247,6 +247,7 @@ export const userRawSchema = object({
   type: literal('user'),
   role: literal('user'),
   text: string(),
+  metadata: optional(unknown()),
   attachments: optional(array(userAttachmentSchema)),
   promptPlan: optional(unknown()),
 });
@@ -512,6 +513,7 @@ export const parsePersistedMessageRaw = (value: unknown) =>
 
 export const appInfoSchema = object({
   appName: pipe(string(), trim()),
+  version: pipe(string(), trim()),
   workingDirectory: pipe(string(), trim()),
   projectsFilePath: pipe(string(), trim()),
   agentPresets: array(agentPresetSchema),
@@ -1251,6 +1253,17 @@ export const chatMessageSchema = object({
 
 export type ChatMessage = InferOutput<typeof chatMessageSchema>;
 
+export const sendPromptSelectionMetadataSchema = object({
+  source: literal('send-prompt'),
+  presetId: optional(nullable(pipe(string(), trim()))),
+  modelId: optional(nullable(pipe(string(), trim()))),
+  modelName: optional(nullable(pipe(string(), trim()))),
+  modeId: optional(nullable(pipe(string(), trim()))),
+  modeName: optional(nullable(pipe(string(), trim()))),
+});
+
+export type SendPromptSelectionMetadata = InferOutput<typeof sendPromptSelectionMetadataSchema>;
+
 export const messageResponseSchema = object({
   session: sessionSummarySchema,
   text: string(),
@@ -1284,30 +1297,23 @@ export const acpSseEventSchema = union([
     status: optional(sessionStatusSchema),
   }),
   object({
-    type: literal('session_text_delta'),
+    type: literal('message-add'),
     sessionId: pipe(string(), trim()),
+    sequence: number(),
+    message: chatMessageSchema,
+  }),
+  object({
+    type: literal('message-delta'),
+    sessionId: pipe(string(), trim()),
+    sequence: number(),
+    deltaIndex: number(),
     messageId: pipe(string(), trim()),
     streamPartId: pipe(string(), trim()),
-    delta: string(),
-    text: string(),
+    kind: union([literal('assistant_text'), literal('reasoning')]),
+    contentDelta: string(),
     createdAt: pipe(string(), trim()),
     updatedAt: pipe(string(), trim()),
     metadataJson: optional(nullable(pipe(string(), trim()))),
-  }),
-  object({
-    type: literal('session_reasoning_delta'),
-    sessionId: pipe(string(), trim()),
-    messageId: pipe(string(), trim()),
-    streamPartId: pipe(string(), trim()),
-    delta: string(),
-    text: string(),
-    createdAt: pipe(string(), trim()),
-    updatedAt: pipe(string(), trim()),
-    metadataJson: optional(nullable(pipe(string(), trim()))),
-  }),
-  object({
-    type: literal('session_messages_updated'),
-    sessionId: pipe(string(), trim()),
   }),
   object({
     type: literal('session_removed'),

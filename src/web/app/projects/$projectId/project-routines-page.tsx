@@ -1,6 +1,5 @@
-import type { FC } from 'react';
-
 import { useSuspenseQuery } from '@tanstack/react-query';
+import { Suspense, type FC } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { fetchAgentProviders, fetchProject, fetchSessions } from '../../../lib/api/acp.ts';
@@ -8,6 +7,16 @@ import { RoutineSettingsPanel } from '../../settings/settings-panels.tsx';
 import { ProjectMenuContent } from './project-menu-content.tsx';
 import { agentProvidersQueryKey, projectQueryKey, sessionsQueryKey } from './queries.ts';
 import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
+
+const RoutineSettingsPanelFallback: FC = () => {
+  const { t } = useTranslation();
+
+  return (
+    <div className="rounded-lg border bg-card/70 p-6 text-sm text-muted-foreground">
+      {t('common.loading')}
+    </div>
+  );
+};
 
 export const ProjectRoutinesPage: FC<{ readonly projectId: string }> = ({ projectId }) => {
   const { t } = useTranslation();
@@ -52,7 +61,9 @@ export const ProjectRoutinesPage: FC<{ readonly projectId: string }> = ({ projec
             {t('routines.description', { projectName: projectData.project.name })}
           </p>
         </header>
-        <RoutineSettingsPanel project={projectData.project} />
+        <Suspense fallback={<RoutineSettingsPanelFallback />}>
+          <RoutineSettingsPanel project={projectData.project} />
+        </Suspense>
       </div>
     </div>
   );

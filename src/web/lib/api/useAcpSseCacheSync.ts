@@ -31,36 +31,44 @@ import {
 } from '../../pwa/notifications.ts';
 import { playTaskCompletionSound } from '../../pwa/task-completion-sound.ts';
 import { dispatchAcpSseBrowserEvent } from './acp-sse-browser-event.ts';
-import { applySessionStreamDeltaToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
+import { applySessionMessageEventToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
 import { fetchAcpPermissionRequests, fetchProjects, fetchSessions } from './acp.ts';
 import { acpSseUrl } from './client.ts';
 
-/** ACP のストリーミングで SSE が連打されるため、invalidate の間隔を空ける */
-const ACP_SSE_INVALIDATE_DEBOUNCE_MS = 300;
+/** ACP の非メッセージ系 SSE が連打されるため、fetch の間隔を空ける */
+const ACP_SSE_FETCH_DEBOUNCE_MS = 300;
 
-const applyTextDelta = (queryClient: QueryClient, event: AcpSseEvent): boolean => {
-  if (event.type !== 'session_text_delta' && event.type !== 'session_reasoning_delta') {
+const applyMessageEvent = (queryClient: QueryClient, event: AcpSseEvent): boolean => {
+  if (event.type !== 'message-add' && event.type !== 'message-delta') {
     return false;
   }
 
-  // 従来の flat query に適用
   queryClient.setQueryData<SessionMessagesResponse>(
     sessionMessagesQueryKey(event.sessionId),
-    (current) => applySessionStreamDeltaToMessages(current, event),
+    (current) => applySessionMessageEventToMessages(current, event),
   );
 
-  // infinite query の先頭ページ（最新メッセージ）にも適用
+  queryClient.setQueriesData<SessionMessagesResponse>(
+    { queryKey: sessionMessagesInfiniteQueryKey(event.sessionId) },
+    (current) => {
+      if (current === undefined || !Array.isArray(current.messages)) {
+        return current;
+      }
+      return applySessionMessageEventToMessages(current, event);
+    },
+  );
+
   queryClient.setQueriesData<InfiniteData<SessionMessagesResponse>>(
     { queryKey: sessionMessagesInfiniteQueryKey(event.sessionId) },
     (current) => {
-      if (current === undefined) {
+      if (current === undefined || !Array.isArray(current.pages)) {
         return current;
       }
       const firstPage = current.pages[0];
       if (firstPage === undefined) {
         return current;
       }
-      const updatedFirst = applySessionStreamDeltaToMessages(firstPage, event);
+      const updatedFirst = applySessionMessageEventToMessages(firstPage, event);
       if (updatedFirst === firstPage) {
         return current;
       }
@@ -77,7 +85,6 @@ const applyTextDelta = (queryClient: QueryClient, event: AcpSseEvent): boolean =
 const mergeEventToPending = (
   pending: {
     needSessionsList: boolean;
-    messageSessionIds: Set<string>;
     pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
     catalogUpdates: Set<string>;
@@ -99,11 +106,6 @@ const mergeEventToPending = (
     pending.removedSessionIds.add(event.sessionId);
     pending.needSessionsList = true;
     knownStatuses.delete(event.sessionId);
-    return;
-  }
-  if (event.type === 'session_messages_updated') {
-    pending.needSessionsList = true;
-    pending.messageSessionIds.add(event.sessionId);
     return;
   }
   if (event.type === 'session_updated') {
@@ -251,7 +253,6 @@ const flushPending = async (
   queryClient: QueryClient,
   pending: {
     needSessionsList: boolean;
-    messageSessionIds: Set<string>;
     pausedSessionIds: Set<string>;
     removedSessionIds: Set<string>;
     catalogUpdates: Set<string>;
@@ -262,14 +263,12 @@ const flushPending = async (
 ): Promise<void> => {
   const work = {
     needSessionsList: pending.needSessionsList,
-    messageSessionIds: new Set(pending.messageSessionIds),
     pausedSessionIds: new Set(pending.pausedSessionIds),
     removedSessionIds: new Set(pending.removedSessionIds),
     catalogUpdates: new Set(pending.catalogUpdates),
     permissionRequestsUpdated: pending.permissionRequestsUpdated,
   };
   pending.needSessionsList = false;
-  pending.messageSessionIds.clear();
   pending.pausedSessionIds.clear();
   pending.removedSessionIds.clear();
   pending.catalogUpdates.clear();
@@ -298,14 +297,6 @@ const flushPending = async (
       }
       knownStatuses.set(session.sessionId, session.status);
     }
-  }
-  for (const sessionId of work.messageSessionIds) {
-    const queryKey = sessionMessagesQueryKey(sessionId);
-    void queryClient.invalidateQueries({ queryKey, refetchType: 'all' });
-    void queryClient.invalidateQueries({
-      queryKey: sessionMessagesInfiniteQueryKey(sessionId),
-      refetchType: 'all',
-    });
   }
   for (const key of work.catalogUpdates) {
     if (key.length > 0) {
@@ -355,7 +346,6 @@ export const useAcpSseCacheSync = (): void => {
     const knownStatuses = knownStatusesRef.current;
     const pending = {
       needSessionsList: false,
-      messageSessionIds: new Set<string>(),
       pausedSessionIds: new Set<string>(),
       removedSessionIds: new Set<string>(),
       catalogUpdates: new Set<string>(),
@@ -382,7 +372,7 @@ export const useAcpSseCacheSync = (): void => {
           knownStatuses,
           knownPermissionRequestIdsRef.current,
         );
-      }, ACP_SSE_INVALIDATE_DEBOUNCE_MS);
+      }, ACP_SSE_FETCH_DEBOUNCE_MS);
     };
 
     const source = new EventSource(acpSseUrl(), { withCredentials: false });
@@ -397,7 +387,7 @@ export const useAcpSseCacheSync = (): void => {
         return;
       }
       dispatchAcpSseBrowserEvent(event);
-      if (applyTextDelta(queryClient, event)) {
+      if (applyMessageEvent(queryClient, event)) {
         return;
       }
       mergeEventToPending(pending, event, knownStatuses, statusFromCache);
@@ -414,7 +404,6 @@ export const useAcpSseCacheSync = (): void => {
       }
       const hasWork =
         pending.needSessionsList ||
-        pending.messageSessionIds.size > 0 ||
         pending.pausedSessionIds.size > 0 ||
         pending.removedSessionIds.size > 0 ||
         pending.catalogUpdates.size > 0 ||
