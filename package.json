@@ -53,19 +53,17 @@
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.32.0",
-    "@anthropic-ai/sandbox-runtime": "0.0.49",
-    "@httptoolkit/httpolyglot": "3.0.1",
     "@zed-industries/codex-acp": "0.13.0",
-    "bonjour-service": "1.3.0",
-    "pi-acp": "0.0.26",
-    "selfsigned": "5.5.0"
+    "pi-acp": "0.0.26"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.21.0",
+    "@anthropic-ai/sandbox-runtime": "0.0.49",
     "@base-ui/react": "1.4.1",
     "@fontsource-variable/geist": "5.2.8",
     "@hono/node-server": "2.0.0",
     "@hono/standard-validator": "0.2.2",
+    "@httptoolkit/httpolyglot": "3.0.1",
     "@mcpc-tech/acp-ai-provider": "0.3.3",
     "@tailwindcss/vite": "4.2.4",
     "@tanstack/react-query": "5.100.6",
@@ -82,6 +80,7 @@
     "@vitejs/plugin-react": "6.0.1",
     "@vitest/browser-playwright": "4.1.5",
     "ai": "6.0.170",
+    "bonjour-service": "1.3.0",
     "changelogithub": "14.0.0",
     "class-variance-authority": "0.7.1",
     "clean-pkg-json": "1.4.2",
@@ -111,6 +110,7 @@
     "react-i18next": "17.0.6",
     "react-markdown": "10.1.0",
     "remark-gfm": "4.0.1",
+    "selfsigned": "5.5.0",
     "shadcn": "4.6.0",
     "sonner": "2.0.7",
     "tailwind-merge": "3.5.0",
