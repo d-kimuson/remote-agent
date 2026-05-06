@@ -163,3 +163,5 @@ docs/tmp/*
 
 # ra
 data/.ra-dir/data.sql
+data/.ra-dir/data.sql-shm
+data/.ra-dir/data.sql-wal

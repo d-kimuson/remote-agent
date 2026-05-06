@@ -53,12 +53,12 @@ export const InitialSetupDialog: FC = () => {
 
   return (
     <Dialog open>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] min-w-0 flex-col overflow-hidden sm:max-w-3xl">
+        <DialogHeader className="min-w-0 shrink-0 pr-9">
           <DialogTitle>{t('setup.initialTitle')}</DialogTitle>
           <DialogDescription>{t('setup.initialDescription')}</DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <div className="min-h-0 min-w-0 flex-1 space-y-4 overflow-x-hidden overflow-y-auto overscroll-contain py-2 pr-1 [scrollbar-gutter:stable]">
           <Suspense
             fallback={
               <div className="rounded-md border p-8 text-center text-sm text-muted-foreground">
@@ -71,9 +71,11 @@ export const InitialSetupDialog: FC = () => {
             <NotificationsSettingsPanel />
           </Suspense>
         </div>
-        <DialogFooter className="gap-2">
+        <DialogFooter className="shrink-0 gap-2">
           {hasEnabledProvider ? null : (
-            <p className="text-sm text-muted-foreground">{t('setup.enableProviderFirst')}</p>
+            <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+              {t('setup.enableProviderFirst')}
+            </p>
           )}
           <Button
             disabled={!hasEnabledProvider || completeSetupMutation.isPending}
