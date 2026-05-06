@@ -39,7 +39,13 @@ export const createDatabase = (storagePath: string) => {
   }
 
   const client = new DatabaseSync(resolvedStoragePath);
+  /* oxlint-disable remote-agent/no-raw-sqlite-query -- PRAGMA requires direct SQLite access */
+  if (resolvedStoragePath !== ':memory:') {
+    client.exec('PRAGMA journal_mode = WAL;');
+    client.exec('PRAGMA busy_timeout = 5000;');
+  }
   client.exec('PRAGMA foreign_keys = ON;');
+  /* oxlint-enable remote-agent/no-raw-sqlite-query */
   const db = drizzle({ client, schema });
   migrate(db, { migrationsFolder });
 
