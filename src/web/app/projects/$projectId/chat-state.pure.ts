@@ -175,6 +175,19 @@ export const shouldShowConversationLoading = ({
     transcripts,
   });
 
+export const shouldShowStartNewChat = ({
+  isDraftSession,
+  isTranscriptHydrating,
+  transcript,
+  shouldShowThinking,
+}: {
+  readonly isDraftSession: boolean;
+  readonly isTranscriptHydrating: boolean;
+  readonly transcript: readonly ChatMessage[];
+  readonly shouldShowThinking: boolean;
+}): boolean =>
+  isDraftSession && !isTranscriptHydrating && transcript.length === 0 && !shouldShowThinking;
+
 export const moveTranscript = ({
   from,
   to,

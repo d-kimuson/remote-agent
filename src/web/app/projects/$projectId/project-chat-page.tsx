@@ -134,6 +134,7 @@ import {
   resolveSessionListTitle,
   shouldRedirectDraftSessionStart,
   shouldShowConversationLoading,
+  shouldShowStartNewChat,
 } from './chat-state.pure.ts';
 import { CopyBlockButton } from './copy-block-button.tsx';
 import { shouldShowMessageCopyButton } from './message-copy-display.pure.ts';
@@ -1809,6 +1810,12 @@ export const ProjectChatPage: FC<{
   const isSelectedSessionRunning =
     !shouldUseDraftSession && selectedSession !== null && selectedSession.status === 'running';
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
+  const shouldShowStartNewChatState = shouldShowStartNewChat({
+    isDraftSession: shouldUseDraftSession,
+    isTranscriptHydrating,
+    transcript,
+    shouldShowThinking,
+  });
   const shouldShowScrollBanner =
     !isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking);
   const scrollBannerMessageCount =
@@ -2860,7 +2867,7 @@ export const ProjectChatPage: FC<{
                   ref={chatContentRef}
                 >
                   {isTranscriptHydrating ? <LoadingConversation /> : null}
-                  {!isTranscriptHydrating && transcript.length === 0 && !shouldShowThinking ? (
+                  {shouldShowStartNewChatState ? (
                     <div className="mx-auto flex max-w-md flex-col items-center">
                       <div className="w-full rounded-lg border border-dashed border-border/70 bg-card/60 px-6 py-12 text-center">
                         <MessageSquareDashed className="mx-auto mb-3 size-8 text-muted-foreground/80" />

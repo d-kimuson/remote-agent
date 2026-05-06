@@ -15,6 +15,7 @@ import {
   resolveSessionListTitle,
   shouldRedirectDraftSessionStart,
   shouldShowConversationLoading,
+  shouldShowStartNewChat,
 } from './chat-state.pure.ts';
 import { createChatMessage } from './types.ts';
 
@@ -248,6 +249,35 @@ describe('chat-state.pure', () => {
         currentDraftViewGeneration: 1,
         nextSessionId: 'session-1',
         request: null,
+      }),
+    ).toBe(false);
+  });
+
+  test('shouldShowStartNewChat only returns true for an empty draft view', () => {
+    expect(
+      shouldShowStartNewChat({
+        isDraftSession: true,
+        isTranscriptHydrating: false,
+        transcript: [],
+        shouldShowThinking: false,
+      }),
+    ).toBe(true);
+
+    expect(
+      shouldShowStartNewChat({
+        isDraftSession: false,
+        isTranscriptHydrating: false,
+        transcript: [],
+        shouldShowThinking: false,
+      }),
+    ).toBe(false);
+
+    expect(
+      shouldShowStartNewChat({
+        isDraftSession: true,
+        isTranscriptHydrating: false,
+        transcript: [createChatMessage('user', 'hello')],
+        shouldShowThinking: false,
       }),
     ).toBe(false);
   });
