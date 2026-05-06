@@ -339,6 +339,15 @@ export const resources = {
         saved: 'API 接続設定を保存しました。',
         saving: '保存中...',
       },
+      errorBoundary: {
+        title: 'エラーが発生しました',
+        description:
+          'API への接続失敗などで画面を続行できません。Home に戻るか、API 接続設定を変更してください。',
+        unknownMessage: '不明なエラーが発生しました。',
+        goHome: 'Home に戻る',
+        apiSettingsDescription:
+          'API URL と API KEY を保存します。保存後に画面を再読み込みして接続先を切り替えます。',
+      },
     },
   },
   en: {
@@ -673,6 +682,15 @@ export const resources = {
         apiKeyRequired: 'API key is required.',
         saved: 'API connection settings saved.',
         saving: 'Saving...',
+      },
+      errorBoundary: {
+        title: 'Something went wrong',
+        description:
+          'The screen cannot continue, possibly because the API connection failed. Go back Home or update the API connection settings.',
+        unknownMessage: 'An unknown error occurred.',
+        goHome: 'Go Home',
+        apiSettingsDescription:
+          'Save the API URL and API key. The app reloads after saving to switch connections.',
       },
     },
   },

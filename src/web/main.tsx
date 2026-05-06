@@ -4,6 +4,7 @@ import { StrictMode, Suspense } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { ApiAuthGate } from './app/auth/api-auth-gate.tsx';
+import { AppErrorBoundary } from './app/errors/app-error-boundary.tsx';
 import { QueryClientProviderWrapper } from './lib/api/QueryClientProviderWrapper';
 import './lib/i18n/i18n.ts';
 import { LanguageSync } from './lib/i18n/language-sync.tsx';
@@ -22,6 +23,7 @@ const router = createRouter({
   defaultStructuralSharing: true,
   defaultPreloadStaleTime: 0,
   defaultNotFoundComponent: () => <div>Not Found</div>,
+  defaultErrorComponent: AppErrorBoundary,
 });
 
 declare module '@tanstack/react-router' {
