@@ -14,6 +14,25 @@
 
 `remote-agent` is a tool for remotely operating coding agents such as Codex, Claude Code, Cursor CLI, and other agent CLIs from a single web interface. Run the `remote-agent` server on your own machine, then connect from a client device such as iOS, Android, another desktop browser, or an installed PWA to start sessions, resume work, approve tool requests, and interact with your agents.
 
+<table>
+  <tr>
+    <td width="70%">
+      <img
+        width="560"
+        alt="ra-desktop-demo"
+        src="https://github.com/user-attachments/assets/70b9bde4-3a4d-4f1f-b3f9-f862f5d2260d"
+      />
+    </td>
+    <td width="30%">
+      <img
+        width="180"
+        alt="ra-demo-mobile"
+        src="https://github.com/user-attachments/assets/0d84e4fb-ac19-4628-941e-342605784432"
+      />
+    </td>
+  </tr>
+</table>
+
 ## Requirements
 
 - Node.js v24 and npm-compatible `npx` on the server machine.
@@ -21,7 +40,7 @@
 
 ## Installation
 
-### Quick Start (PWA with Tailscale, Recommended)
+### Quick Start: PWA with Tailscale(Recommended)
 
 `remote-agent` works best when installed as a PWA from a secure Tailscale URL. PWA installation is strongly recommended for notifications and the mobile experience. To install and use the PWA, the client must access `remote-agent` through HTTPS.
 
@@ -35,7 +54,7 @@ This command starts the `remote-agent` SPA/PWA and API server on port `48989`, c
 
 Tailscale Serve may need to update HTTPS certificate settings. If the command asks for your sudo password, enter it to continue. After setup completes, open the printed URL or scan the QR code from the client device, then install the PWA from the browser.
 
-### Same-LAN Mobile Setup
+### QuickStart: Same-LAN Mobile Setup
 
 For quick access from a phone or tablet on the same Wi-Fi/LAN without Tailscale, use Same-LAN mode:
 
