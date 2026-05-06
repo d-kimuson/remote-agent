@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -86,6 +86,25 @@ describe('createWorktreeForProject', () => {
     });
     await expect(readFile(path.join(worktree.path, 'package.json'), 'utf8')).resolves.toBe(
       '{"name":"frontend"}\n',
+    );
+  });
+
+  test('accepts a project directory that resolves through a symlink', async () => {
+    const project = await createProjectRepo();
+    const linkedDirectory = `${project.workingDirectory}-linked`;
+    await symlink(project.workingDirectory, linkedDirectory, 'dir');
+
+    const worktree = await createWorktreeForProject(
+      {
+        ...project,
+        workingDirectory: linkedDirectory,
+      },
+      { name: 'feature-linked' },
+    );
+
+    expect(worktree.path).toBe(path.join(linkedDirectory, '.worktrees', 'feature-linked'));
+    await expect(readFile(path.join(worktree.path, 'tracked.txt'), 'utf8')).resolves.toBe(
+      'tracked\n',
     );
   });
 

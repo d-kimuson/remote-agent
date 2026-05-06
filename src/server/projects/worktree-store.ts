@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { copyFile, lstat, mkdir, readFile, readdir } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { parse } from 'valibot';
 
@@ -160,7 +160,12 @@ const runSetupScript: SetupScriptRunner = async (cwd, script) => {
   }
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawn('/bin/sh', ['-c', script], { cwd, shell: false, stdio: 'pipe' });
+    const child = spawn('/bin/sh', ['-c', script], {
+      cwd,
+      env: { ...process.env, PWD: cwd },
+      shell: false,
+      stdio: 'pipe',
+    });
     const stderrChunks: string[] = [];
 
     child.stderr.on('data', (chunk: Buffer) => {
@@ -251,6 +256,14 @@ const copyIncludedPath = async (sourcePath: string, destinationPath: string): Pr
   throw new Error(`.worktreeinclude supports files and directories only: ${sourcePath}`);
 };
 
+const logicalRepositoryDirectoryFrom = (
+  projectDirectory: string,
+  projectRelativePath: string,
+): string => {
+  const segments = projectRelativePath.length === 0 ? [] : projectRelativePath.split(/[\\/]+/);
+  return path.resolve(projectDirectory, ...segments.map(() => '..'));
+};
+
 const resolveProjectGitWorktreePaths = async (
   projectDirectory: string,
   gitOutputRunner: GitOutputRunner,
@@ -258,16 +271,20 @@ const resolveProjectGitWorktreePaths = async (
   readonly repositoryDirectory: string;
   readonly projectRelativePath: string;
 }> => {
-  const repositoryDirectory = (
+  const repositoryDirectoryFromGit = (
     await gitOutputRunner(projectDirectory, ['rev-parse', '--show-toplevel'])
   ).trim();
-  const projectRelativePath = path.relative(repositoryDirectory, projectDirectory);
+  const [repositoryRealPath, projectRealPath] = await Promise.all([
+    realpath(repositoryDirectoryFromGit),
+    realpath(projectDirectory),
+  ]);
+  const projectRelativePath = path.relative(repositoryRealPath, projectRealPath);
   if (projectRelativePath.startsWith('..') || path.isAbsolute(projectRelativePath)) {
     throw new Error(`project directory is outside git repository: ${projectDirectory}`);
   }
 
   return {
-    repositoryDirectory,
+    repositoryDirectory: logicalRepositoryDirectoryFrom(projectDirectory, projectRelativePath),
     projectRelativePath,
   };
 };
