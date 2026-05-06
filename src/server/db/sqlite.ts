@@ -16,7 +16,7 @@ export const resolveMigrationsFolder = (
     return path.resolve(moduleDirectory, '../../../drizzle/migrations');
   }
 
-  return moduleDirectory;
+  return path.join(moduleDirectory, 'migrations');
 };
 
 export const migrationsFolder = resolveMigrationsFolder(

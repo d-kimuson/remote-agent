@@ -10,6 +10,15 @@ import { isAllowedIp, isAuthorizedRequest, requestIpFromHeaders } from './securi
 
 type AppOptions = Readonly<{
   clientBuildDirectory?: string;
+  trustedCertificate?: {
+    readonly certificatePem: string;
+    readonly fileName: string;
+  };
+  mobileSetup?: {
+    readonly appUrl: string;
+    readonly limitedAppUrl: string;
+    readonly certificateUrl: string;
+  };
 }>;
 
 const openApiDocument = {
@@ -51,6 +60,26 @@ export const createHonoApp = (options?: AppOptions) => {
     }
     await next();
   });
+
+  const trustedCertificate = options?.trustedCertificate;
+  if (trustedCertificate !== undefined) {
+    app.get('/.well-known/remote-agent-local-ca.crt', (c) => {
+      c.header('content-type', 'application/x-x509-ca-cert');
+      c.header('content-disposition', `attachment; filename="${trustedCertificate.fileName}"`);
+      return c.body(trustedCertificate.certificatePem);
+    });
+    app.get('/.well-known/remote-agent-trust-check', (c) => {
+      c.header('cache-control', 'no-store');
+      return c.text('ok');
+    });
+  }
+
+  const mobileSetup = options?.mobileSetup;
+  if (mobileSetup !== undefined) {
+    app.get('/.well-known/remote-agent-mobile-setup.json', (c) => {
+      return c.json(mobileSetup);
+    });
+  }
 
   app.route('/api', routes);
   app.get(

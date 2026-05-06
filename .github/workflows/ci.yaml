@@ -39,6 +39,9 @@ jobs:
       - name: Run build
         run: pnpm build
 
+      - name: Run packed package command check
+        run: pnpm check:pack
+
       - name: Verify generated files
         run: |
           pnpm generate

@@ -63,6 +63,7 @@ import {
   preferNonEmptyModeCatalog,
   preferNonEmptyModelCatalog,
 } from '../session-catalog.pure.ts';
+import { installAcpProviderProcessErrorPatch } from './acp-provider-process-error-patch.ts';
 import { installAcpProviderToolResultPatch } from './acp-provider-tool-result-patch.ts';
 import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
@@ -652,6 +653,7 @@ export const createSessionStore = ({
   importProviderMessages = importProviderSessionMessages,
 }: SessionStoreDependencies = {}) => {
   installAcpProviderToolResultPatch();
+  installAcpProviderProcessErrorPatch();
 
   const runtimeSessions = new Map<string, SessionEntry>();
   const lastPersistedToolUpdateTextByKey = new Map<string, string>();

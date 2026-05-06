@@ -9,6 +9,20 @@ type ServeEnvOverrides = {
 
 type ServeEnvKey = keyof ServeEnvOverrides;
 
+export const validateServeOptions = (options: ServeOptions): void => {
+  if (options.sameLan === true && options.tailscale === true) {
+    throw new Error('--same-lan and --tailscale cannot be used together.');
+  }
+};
+
+export const resolveModePort = ({
+  port,
+  defaultPort,
+}: {
+  readonly port?: string;
+  readonly defaultPort: number;
+}): string => port ?? String(defaultPort);
+
 export const resolveServeEnvOverrides = (options: ServeOptions): ServeEnvOverrides => ({
   ...(options.raDir === undefined ? {} : { RA_DIR: options.raDir }),
   ...(options.raApiKey === undefined ? {} : { RA_API_KEY: options.raApiKey }),

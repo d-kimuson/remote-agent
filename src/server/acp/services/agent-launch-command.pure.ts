@@ -21,17 +21,23 @@ export const buildAgentLaunchCommand = ({
   cwd,
   env,
   sandbox,
-}: AgentLaunchCommandInput): AgentLaunchCommand =>
-  sandbox === null || sandbox === undefined
-    ? {
-        command: providerCommand,
-        args: [...providerArgs],
-        cwd,
-        env,
-      }
-    : {
-        command: '/usr/bin/env',
-        args: ['bash', '-lc', sandbox.sandboxedCommand],
-        cwd,
-        env,
-      };
+}: AgentLaunchCommandInput): AgentLaunchCommand => {
+  if (sandbox !== null && sandbox !== undefined) {
+    return {
+      command: process.platform === 'win32' ? (process.env['ComSpec'] ?? 'cmd.exe') : 'bash',
+      args:
+        process.platform === 'win32'
+          ? ['/d', '/s', '/c', sandbox.sandboxedCommand]
+          : ['-lc', sandbox.sandboxedCommand],
+      cwd,
+      env,
+    };
+  }
+
+  return {
+    command: providerCommand,
+    args: [...providerArgs],
+    cwd,
+    env,
+  };
+};

@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as SetupMobileCrtRouteImport } from './routes/setup-mobile-crt'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as InformationRouteImport } from './routes/information'
@@ -20,6 +21,11 @@ import { Route as ProjectsProjectIdSettingsRouteImport } from './routes/projects
 import { Route as ProjectsProjectIdSessionsRouteImport } from './routes/projects/$projectId/sessions'
 import { Route as ProjectsProjectIdRoutinesRouteImport } from './routes/projects/$projectId/routines'
 
+const SetupMobileCrtRoute = SetupMobileCrtRouteImport.update({
+  id: '/setup-mobile-crt',
+  path: '/setup-mobile-crt',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -79,6 +85,7 @@ export interface FileRoutesByFullPath {
   '/information': typeof InformationRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
+  '/setup-mobile-crt': typeof SetupMobileCrtRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
@@ -90,6 +97,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/information': typeof InformationRoute
   '/settings': typeof SettingsRoute
+  '/setup-mobile-crt': typeof SetupMobileCrtRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
   '/projects/$projectId/sessions': typeof ProjectsProjectIdSessionsRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/information': typeof InformationRoute
   '/projects': typeof ProjectsRouteWithChildren
   '/settings': typeof SettingsRoute
+  '/setup-mobile-crt': typeof SetupMobileCrtRoute
   '/projects/$projectId': typeof ProjectsProjectIdRouteWithChildren
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/routines': typeof ProjectsProjectIdRoutinesRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/information'
     | '/projects'
     | '/settings'
+    | '/setup-mobile-crt'
     | '/projects/$projectId'
     | '/projects/'
     | '/projects/$projectId/routines'
@@ -127,6 +137,7 @@ export interface FileRouteTypes {
     | '/'
     | '/information'
     | '/settings'
+    | '/setup-mobile-crt'
     | '/projects'
     | '/projects/$projectId/routines'
     | '/projects/$projectId/sessions'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/information'
     | '/projects'
     | '/settings'
+    | '/setup-mobile-crt'
     | '/projects/$projectId'
     | '/projects/'
     | '/projects/$projectId/routines'
@@ -151,10 +163,18 @@ export interface RootRouteChildren {
   InformationRoute: typeof InformationRoute
   ProjectsRoute: typeof ProjectsRouteWithChildren
   SettingsRoute: typeof SettingsRoute
+  SetupMobileCrtRoute: typeof SetupMobileCrtRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/setup-mobile-crt': {
+      id: '/setup-mobile-crt'
+      path: '/setup-mobile-crt'
+      fullPath: '/setup-mobile-crt'
+      preLoaderRoute: typeof SetupMobileCrtRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -264,6 +284,7 @@ const rootRouteChildren: RootRouteChildren = {
   InformationRoute: InformationRoute,
   ProjectsRoute: ProjectsRouteWithChildren,
   SettingsRoute: SettingsRoute,
+  SetupMobileCrtRoute: SetupMobileCrtRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

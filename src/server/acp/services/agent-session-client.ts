@@ -95,13 +95,18 @@ const createAgentConnection = async ({
     env: buildAgentProcessEnv(),
   });
 
+  const stderrChunks: string[] = [];
   const agentProcess = spawn(launch.command, [...launch.args], {
     cwd: launch.cwd,
     env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
-  const stderrChunks: string[] = [];
+  const spawnError = new Promise<never>((_, reject) => {
+    agentProcess.once('error', (error: Error) => {
+      reject(toErrorWithStderr(error, stderrChunks));
+    });
+  });
 
   agentProcess.stderr.on('data', (chunk: Buffer) => {
     stderrChunks.push(chunk.toString('utf8'));
@@ -117,16 +122,19 @@ const createAgentConnection = async ({
   );
 
   try {
-    const initializeResponse = await connection.initialize({
-      protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {
-        fs: {
-          readTextFile: false,
-          writeTextFile: false,
+    const initializeResponse = await Promise.race([
+      connection.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: {
+            readTextFile: false,
+            writeTextFile: false,
+          },
+          terminal: false,
         },
-        terminal: false,
-      },
-    });
+      }),
+      spawnError,
+    ]);
 
     return {
       connection,

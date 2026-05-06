@@ -51,6 +51,48 @@ describe('honoApp', () => {
     }
   });
 
+  test('serves configured local CA certificate outside API auth', async () => {
+    process.env['RA_API_KEY'] = 'test-secret';
+    envService.resetEnvForTesting();
+    try {
+      const app = createHonoApp({
+        trustedCertificate: {
+          certificatePem: 'test-ca',
+          fileName: 'remote-agent-local-ca.crt',
+        },
+      });
+
+      const response = await app.request('/.well-known/remote-agent-local-ca.crt');
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get('content-type')).toContain('application/x-x509-ca-cert');
+      expect(await response.text()).toBe('test-ca');
+    } finally {
+      delete process.env['RA_API_KEY'];
+      envService.resetEnvForTesting();
+    }
+  });
+
+  test('serves public mobile setup config', async () => {
+    const app = createHonoApp({
+      mobileSetup: {
+        appUrl: 'https://mac.local:4445',
+        limitedAppUrl: 'http://192.168.1.8:4445',
+        certificateUrl: 'http://192.168.1.8:4445/.well-known/remote-agent-local-ca.crt',
+      },
+    });
+
+    const response = await app.request('/.well-known/remote-agent-mobile-setup.json');
+    const payload: unknown = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toEqual({
+      appUrl: 'https://mac.local:4445',
+      limitedAppUrl: 'http://192.168.1.8:4445',
+      certificateUrl: 'http://192.168.1.8:4445/.well-known/remote-agent-local-ca.crt',
+    });
+  });
+
   test('serves OpenAPI spec for API routes', async () => {
     const response = await honoApp.request('/api/openapi.json');
     const document: unknown = await response.json();

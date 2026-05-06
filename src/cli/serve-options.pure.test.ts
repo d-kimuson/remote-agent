@@ -1,8 +1,24 @@
 import { describe, expect, test } from 'vitest';
 
-import { applyServeEnvOverrides, resolveServeEnvOverrides } from './serve-options.pure.ts';
+import {
+  applyServeEnvOverrides,
+  resolveModePort,
+  resolveServeEnvOverrides,
+  validateServeOptions,
+} from './serve-options.pure.ts';
 
 describe('serve options', () => {
+  test('rejects same-LAN and Tailscale at the same time', () => {
+    expect(() => validateServeOptions({ sameLan: true, tailscale: true })).toThrow(
+      '--same-lan and --tailscale cannot be used together.',
+    );
+  });
+
+  test('resolves mode port from --port or default', () => {
+    expect(resolveModePort({ port: '4444', defaultPort: 8989 })).toBe('4444');
+    expect(resolveModePort({ port: undefined, defaultPort: 8989 })).toBe('8989');
+  });
+
   test('maps serve CLI options to RA environment overrides', () => {
     expect(
       resolveServeEnvOverrides({

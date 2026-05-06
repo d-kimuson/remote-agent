@@ -92,13 +92,18 @@ export const probeAgentSlashCommands = async (options: {
     env: buildAgentProcessEnv(),
   });
 
+  const stderrChunks: string[] = [];
   const agentProcess = spawn(launch.command, [...launch.args], {
     cwd: launch.cwd,
     env: launch.env,
     stdio: ['pipe', 'pipe', 'pipe'],
     ...(process.platform === 'win32' ? { windowsHide: true } : {}),
   });
-  const stderrChunks: string[] = [];
+  const spawnError = new Promise<never>((_, reject) => {
+    agentProcess.once('error', (error: Error) => {
+      reject(toErrorWithStderr(error, stderrChunks));
+    });
+  });
   let commands: readonly SlashCommand[] = [];
 
   agentProcess.stderr.on('data', (chunk: Buffer) => {
@@ -131,16 +136,19 @@ export const probeAgentSlashCommands = async (options: {
   );
 
   try {
-    await connection.initialize({
-      protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: {
-        fs: {
-          readTextFile: false,
-          writeTextFile: false,
+    await Promise.race([
+      connection.initialize({
+        protocolVersion: PROTOCOL_VERSION,
+        clientCapabilities: {
+          fs: {
+            readTextFile: false,
+            writeTextFile: false,
+          },
+          terminal: false,
         },
-        terminal: false,
-      },
-    });
+      }),
+      spawnError,
+    ]);
     await connection.newSession({
       cwd: launch.cwd,
       mcpServers: [],

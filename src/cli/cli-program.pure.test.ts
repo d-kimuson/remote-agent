@@ -26,7 +26,8 @@ describe('CLI program', () => {
     const help = serveCommand?.helpInformation() ?? '';
 
     expect(help).toContain('--port <port>');
-    expect(help).toContain('--tailscale <port>');
+    expect(help).toContain('--same-lan');
+    expect(help).toContain('--tailscale');
     expect(help).toContain('--ra-dir <directory>');
     expect(help).toContain('--ra-api-key <key>');
     expect(help).toContain('--ra-allowed-ips <ips>');
@@ -60,6 +61,23 @@ describe('CLI program', () => {
     expect(help).toContain('Usage: @kimuson/remote-agent [options] [command]');
   });
 
+  test('passes same-LAN serve option to the serve handler', async () => {
+    let serveOptions: ServeOptions | null = null;
+    const program = createCliProgram({
+      generateApiKey: () => 'test-key',
+      serve: (options) => {
+        serveOptions = options;
+      },
+    });
+
+    await program.parseAsync(['serve', '--port', '3000', '--same-lan'], { from: 'user' });
+
+    expect(serveOptions).toEqual({
+      port: '3000',
+      sameLan: true,
+    });
+  });
+
   test('passes serve options to the serve handler', async () => {
     let serveOptions: ServeOptions | null = null;
     const program = createCliProgram({
@@ -75,7 +93,6 @@ describe('CLI program', () => {
         '--port',
         '33333',
         '--tailscale',
-        '48989',
         '--ra-dir',
         './data',
         '--ra-api-key',
@@ -96,7 +113,7 @@ describe('CLI program', () => {
       raAllowedOrigins: 'https://app.example.com',
       raApiKey: 'test-key',
       raDir: './data',
-      tailscale: '48989',
+      tailscale: true,
     });
   });
 });

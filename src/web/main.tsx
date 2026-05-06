@@ -36,17 +36,23 @@ if (!rootElement) {
   throw new Error('Root element not found');
 }
 
+const shouldBypassApiAuthGate = window.location.pathname === '/setup-mobile-crt';
+
+const app = (
+  <>
+    <Suspense fallback={null}>
+      <LanguageSync />
+    </Suspense>
+    <RouterProvider router={router} />
+  </>
+);
+
 const root = createRoot(rootElement);
 root.render(
   <StrictMode>
     <ThemeProvider>
       <QueryClientProviderWrapper>
-        <ApiAuthGate>
-          <Suspense fallback={null}>
-            <LanguageSync />
-          </Suspense>
-          <RouterProvider router={router} />
-        </ApiAuthGate>
+        {shouldBypassApiAuthGate ? app : <ApiAuthGate>{app}</ApiAuthGate>}
       </QueryClientProviderWrapper>
     </ThemeProvider>
   </StrictMode>,

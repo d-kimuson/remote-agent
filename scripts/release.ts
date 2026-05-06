@@ -268,6 +268,7 @@ runOrFail('pnpm', ['build'], 'Build');
 runOrFail('pnpm', ['check:bundled-licenses'], 'Bundled license check');
 runOrFail('pnpm', ['gatecheck', 'check'], 'Gatecheck');
 runOrFail('pnpm', ['test'], 'Test');
+runOrFail('pnpm', ['check:pack'], 'Packed package command check');
 runOrFail('pnpm', ['smoke:pack'], 'Pack smoke test');
 console.log('\nAll checks passed.\n');
 

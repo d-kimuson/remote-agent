@@ -46,14 +46,19 @@
     "check:bundled-licenses": "node scripts/check-bundled-licenses.ts",
     "prepack": "pnpm build && clean-pkg-json",
     "release": "node scripts/release.ts",
+    "pack:local": "scripts/pack/pack.sh",
+    "check:pack": "scripts/pack/check.sh",
     "smoke:pack": "pnpm build && node src/scripts/smoke-packed-package.ts",
     "test": "vitest run"
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "0.32.0",
     "@anthropic-ai/sandbox-runtime": "0.0.49",
+    "@httptoolkit/httpolyglot": "3.0.1",
     "@zed-industries/codex-acp": "0.13.0",
-    "pi-acp": "0.0.26"
+    "bonjour-service": "1.3.0",
+    "pi-acp": "0.0.26",
+    "selfsigned": "5.5.0"
   },
   "devDependencies": {
     "@agentclientprotocol/sdk": "0.21.0",

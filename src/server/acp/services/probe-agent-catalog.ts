@@ -9,6 +9,7 @@ import {
   buildModeOptionsFromResponse,
 } from '../session-acp-response.pure.ts';
 import { enrichModeOptionsIfEmpty, enrichModelOptionsIfEmpty } from '../session-catalog.pure.ts';
+import { installAcpProviderProcessErrorPatch } from './acp-provider-process-error-patch.ts';
 import { buildAgentLaunchCommand } from './agent-launch-command.pure.ts';
 import { buildAgentProcessEnv } from './agent-process-env.ts';
 import { resolveCommandPath } from './command-path.ts';
@@ -28,6 +29,7 @@ export const probeAgentModelCatalog = async (options: {
   readonly cwd: string;
   readonly presetId: string;
 }): Promise<AgentModelCatalog> => {
+  installAcpProviderProcessErrorPatch();
   const preset = await resolveProviderPreset({ presetId: options.presetId });
 
   const resolvedCommandPath = await resolveCommandPath(preset.command);

@@ -12,9 +12,11 @@ describe('resolveMigrationsFolder', () => {
     );
   });
 
-  test('uses dist directory in production runtime', () => {
+  test('uses bundled migrations directory in production runtime', () => {
     const moduleDirectory = path.join('/workspace', 'dist');
 
-    expect(resolveMigrationsFolder('production', moduleDirectory)).toBe(moduleDirectory);
+    expect(resolveMigrationsFolder('production', moduleDirectory)).toBe(
+      path.join(moduleDirectory, 'migrations'),
+    );
   });
 });

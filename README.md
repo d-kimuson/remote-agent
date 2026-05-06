@@ -17,7 +17,7 @@
 ## Requirements
 
 - Node.js v24 and npm-compatible `npx` on the server machine.
-- The agent CLI you want to use must be installed, available on the server machine's `PATH`, and authenticated as that agent normally requires.
+- The agent account/CLI you want to use must be authenticated on the server machine as that agent normally requires. Built-in ACP adapter packages are bundled with `remote-agent`.
 
 ## Installation
 
@@ -28,12 +28,24 @@
 Start `remote-agent` with the Tailscale setup helper:
 
 ```bash
-npx -y @kimuson/remote-agent@latest serve --tailscale 48989
+npx -y @kimuson/remote-agent@latest serve --tailscale --port 48989
 ```
 
-This command starts the `remote-agent` SPA/PWA and API server on an available local port, configures Tailscale Serve for `https://<magic-dns-name>:48989`, then prints the URL and a QR code.
+This command starts the `remote-agent` SPA/PWA and API server on port `48989`, configures Tailscale Serve for `https://<magic-dns-name>:48989`, then prints the URL and a QR code.
 
 Tailscale Serve may need to update HTTPS certificate settings. If the command asks for your sudo password, enter it to continue. After setup completes, open the printed URL or scan the QR code from the client device, then install the PWA from the browser.
+
+### Same-LAN Mobile Setup
+
+For quick access from a phone or tablet on the same Wi-Fi/LAN without Tailscale, use Same-LAN mode:
+
+```bash
+npx -y @kimuson/remote-agent@latest serve --same-lan --port 4445
+```
+
+Same-LAN mode listens on `0.0.0.0`, generates a local CA and HTTPS certificate, advertises a `.local` HTTPS URL on the LAN, and prints a QR code for the mobile setup page. The setup page first opens over HTTP on the private IP so the phone can download the CA certificate, then guides you to trust it and open the HTTPS/PWA-capable URL.
+
+Same-LAN is intended for trusted private networks only. Do not use it on public or untrusted Wi-Fi unless you understand the risk. `--same-lan` and `--tailscale` are mutually exclusive.
 
 ### Manual Setup
 
@@ -98,7 +110,8 @@ Then clients must send the API key as a bearer token for `/api/*` requests. You 
 | `RA_ALLOWED_IPS`     | `--ra-allowed-ips`     | -       | Comma-separated IP allowlist checked via `X-Forwarded-For` / `X-Real-IP`.   |
 | `RA_ALLOWED_ORIGINS` | `--ra-allowed-origins` | -       | Comma-separated CORS origin allowlist for `/api/*` requests.                |
 | -                    | `--server-only`        | `false` | Start only the API server without serving the client build.                 |
-| -                    | `--tailscale`          | -       | Publish through Tailscale Serve on the given HTTPS port.                    |
+| -                    | `--same-lan`           | -       | Serve HTTP/HTTPS on one LAN port and print a mobile certificate setup QR.   |
+| -                    | `--tailscale`          | -       | Publish through Tailscale Serve. Use `--port` for the HTTPS port.           |
 
 When both an environment variable and a CLI flag are provided, the CLI flag takes priority.
 
@@ -115,8 +128,7 @@ When both an environment variable and a CLI flag are provided, the CLI flag take
 | Cursor CLI         | `cursor-cli`      | ❌         |
 | OpenCode           | `opencode`        | ❌         |
 
-`remote-agent` does not require you to install ACP packages separately. Make sure the agent you want
-to use is available on the server machine and authenticated as that agent normally requires.
+`remote-agent` does not require you to install built-in ACP adapter packages separately. Make sure the agent account or underlying CLI credentials you want to use are available on the server machine and authenticated as that agent normally requires.
 
 > [!WARNING]
 > Do not use Claude Code through `remote-agent` with a Claude subscription account. `remote-agent`

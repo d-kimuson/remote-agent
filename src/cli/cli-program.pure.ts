@@ -5,7 +5,8 @@ import pkg from '../../package.json' with { type: 'json' };
 export type ServeOptions = {
   readonly serverOnly?: boolean;
   readonly port?: string;
-  readonly tailscale?: string;
+  readonly sameLan?: boolean;
+  readonly tailscale?: boolean;
   readonly raDir?: string;
   readonly raApiKey?: string;
   readonly raAllowedIps?: string;
@@ -37,7 +38,8 @@ export const createCliProgram = (options: CliProgramOptions): Command => {
     .command('serve')
     .option('--server-only', 'start without serving client build')
     .option('--port <port>', 'local server port')
-    .option('--tailscale <port>', 'publish through Tailscale Serve on the given HTTPS port')
+    .option('--same-lan', 'publish through HTTPS/mDNS on the same LAN')
+    .option('--tailscale', 'publish through Tailscale Serve')
     .option('--ra-dir <directory>', 'directory for the SQLite database and app state')
     .option('--ra-api-key <key>', 'bearer token required for /api/* requests')
     .option('--ra-allowed-ips <ips>', 'comma-separated IP allowlist')
