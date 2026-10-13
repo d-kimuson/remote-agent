@@ -2949,7 +2949,8 @@ export const ProjectChatPage: FC<{
                     return (
                       <div
                         className={cn(
-                          'group/message flex w-full [content-visibility:auto] [contain-intrinsic-size:auto_180px]',
+                          // no content-visibility:auto — variable row heights jump while scrolling
+                          'group/message flex w-full',
                           isUser ? 'justify-end' : 'justify-start',
                           isToolOnly && isAfterToolOnly ? '-mt-3 md:-mt-4' : '',
                         )}
