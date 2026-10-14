@@ -7,7 +7,6 @@ import {
   History,
   Info,
   Loader2,
-  Mic,
   MessageSquareDashed,
   Paperclip,
   PowerOff,
@@ -53,6 +52,7 @@ import {
   type UploadedAttachment,
   type UserAttachment,
 } from '../../../../shared/acp.ts';
+import { BootLoading } from '../../../components/boot-loading.tsx';
 import { ChatMarkdown } from '../../../components/chat-markdown.tsx';
 import { Badge } from '../../../components/ui/badge.tsx';
 import { Button } from '../../../components/ui/button.tsx';
@@ -69,7 +69,6 @@ import {
   SelectValue,
 } from '../../../components/ui/select.tsx';
 import { ACP_SSE_BROWSER_EVENT } from '../../../lib/api/acp-sse-browser-event.ts';
-import { applySessionMessageEventToMessages } from '../../../lib/api/acp-sse-cache.pure.ts';
 import {
   cancelSessionRequest,
   createProjectWorktreeRequest,
@@ -96,9 +95,20 @@ import {
   updateSessionRequest,
   uploadAttachmentsRequest,
 } from '../../../lib/api/acp.ts';
+import {
+  isTransientNetworkError,
+  PROMPT_SEND_MAX_RETRIES,
+  promptSendRetryDelay,
+} from '../../../lib/api/network-error.ts';
 import { cn } from '../../../lib/utils.ts';
 import { markAppNotificationsReadForSession } from '../../../pwa/notification-center.ts';
 import { showAssistantResponseNotification } from '../../../pwa/notifications.ts';
+import {
+  clearLastChatLocation,
+  rememberLastChatLocation,
+  resolveSessionIdForStaleUrl,
+  shouldEnsureDefaultSession,
+} from '../../last-chat-location.ts';
 import { appSettingsQueryKey } from '../../settings/queries.ts';
 import {
   formatAcpPermissionOptionLabel,
@@ -112,32 +122,36 @@ import {
 import {
   acpSessionUpdateFromMessage,
   acpToolStatusUpdateFromMessage,
-  latestAcpUsageUpdate,
   latestAvailableSlashCommands,
   vscodeFileUri,
 } from './acp-session-meta.pure.ts';
 import { AcpToolVisualViewBlock } from './acp-tool-use-card.tsx';
 import { resolveAcpToolVisualView } from './acp-tool-visual-view.pure.ts';
-import { chatMessageClipboardText } from './chat-block-copy.pure.ts';
+import { ChatMessageContent } from './chat-message-content.tsx';
+import { ChatPromptComposer, type ChatPromptComposerHandle } from './chat-prompt-composer.tsx';
 import { ChatRawEvents } from './chat-raw-events.tsx';
 import { isNearScrollBottom, nextUnreadMessageCount } from './chat-scroll.pure.ts';
 import {
   attachmentContentBlockLabel,
-  appendTranscriptMessage,
   buildDraftSession,
   buildPromptText,
   defaultPresetId,
   type DraftSessionRedirectRequest,
   draftSessionTranscriptKey,
   draftSessionTranscriptKeyForGeneration,
-  moveTranscript,
   resolveSessionListTitle,
   shouldRedirectDraftSessionStart,
-  shouldShowConversationLoading,
   shouldShowStartNewChat,
 } from './chat-state.pure.ts';
-import { CopyBlockButton } from './copy-block-button.tsx';
-import { shouldShowMessageCopyButton } from './message-copy-display.pure.ts';
+import { ChatTranscriptThread } from './chat-transcript-thread.tsx';
+import { shouldRenderMessageAsStreamingPlainText } from './message-content-phase.pure.ts';
+import {
+  DEFAULT_PERMISSION_HANDLING_MODE,
+  isPermissionHandlingMode,
+  permissionHandlingStorageKey,
+  pickAutoAllowPermissionOptionId,
+  type PermissionHandlingMode,
+} from './permission-handling.pure.ts';
 import { ProjectMenuContent } from './project-menu-content.tsx';
 import {
   sessionStatusBadgeClassName,
@@ -145,6 +159,15 @@ import {
   sessionTimestamp,
   sortSessionsNewestFirst,
 } from './project-session-list.pure.ts';
+import {
+  enqueueFollowUpPrompt,
+  promoteFollowUpPrompt,
+  removeFollowUpPrompt,
+  shouldQueueFollowUpPrompt,
+  shouldRestorePromptAfterSendFailure,
+  takeNextFollowUpPrompt,
+  type QueuedFollowUpPrompt,
+} from './prompt-queue.pure.ts';
 import {
   agentModelCatalogQueryKey,
   agentProvidersQueryKey,
@@ -159,15 +182,24 @@ import {
 } from './queries.ts';
 import { ReviewDialogButton } from './review-dialog.tsx';
 import { appendRichPromptText } from './rich-prompt-editor.pure.ts';
-import { RichPromptEditor } from './rich-prompt-editor.tsx';
 import {
   filterDisplayableRawEvents,
   formatUserMessageSelectionMetadata,
-  isToolOnlyTranscriptMessage,
-  shouldDisplayTranscriptMessage,
 } from './transcript-display.pure.ts';
-import { mergeToolCallResultMessages } from './transcript-tool-merge.pure.ts';
-import { createChatMessage, type TranscriptMap } from './types.ts';
+import {
+  appendTranscriptStoreMessage,
+  enqueueTranscriptStoreMessageEvent,
+  getTranscriptMessagesSnapshot,
+  hasTranscriptStoreSession,
+  moveTranscriptStoreSession,
+  replaceTranscriptMessages,
+  setTranscriptTurnBusy,
+  useTranscriptHasSession,
+  useTranscriptMessageIds,
+  useTranscriptTurnBusy,
+  useTranscriptUsage,
+} from './transcript-store.ts';
+import { createChatMessage } from './types.ts';
 import { useLoadSessionDialog } from './use-load-session-dialog.tsx';
 import {
   canSendWithDraftWorktreeState,
@@ -179,6 +211,8 @@ import {
 /** claude-code-viewer の会話カラムと同型（全幅行のうち sm:90% / max-w-3xl で寄せ） */
 const CONVERSATION_COLUMN_CLASS = 'w-full min-w-0 sm:w-[90%] md:w-[85%] max-w-3xl lg:max-w-4xl';
 const createDefaultWorktreeName = (): string => `wt-${nanoid(8)}`;
+/** Prevent duplicate default-session creates (StrictMode / concurrent mounts). */
+const ensuringDefaultSessionByProject = new Set<string>();
 
 type SpeechRecognitionLike = {
   continuous: boolean;
@@ -247,6 +281,19 @@ const UsageProgress: FC<{
           {cost.amount.toLocaleString()} {cost.currency}
         </span>
       )}
+    </div>
+  );
+};
+
+/** Narrow usage channel — does not rebuild the full message array on deltas. */
+const ChatUsageBadge: FC<{ readonly transcriptKey: string }> = ({ transcriptKey }) => {
+  const latestUsage = useTranscriptUsage(transcriptKey);
+  if (latestUsage === null) {
+    return null;
+  }
+  return (
+    <div className="mb-1">
+      <UsageProgress cost={latestUsage.cost} size={latestUsage.size} used={latestUsage.used} />
     </div>
   );
 };
@@ -401,10 +448,19 @@ const UserAttachmentPreview: FC<{ readonly attachments: readonly UserAttachment[
   );
 };
 
-const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMessage }> = ({
-  cwd,
-  message,
-}) => {
+const TranscriptMessageBody: FC<{
+  readonly cwd: string;
+  readonly message: ChatMessage;
+  readonly transcriptKey: string;
+}> = ({ cwd, message, transcriptKey }) => {
+  const messageIds = useTranscriptMessageIds(transcriptKey);
+  const isTurnBusy = useTranscriptTurnBusy(transcriptKey);
+  const isLastMessage = messageIds[messageIds.length - 1] === message.id;
+  const isStreamingPlainText = shouldRenderMessageAsStreamingPlainText({
+    isLastMessage,
+    isTurnBusy,
+    message,
+  });
   const displayEvents = filterDisplayableRawEvents(message.rawEvents);
   if (message.rawJson.type === 'x-error') {
     return (
@@ -446,7 +502,7 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
         {displayEvents.length > 0 ? <ChatRawEvents events={message.rawEvents} /> : null}
         {message.text.length > 0 ? (
           <div className="w-full px-0.5 text-foreground sm:px-1">
-            <ChatMarkdown>{message.text}</ChatMarkdown>
+            <ChatMessageContent isStreaming={isStreamingPlainText} text={message.text} />
           </div>
         ) : null}
       </div>
@@ -463,7 +519,7 @@ const TranscriptMessageBody: FC<{ readonly cwd: string; readonly message: ChatMe
         : message.text;
     return text.length > 0 ? (
       <div className="text-foreground">
-        <ChatMarkdown>{text}</ChatMarkdown>
+        <ChatMessageContent isStreaming={isStreamingPlainText} text={text} />
       </div>
     ) : null;
   }
@@ -1123,18 +1179,37 @@ export const ProjectChatPage: FC<{
   const [draftWorktreeName, setDraftWorktreeName] = useState(createDefaultWorktreeName);
   const [pendingTuningModelId, setPendingTuningModelId] = useState<string | null>(null);
   const [pendingTuningModeId, setPendingTuningModeId] = useState<string | null>(null);
-  const promptReaderRef = useRef<() => string>(() => '');
-  const [promptExternalValue, setPromptExternalValue] = useState({
-    revision: 0,
-    value: '',
-  });
-  const [transcripts, setTranscripts] = useState<TranscriptMap>({});
+  const composerRef = useRef<ChatPromptComposerHandle | null>(null);
   const optimisticUserMessageIdsRef = useRef(new Set<string>());
   const [attachedFiles, setAttachedFiles] = useState<readonly UploadedAttachment[]>([]);
+  const [queuedFollowUps, setQueuedFollowUps] = useState<readonly QueuedFollowUpPrompt[]>([]);
+  const [permissionHandlingMode, setPermissionHandlingMode] = useState<PermissionHandlingMode>(
+    () => {
+      if (typeof window === 'undefined') {
+        return DEFAULT_PERMISSION_HANDLING_MODE;
+      }
+      try {
+        const raw = window.localStorage.getItem(permissionHandlingStorageKey(projectId));
+        return isPermissionHandlingMode(raw) ? raw : DEFAULT_PERMISSION_HANDLING_MODE;
+      } catch {
+        return DEFAULT_PERMISSION_HANDLING_MODE;
+      }
+    },
+  );
+  const flushQueuedFollowUpInFlightRef = useRef(false);
+  const suppressQueuedFollowUpFlushRef = useRef(false);
+  const queuedFollowUpsRef = useRef<readonly QueuedFollowUpPrompt[]>([]);
+  queuedFollowUpsRef.current = queuedFollowUps;
+  const sendQueuedFollowUpRef = useRef<(item: QueuedFollowUpPrompt) => Promise<void>>(
+    async () => undefined,
+  );
+  const autoResolvingPermissionIdsRef = useRef(new Set<string>());
+  const resolvePermissionRef = useRef<
+    (requestId: string, optionId: string | null) => Promise<void>
+  >(async () => undefined);
   const [awaitingAssistantTranscriptKeys, setAwaitingAssistantTranscriptKeys] = useState<
     readonly string[]
   >([]);
-  const [isListeningToSpeech, setIsListeningToSpeech] = useState(false);
   const [probedModelCatalog, setProbedModelCatalog] = useState<AgentModelCatalogResponse | null>(
     null,
   );
@@ -1155,10 +1230,7 @@ export const ProjectChatPage: FC<{
   );
   const preparingScopeKeysRef = useRef(new Set<string>());
   const attachFileInputRef = useRef<HTMLInputElement | null>(null);
-  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
-  const speechListeningDesiredRef = useRef(false);
   const chatContentRef = useRef<HTMLDivElement | null>(null);
-  const scrollAnchorRef = useRef<HTMLDivElement | null>(null);
   const shouldStickToBottomRef = useRef(true);
   const lastActiveTranscriptKeyRef = useRef<string | null>(null);
   const previousSessionIdRef = useRef<string | null>(sessionId);
@@ -1198,30 +1270,18 @@ export const ProjectChatPage: FC<{
     [],
   );
 
+  const readComposerValue = useCallback(() => composerRef.current?.readValue() ?? '', []);
+
   const replacePrompt = useCallback((value: string) => {
-    setPromptExternalValue((current) => ({
-      revision: current.revision + 1,
-      value,
-    }));
+    composerRef.current?.replaceValue(value);
   }, []);
 
   const handleInsertReviewPrompt = useCallback(
     (markdown: string) => {
-      replacePrompt(appendRichPromptText({ value: promptReaderRef.current(), addition: markdown }));
+      replacePrompt(appendRichPromptText({ value: readComposerValue(), addition: markdown }));
     },
-    [replacePrompt],
+    [readComposerValue, replacePrompt],
   );
-
-  const handlePromptValueReaderReady = useCallback((readValue: () => string) => {
-    promptReaderRef.current = readValue;
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      speechListeningDesiredRef.current = false;
-      speechRecognitionRef.current?.abort();
-    };
-  }, []);
 
   useLayoutEffect(() => {
     const previousSessionId = previousSessionIdRef.current;
@@ -1257,14 +1317,26 @@ export const ProjectChatPage: FC<{
       : (projectSessions.find((s) => s.sessionId === sessionId) ??
         sessionsData.sessions.find((s) => s.sessionId === sessionId) ??
         null);
+  const selectedSessionExists = selectedSession !== null;
   const shouldUseDraftSession = sessionId === null;
   const reviewSessionId = selectedSession?.sessionId ?? `project:${projectId}`;
+  const needsDefaultSession = shouldEnsureDefaultSession({
+    sessionIdFromUrl: sessionId,
+    selectedSessionExists,
+    projectSessionCount: projectSessions.length,
+  });
+  const staleUrlFallbackSessionId = resolveSessionIdForStaleUrl({
+    sessionIdFromUrl: sessionId,
+    selectedSessionExists,
+    newestProjectSessionId: projectSessions[0]?.sessionId ?? null,
+  });
+  const defaultSessionEnsureRef = useRef(false);
 
   useEffect(() => {
-    if (sessionId !== null) {
-      markAppNotificationsReadForSession(sessionId);
+    if (selectedSession !== null) {
+      markAppNotificationsReadForSession(selectedSession.sessionId);
     }
-  }, [sessionId]);
+  }, [selectedSession]);
 
   const activePresetId = draftPresetId.length > 0 ? draftPresetId : preferredPresetId;
   const draftSession = useMemo(
@@ -1559,51 +1631,61 @@ export const ProjectChatPage: FC<{
     activeTranscriptKeyRef.current = activeTranscriptKey;
   }, [activeTranscriptKey]);
 
-  const transcript = useMemo(
-    () => transcripts[activeTranscriptKey] ?? [],
-    [activeTranscriptKey, transcripts],
+  // Ids-only subscription: page does not re-render on per-token deltas.
+  const transcriptMessageIds = useTranscriptMessageIds(activeTranscriptKey);
+  const hasHydratedTranscriptSession = useTranscriptHasSession(activeTranscriptKey);
+  // Snapshot read inside memo (no body subscription) — slash commands update on id changes.
+  const effectiveSlashCommands = useMemo(() => {
+    const live = latestAvailableSlashCommands(getTranscriptMessagesSnapshot(activeTranscriptKey));
+    return live.length > 0 ? live : slashCommands;
+  }, [activeTranscriptKey, slashCommands, transcriptMessageIds]);
+  const activePermissionRequests = useMemo(
+    () =>
+      permissionRequestsData.requests.filter(
+        (request) => request.sessionId === activeTranscriptKey,
+      ),
+    [activeTranscriptKey, permissionRequestsData.requests],
   );
-  const liveSlashCommands = useMemo(() => latestAvailableSlashCommands(transcript), [transcript]);
-  const effectiveSlashCommands = liveSlashCommands.length > 0 ? liveSlashCommands : slashCommands;
-  const latestUsage = useMemo(() => latestAcpUsageUpdate(transcript), [transcript]);
-  const activePermissionRequests = permissionRequestsData.requests.filter(
-    (request) => request.sessionId === activeTranscriptKey,
+  const visiblePermissionRequests = useMemo(
+    () =>
+      permissionHandlingMode === 'allow_all'
+        ? activePermissionRequests.filter(
+            (request) => pickAutoAllowPermissionOptionId(request.options) === null,
+          )
+        : activePermissionRequests,
+    [activePermissionRequests, permissionHandlingMode],
   );
-  const isTranscriptHydrating = shouldShowConversationLoading({
-    isDraftSession: shouldUseDraftSession,
-    transcriptKey: activeTranscriptKey,
-    transcripts,
-  });
-  const mergedForDisplay = mergeToolCallResultMessages(transcript);
-  const visibleTranscript = mergedForDisplay.filter((message) => {
-    const d = filterDisplayableRawEvents(message.rawEvents);
-    return shouldDisplayTranscriptMessage(message, d);
-  });
-  const chatScrollSignature = visibleTranscript
-    .map((message) =>
-      [
-        message.id,
-        message.updatedAt ?? '',
-        message.text.length,
-        message.rawEvents.length,
-        message.rawEvents.map((event) => event.rawText.length).join('.'),
-      ].join(':'),
-    )
-    .join('|');
-  const permissionRequestSignature = activePermissionRequests
+  const isTranscriptHydrating = selectedSession !== null && !hasHydratedTranscriptSession;
+  const chatScrollSignature = `${activeTranscriptKey}:${transcriptMessageIds.length.toString()}:${transcriptMessageIds[transcriptMessageIds.length - 1] ?? ''}`;
+  const permissionRequestSignature = visiblePermissionRequests
     .map((request) => `${request.id}:${request.createdAt}:${request.options.length.toString()}`)
     .join('|');
   const projectUrl = `/projects/${projectId}`;
 
   const navigateToSession = useCallback(
     (nextSessionId: string | null, options: { readonly replace?: boolean } = {}) => {
+      if (nextSessionId !== null) {
+        rememberLastChatLocation({ projectId, sessionId: nextSessionId });
+      } else {
+        clearLastChatLocation();
+      }
       void navigate({
         search: { 'session-id': nextSessionId ?? undefined },
         replace: options.replace === true,
       });
     },
-    [navigate],
+    [navigate, projectId],
   );
+
+  useEffect(() => {
+    if (selectedSession === null) {
+      return;
+    }
+    rememberLastChatLocation({
+      projectId,
+      sessionId: selectedSession.sessionId,
+    });
+  }, [projectId, selectedSession]);
 
   const navigateToStartedDraftSession = useCallback(
     (nextSessionId: string) => {
@@ -1747,12 +1829,14 @@ export const ProjectChatPage: FC<{
   const sendPromptMutation = useMutation({
     mutationFn: ({
       attachmentIds,
+      idempotencyKey,
       modelId: tuningModelId,
       modeId: tuningModeId,
       sessionId: targetSessionId,
       nextPrompt,
     }: {
       readonly attachmentIds: readonly string[];
+      readonly idempotencyKey: string;
       readonly sessionId: string;
       readonly nextPrompt: string;
       readonly modelId?: string | null;
@@ -1760,21 +1844,27 @@ export const ProjectChatPage: FC<{
     }) =>
       sendPromptRequest(targetSessionId, {
         attachmentIds,
+        idempotencyKey,
         modelId: tuningModelId,
         modeId: tuningModeId,
         prompt: nextPrompt,
       }),
+    retry: (failureCount, error) =>
+      failureCount < PROMPT_SEND_MAX_RETRIES && isTransientNetworkError(error),
+    retryDelay: promptSendRetryDelay,
   });
 
   const sendPreparedPromptMutation = useMutation({
     mutationFn: ({
       attachmentIds,
+      idempotencyKey,
       modeId: tuningModeId,
       modelId: tuningModelId,
       nextPrompt,
       prepareId,
     }: {
       readonly attachmentIds: readonly string[];
+      readonly idempotencyKey: string;
       readonly prepareId: string;
       readonly nextPrompt: string;
       readonly modelId?: string | null;
@@ -1782,10 +1872,14 @@ export const ProjectChatPage: FC<{
     }) =>
       sendPreparedPromptRequest(prepareId, {
         attachmentIds,
+        idempotencyKey,
         modelId: tuningModelId,
         modeId: tuningModeId,
         prompt: nextPrompt,
       }),
+    retry: (failureCount, error) =>
+      failureCount < PROMPT_SEND_MAX_RETRIES && isTransientNetworkError(error),
+    retryDelay: promptSendRetryDelay,
   });
 
   const uploadAttachmentsMutation = useMutation({
@@ -1799,25 +1893,34 @@ export const ProjectChatPage: FC<{
     sendPreparedPromptMutation.isPending;
   const isAwaitingActiveAssistantResponse =
     awaitingAssistantTranscriptKeys.includes(activeTranscriptKey);
+  const isSelectedSessionRunning =
+    !shouldUseDraftSession && selectedSession !== null && selectedSession.status === 'running';
+  const isTurnBusy = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
+  useEffect(() => {
+    setTranscriptTurnBusy(activeTranscriptKey, isTurnBusy);
+  }, [activeTranscriptKey, isTurnBusy]);
+  const willQueueFollowUp = shouldQueueFollowUpPrompt({
+    hasSessionId: sessionId !== null,
+    isTurnBusy,
+    shouldUseDraftSession,
+  });
   const isSending =
-    isAwaitingActiveAssistantResponse ||
+    (!willQueueFollowUp && isAwaitingActiveAssistantResponse) ||
     updateSessionConfigOptionMutation.isPending ||
     updateSessionMutation.isPending ||
     cancelSessionMutation.isPending ||
     stopSessionMutation.isPending ||
     uploadAttachmentsMutation.isPending;
-  const isEditorDisabled = isAwaitingActiveAssistantResponse;
-  const isSelectedSessionRunning =
-    !shouldUseDraftSession && selectedSession !== null && selectedSession.status === 'running';
+  const isEditorDisabled = isAwaitingActiveAssistantResponse && !willQueueFollowUp;
   const shouldShowThinking = isAwaitingActiveAssistantResponse || isSelectedSessionRunning;
   const shouldShowStartNewChatState = shouldShowStartNewChat({
     isDraftSession: shouldUseDraftSession,
     isTranscriptHydrating,
-    transcript,
+    transcriptLength: transcriptMessageIds.length,
     shouldShowThinking,
   });
   const shouldShowScrollBanner =
-    !isChatFollowingTail && (visibleTranscript.length > 0 || shouldShowThinking);
+    !isChatFollowingTail && (transcriptMessageIds.length > 0 || shouldShowThinking);
   const scrollBannerMessageCount =
     unreadMessageCount > 0 ? unreadMessageCount : Math.max(1, messagesBelowScroll);
   const scrollBannerLabel = `${scrollBannerMessageCount.toString()}件のメッセージ`;
@@ -1853,52 +1956,39 @@ export const ProjectChatPage: FC<{
       setAwaitingAssistantTranscriptKeys((current) =>
         current.includes(nextSessionId) ? current : [...current, nextSessionId],
       );
-      setTranscripts((current) => {
-        const moved =
-          current[nextSessionId] === undefined && draftSessionRedirectRequestRef.current !== null
-            ? moveTranscript({
-                from: draftSessionRedirectRequestRef.current.draftTranscriptKey,
-                to: nextSessionId,
-                transcripts: current,
-              })
-            : current;
-
-        if (sseEvent.type !== 'message-add' && sseEvent.type !== 'message-delta') {
-          return moved;
-        }
-
-        const local = moved[nextSessionId] ?? [];
-        const patchedFromEvent = applySessionMessageEventToMessages(
-          {
-            messages: [...local],
-            pageInfo: { hasMoreBefore: false, beforeCursor: null },
-            meta: { totalMessageCount: local.length },
-          },
-          sseEvent,
-        ).messages;
-        const patched =
-          sseEvent.type === 'message-add' && sseEvent.message.role === 'user'
-            ? patchedFromEvent.filter((message) => {
-                const shouldDrop =
-                  optimisticUserMessageIdsRef.current.has(message.id) &&
-                  isOptimisticUserMessageDuplicate({ fetched: sseEvent.message, local: message });
-                if (shouldDrop) {
-                  optimisticUserMessageIdsRef.current.delete(message.id);
-                }
-                return !shouldDrop;
-              })
-            : patchedFromEvent;
+      if (
+        !hasTranscriptStoreSession(nextSessionId) &&
+        draftSessionRedirectRequestRef.current !== null
+      ) {
+        moveTranscriptStoreSession(
+          draftSessionRedirectRequestRef.current.draftTranscriptKey,
+          nextSessionId,
+        );
+      }
+      if (sseEvent.type === 'message-add' || sseEvent.type === 'message-delta') {
         if (
-          patched.length === local.length &&
-          patched.every((message, index) => message === local[index])
+          sseEvent.type === 'message-add' &&
+          sseEvent.message.role === 'user' &&
+          optimisticUserMessageIdsRef.current.has(sseEvent.message.id)
         ) {
-          return moved;
+          const localMessages = getTranscriptMessagesSnapshot(nextSessionId);
+          const duplicate = localMessages.some((message) => {
+            const shouldDrop = isOptimisticUserMessageDuplicate({
+              fetched: sseEvent.message,
+              local: message,
+            });
+            if (shouldDrop) {
+              optimisticUserMessageIdsRef.current.delete(message.id);
+            }
+            return shouldDrop;
+          });
+          if (duplicate) {
+            navigateToStartedDraftSession(nextSessionId);
+            return;
+          }
         }
-        return {
-          ...moved,
-          [nextSessionId]: patched.map((message) => ({ ...message })),
-        };
-      });
+        enqueueTranscriptStoreMessageEvent(nextSessionId, sseEvent);
+      }
       navigateToStartedDraftSession(nextSessionId);
     };
 
@@ -1909,45 +1999,44 @@ export const ProjectChatPage: FC<{
   }, [isAssistantRequestPending, navigateToStartedDraftSession, shouldUseDraftSession]);
   const handleMessagesHydrated = useCallback(
     (targetSessionId: string, messages: readonly ChatMessage[]) => {
-      setTranscripts((current) => {
-        const local = current[targetSessionId] ?? [];
-        if (local.length === 0) {
-          return {
-            ...current,
-            [targetSessionId]: messages.map((message) => ({ ...message })),
-          };
-        }
-        if (
-          messages.length === 0 &&
-          isAssistantRequestPending &&
-          awaitingAssistantTranscriptKeys.includes(targetSessionId)
-        ) {
-          return current;
-        }
-        const merged = mergeHydratedMessages({
-          fetched: messages,
-          local,
-          optimisticUserMessageIds: optimisticUserMessageIdsRef.current,
-        });
-        if (
-          merged.length === local.length &&
-          merged.every((message, index) => {
-            const currentMessage = local[index];
-            return (
-              currentMessage !== undefined &&
-              currentMessage.id === message.id &&
-              currentMessage.updatedAt === message.updatedAt &&
-              currentMessage.text === message.text
-            );
-          })
-        ) {
-          return current;
-        }
-        return {
-          ...current,
-          [targetSessionId]: merged.map((message) => ({ ...message })),
-        };
+      const local = getTranscriptMessagesSnapshot(targetSessionId);
+      if (local.length === 0) {
+        replaceTranscriptMessages(
+          targetSessionId,
+          messages.map((message) => ({ ...message })),
+        );
+        return;
+      }
+      if (
+        messages.length === 0 &&
+        isAssistantRequestPending &&
+        awaitingAssistantTranscriptKeys.includes(targetSessionId)
+      ) {
+        return;
+      }
+      const merged = mergeHydratedMessages({
+        fetched: messages,
+        local,
+        optimisticUserMessageIds: optimisticUserMessageIdsRef.current,
       });
+      if (
+        merged.length === local.length &&
+        merged.every((message, index) => {
+          const currentMessage = local[index];
+          return (
+            currentMessage !== undefined &&
+            currentMessage.id === message.id &&
+            currentMessage.updatedAt === message.updatedAt &&
+            currentMessage.text === message.text
+          );
+        })
+      ) {
+        return;
+      }
+      replaceTranscriptMessages(
+        targetSessionId,
+        merged.map((message) => ({ ...message })),
+      );
     },
     [awaitingAssistantTranscriptKeys, isAssistantRequestPending],
   );
@@ -2067,6 +2156,61 @@ export const ProjectChatPage: FC<{
     );
   };
 
+  useEffect(() => {
+    if (staleUrlFallbackSessionId !== null) {
+      clearLastChatLocation();
+      navigateToSession(staleUrlFallbackSessionId, { replace: true });
+      return;
+    }
+
+    if (!needsDefaultSession || defaultSessionEnsureRef.current) {
+      return;
+    }
+    if (preferredPresetId.length === 0 || createSessionMutation.isPending) {
+      return;
+    }
+    if (ensuringDefaultSessionByProject.has(project.id)) {
+      return;
+    }
+
+    defaultSessionEnsureRef.current = true;
+    ensuringDefaultSessionByProject.add(project.id);
+    void createSessionMutation
+      .mutateAsync({
+        projectId: project.id,
+        presetId: preferredPresetId,
+        command: null,
+        argsText: '',
+        cwd: project.workingDirectory,
+        modelId: undefined,
+        modeId: undefined,
+        sandboxEnabled: projectSettings.sandbox.enabled,
+      })
+      .then((response) => {
+        upsertSessionInCache(response.session);
+        navigateToSession(response.session.sessionId, { replace: true });
+        void queryClient.invalidateQueries({ queryKey: sessionsQueryKey });
+      })
+      .catch((error: unknown) => {
+        defaultSessionEnsureRef.current = false;
+        const message = error instanceof Error ? error.message : 'failed to create default session';
+        toast.error(message);
+      })
+      .finally(() => {
+        ensuringDefaultSessionByProject.delete(project.id);
+      });
+    // create once per empty/stale landing; mutation identity is unstable
+  }, [
+    needsDefaultSession,
+    navigateToSession,
+    preferredPresetId,
+    project.id,
+    project.workingDirectory,
+    projectSettings.sandbox.enabled,
+    queryClient,
+    staleUrlFallbackSessionId,
+  ]);
+
   const appendSessionMessageInCache = (targetSessionId: string, message: ChatMessage) => {
     queryClient.setQueryData<SessionMessagesResponse>(
       sessionMessagesQueryKey(targetSessionId),
@@ -2100,77 +2244,6 @@ export const ProjectChatPage: FC<{
 
   const handleOpenAttachFilePicker = () => {
     attachFileInputRef.current?.click();
-  };
-
-  const handleToggleSpeechInput = () => {
-    if (isEditorDisabled) {
-      return;
-    }
-    const currentRecognition = speechRecognitionRef.current;
-    if (isListeningToSpeech) {
-      speechListeningDesiredRef.current = false;
-      currentRecognition?.stop();
-      setIsListeningToSpeech(false);
-      return;
-    }
-
-    const SpeechRecognition = resolveSpeechRecognitionConstructor();
-    if (SpeechRecognition === null) {
-      toast.error(t('chat.voiceNotSupported'));
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.lang = navigator.language.length > 0 ? navigator.language : 'ja-JP';
-    recognition.onresult = (event) => {
-      const speechText = finalSpeechTextFromEvent(event);
-      if (speechText.length === 0) {
-        return;
-      }
-      replacePrompt(
-        appendRichPromptText({ value: promptReaderRef.current(), addition: speechText }),
-      );
-    };
-    recognition.onerror = (event) => {
-      if (event.error === 'aborted' || event.error === 'no-speech') {
-        return;
-      }
-      speechListeningDesiredRef.current = false;
-      setIsListeningToSpeech(false);
-      speechRecognitionRef.current = null;
-      toast.error(event.message.length > 0 ? event.message : t('chat.voiceFailed'));
-    };
-    recognition.onend = () => {
-      if (speechRecognitionRef.current !== recognition) {
-        return;
-      }
-      if (!speechListeningDesiredRef.current) {
-        setIsListeningToSpeech(false);
-        speechRecognitionRef.current = null;
-        return;
-      }
-      try {
-        recognition.start();
-      } catch {
-        speechListeningDesiredRef.current = false;
-        setIsListeningToSpeech(false);
-        speechRecognitionRef.current = null;
-      }
-    };
-
-    speechRecognitionRef.current = recognition;
-    speechListeningDesiredRef.current = true;
-    setIsListeningToSpeech(true);
-    try {
-      recognition.start();
-    } catch {
-      speechListeningDesiredRef.current = false;
-      speechRecognitionRef.current = null;
-      setIsListeningToSpeech(false);
-      toast.error(t('chat.voiceStartFailed'));
-    }
   };
 
   const handleAttachFileInputChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -2332,12 +2405,23 @@ export const ProjectChatPage: FC<{
 
   const handleCloseSession = async (targetSessionId: string) => {
     const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
+    const remainingProjectSessions = projectSessions.filter(
+      (session) => session.sessionId !== targetSessionId,
+    );
 
     setSessionsData((sessions) =>
       sessions.filter((session) => session.sessionId !== targetSessionId),
     );
     if (sessionId === targetSessionId) {
-      navigateToSession(null);
+      const nextSessionId = remainingProjectSessions[0]?.sessionId ?? null;
+      if (nextSessionId !== null) {
+        navigateToSession(nextSessionId);
+      } else {
+        // Last session removed → create a fresh default instead of a session-less blank draft.
+        defaultSessionEnsureRef.current = false;
+        clearLastChatLocation();
+        navigateToSession(null, { replace: true });
+      }
     }
 
     try {
@@ -2369,6 +2453,18 @@ export const ProjectChatPage: FC<{
     }
   };
 
+  const handleRunQueuedFollowUpNow = (queuedId: string) => {
+    suppressQueuedFollowUpFlushRef.current = false;
+    setQueuedFollowUps((current) => {
+      const promoted = promoteFollowUpPrompt(current, queuedId);
+      // New reference so the idle flush effect re-runs after clearing suppress.
+      return promoted === current ? [...current] : promoted;
+    });
+    if (sessionId !== null && isTurnBusy) {
+      void handleCancelSession(sessionId);
+    }
+  };
+
   const handleStopSession = async (targetSessionId: string) => {
     const previousSessions = queryClient.getQueryData<SessionsResponse>(sessionsQueryKey);
     setSessionsData((sessions) =>
@@ -2395,8 +2491,57 @@ export const ProjectChatPage: FC<{
     void queryClient.invalidateQueries({ queryKey: acpPermissionRequestsQueryKey });
   };
 
-  const handleSendPrompt = async (promptValue = promptReaderRef.current()) => {
-    const nextPrompt = buildPromptText(promptValue, attachmentNames);
+  resolvePermissionRef.current = handleResolvePermission;
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(permissionHandlingStorageKey(projectId));
+      setPermissionHandlingMode(
+        isPermissionHandlingMode(raw) ? raw : DEFAULT_PERMISSION_HANDLING_MODE,
+      );
+    } catch {
+      setPermissionHandlingMode(DEFAULT_PERMISSION_HANDLING_MODE);
+    }
+    autoResolvingPermissionIdsRef.current.clear();
+  }, [projectId]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(permissionHandlingStorageKey(projectId), permissionHandlingMode);
+    } catch {
+      // Ignore quota / private-mode failures.
+    }
+  }, [permissionHandlingMode, projectId]);
+
+  useEffect(() => {
+    if (permissionHandlingMode !== 'allow_all') {
+      return;
+    }
+    for (const request of activePermissionRequests) {
+      if (autoResolvingPermissionIdsRef.current.has(request.id)) {
+        continue;
+      }
+      const optionId = pickAutoAllowPermissionOptionId(request.options);
+      if (optionId === null) {
+        continue;
+      }
+      autoResolvingPermissionIdsRef.current.add(request.id);
+      void resolvePermissionRef.current(request.id, optionId).catch(() => {
+        autoResolvingPermissionIdsRef.current.delete(request.id);
+      });
+    }
+  }, [activePermissionRequests, permissionHandlingMode]);
+
+  const handleSendPrompt = async (
+    promptValue = readComposerValue(),
+    options?: {
+      readonly attachments?: readonly UploadedAttachment[];
+      readonly fromQueue?: boolean;
+    },
+  ) => {
+    const sendAttachments = options?.attachments ?? attachedFiles;
+    const sendAttachmentNames = sendAttachments.map((attachment) => attachment.name);
+    const nextPrompt = buildPromptText(promptValue, sendAttachmentNames);
     if (nextPrompt.length === 0) {
       return;
     }
@@ -2405,31 +2550,51 @@ export const ProjectChatPage: FC<{
       return;
     }
 
+    if (
+      options?.fromQueue !== true &&
+      shouldQueueFollowUpPrompt({
+        hasSessionId: sessionId !== null,
+        isTurnBusy,
+        shouldUseDraftSession,
+      })
+    ) {
+      composerRef.current?.abortSpeech();
+      replacePrompt('');
+      setAttachedFiles([]);
+      setQueuedFollowUps((current) =>
+        enqueueFollowUpPrompt(current, {
+          id: nanoid(),
+          prompt: nextPrompt,
+          attachments: sendAttachments.map((attachment) => ({ ...attachment })),
+        }),
+      );
+      toast.success(t('chat.followUpQueued'));
+      return;
+    }
+
     const previousPrompt = promptValue;
-    const requestAttachmentIds = attachedFiles.map((attachment) => attachment.attachmentId);
+    const previousAttachments = sendAttachments.map((attachment) => ({ ...attachment }));
+    const requestAttachmentIds = sendAttachments.map((attachment) => attachment.attachmentId);
+    // Stable across TanStack Query retries so the server can dedupe.
+    const idempotencyKey = crypto.randomUUID();
     const userMessage = createChatMessage('user', nextPrompt, [], {
       kind: 'user',
-      attachments: userAttachmentsFromUploaded(attachedFiles),
+      attachments: userAttachmentsFromUploaded(sendAttachments),
     });
     optimisticUserMessageIdsRef.current.add(userMessage.id);
     const initialTranscriptKey = activeTranscriptKey;
     let requestAwaitingTranscriptKeys: readonly string[] = [initialTranscriptKey];
 
+    // Local-first UX: clear input + show the user bubble before any React/network work.
+    composerRef.current?.abortSpeech();
+    if (options?.fromQueue !== true) {
+      replacePrompt('');
+      setAttachedFiles([]);
+    }
+    appendTranscriptStoreMessage(initialTranscriptKey, userMessage);
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
-    speechListeningDesiredRef.current = false;
-    speechRecognitionRef.current?.stop();
-    setIsListeningToSpeech(false);
-    replacePrompt('');
-    setAttachedFiles([]);
-    setTranscripts((current) =>
-      appendTranscriptMessage({
-        message: userMessage,
-        transcriptKey: initialTranscriptKey,
-        transcripts: current,
-      }),
-    );
 
     const sessionForTuning = selectedSession;
     let activeSessionId = sessionId;
@@ -2482,6 +2647,7 @@ export const ProjectChatPage: FC<{
         if (preparedSessionId !== undefined) {
           const response = await sendPreparedPromptMutation.mutateAsync({
             attachmentIds: requestAttachmentIds,
+            idempotencyKey,
             prepareId: preparedSessionId,
             nextPrompt,
             modelId: modelIdForCreate,
@@ -2492,13 +2658,7 @@ export const ProjectChatPage: FC<{
           requestAwaitingTranscriptKeys = [initialTranscriptKey, response.session.sessionId];
           addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
           upsertSessionInCache(response.session);
-          setTranscripts((current) =>
-            moveTranscript({
-              from: initialTranscriptKey,
-              to: response.session.sessionId,
-              transcripts: current,
-            }),
-          );
+          moveTranscriptStoreSession(initialTranscriptKey, response.session.sessionId);
           navigateToStartedDraftSession(response.session.sessionId);
           if (document.visibilityState === 'hidden') {
             void showAssistantResponseNotification({
@@ -2533,13 +2693,7 @@ export const ProjectChatPage: FC<{
         requestAwaitingTranscriptKeys = [initialTranscriptKey, sessionResponse.session.sessionId];
         addAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
         upsertSessionInCache(sessionResponse.session);
-        setTranscripts((current) =>
-          moveTranscript({
-            from: initialTranscriptKey,
-            to: sessionResponse.session.sessionId,
-            transcripts: current,
-          }),
-        );
+        moveTranscriptStoreSession(initialTranscriptKey, sessionResponse.session.sessionId);
         navigateToStartedDraftSession(sessionResponse.session.sessionId);
       }
 
@@ -2562,6 +2716,7 @@ export const ProjectChatPage: FC<{
       }
       const response = await sendPromptMutation.mutateAsync({
         attachmentIds: requestAttachmentIds,
+        idempotencyKey,
         sessionId: resolvedActiveSessionId,
         nextPrompt,
         ...inactiveTuning,
@@ -2589,19 +2744,21 @@ export const ProjectChatPage: FC<{
       const message = error instanceof Error ? error.message : 'failed to send prompt';
       removeAwaitingAssistantTranscriptKeys(requestAwaitingTranscriptKeys);
       clearDraftSessionRedirectRequest(draftRedirectGeneration);
-      if (activeTranscriptKeyRef.current === initialTranscriptKey) {
+      if (
+        shouldRestorePromptAfterSendFailure({
+          editorText: readComposerValue(),
+          fromQueue: options?.fromQueue === true,
+          hasQueuedFollowUps: queuedFollowUpsRef.current.length > 0,
+          sameTranscriptKey: activeTranscriptKeyRef.current === initialTranscriptKey,
+        })
+      ) {
         replacePrompt(previousPrompt);
-        setAttachedFiles((current) =>
-          current.length === 0 ? attachedFiles.map((attachment) => ({ ...attachment })) : current,
-        );
+        setAttachedFiles((current) => (current.length === 0 ? previousAttachments : current));
       }
-      setTranscripts((current) =>
-        appendTranscriptMessage({
-          message: createChatMessage('assistant', `Error: ${message}`, [], {
-            kind: 'legacy_assistant_turn',
-          }),
-          transcriptKey: activeSessionId ?? initialTranscriptKey,
-          transcripts: current,
+      appendTranscriptStoreMessage(
+        activeSessionId ?? initialTranscriptKey,
+        createChatMessage('assistant', `Error: ${message}`, [], {
+          kind: 'legacy_assistant_turn',
         }),
       );
 
@@ -2615,11 +2772,61 @@ export const ProjectChatPage: FC<{
           url: projectUrl,
         });
       }
+      if (options?.fromQueue === true) {
+        throw error;
+      }
     }
   };
 
+  sendQueuedFollowUpRef.current = async (item) => {
+    await handleSendPrompt(item.prompt, {
+      attachments: item.attachments,
+      fromQueue: true,
+    });
+  };
+
+  useEffect(() => {
+    setQueuedFollowUps([]);
+    flushQueuedFollowUpInFlightRef.current = false;
+    suppressQueuedFollowUpFlushRef.current = false;
+  }, [sessionId]);
+
+  useEffect(() => {
+    if (willQueueFollowUp) {
+      suppressQueuedFollowUpFlushRef.current = false;
+      return;
+    }
+    if (
+      shouldUseDraftSession ||
+      sessionId === null ||
+      flushQueuedFollowUpInFlightRef.current ||
+      suppressQueuedFollowUpFlushRef.current ||
+      queuedFollowUps.length === 0
+    ) {
+      return;
+    }
+
+    const { next, rest } = takeNextFollowUpPrompt(queuedFollowUps);
+    if (next === null) {
+      return;
+    }
+
+    flushQueuedFollowUpInFlightRef.current = true;
+    setQueuedFollowUps(rest);
+    void sendQueuedFollowUpRef
+      .current(next)
+      .catch(() => {
+        suppressQueuedFollowUpFlushRef.current = true;
+        setQueuedFollowUps((current) => [next, ...current]);
+      })
+      .finally(() => {
+        flushQueuedFollowUpInFlightRef.current = false;
+      });
+  }, [queuedFollowUps, sessionId, shouldUseDraftSession, willQueueFollowUp]);
+
   const firstUserTextInTranscript = (targetSessionId: string) =>
-    transcripts[targetSessionId]?.find((message) => message.role === 'user')?.text ?? null;
+    getTranscriptMessagesSnapshot(targetSessionId).find((message) => message.role === 'user')
+      ?.text ?? null;
   const pageTitle = shouldUseDraftSession
     ? 'New session'
     : selectedSession !== null
@@ -2680,7 +2887,7 @@ export const ProjectChatPage: FC<{
     } else {
       const scrollPercentage = target.scrollTop / scrollableHeight;
       setMessagesBelowScroll(
-        Math.max(0, Math.round(visibleTranscript.length * (1 - scrollPercentage))),
+        Math.max(0, Math.round(transcriptMessageIds.length * (1 - scrollPercentage))),
       );
     }
   };
@@ -2701,13 +2908,15 @@ export const ProjectChatPage: FC<{
 
     pendingPrependAnchorRef.current = null;
     viewport.scrollTop += anchorElement.getBoundingClientRect().top - pendingAnchor.top;
-  }, [chatViewportElement, visibleTranscript.length]);
+  }, [chatViewportElement, transcriptMessageIds.length]);
 
   const handleJumpToLatest = () => {
     shouldStickToBottomRef.current = true;
     setIsChatFollowingTail(true);
     setUnreadMessageCount(0);
-    scrollAnchorRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' });
+    chatContentRef.current
+      ?.querySelector('[data-message-id]:last-of-type')
+      ?.scrollIntoView({ block: 'end', behavior: 'smooth' });
   };
 
   useEffect(() => {
@@ -2715,36 +2924,31 @@ export const ProjectChatPage: FC<{
       nextUnreadMessageCount({
         currentUnreadCount,
         isFollowingTail: shouldStickToBottomRef.current,
-        nextMessageCount: visibleTranscript.length,
+        nextMessageCount: transcriptMessageIds.length,
         previousMessageCount: previousVisibleMessageCountRef.current,
       }),
     );
-    previousVisibleMessageCountRef.current = visibleTranscript.length;
-  }, [chatScrollSignature, permissionRequestSignature, visibleTranscript.length]);
+    previousVisibleMessageCountRef.current = transcriptMessageIds.length;
+  }, [chatScrollSignature, permissionRequestSignature, transcriptMessageIds.length]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const didSessionChange = lastActiveTranscriptKeyRef.current !== activeTranscriptKey;
-    if (didSessionChange) {
-      lastActiveTranscriptKeyRef.current = activeTranscriptKey;
-      pendingPrependAnchorRef.current = null;
-      shouldStickToBottomRef.current = true;
-      setIsChatFollowingTail(true);
-      setUnreadMessageCount(0);
-      setMessagesBelowScroll(0);
-      previousVisibleMessageCountRef.current = visibleTranscript.length;
-    }
-    if (!shouldStickToBottomRef.current) {
+    if (!didSessionChange) {
       return;
     }
-    scrollAnchorRef.current?.scrollIntoView({ block: 'end' });
-  }, [
-    activeTranscriptKey,
-    chatScrollSignature,
-    permissionRequestSignature,
-    shouldShowThinking,
-    transcript.length,
-    visibleTranscript.length,
-  ]);
+    lastActiveTranscriptKeyRef.current = activeTranscriptKey;
+    pendingPrependAnchorRef.current = null;
+    shouldStickToBottomRef.current = true;
+    setIsChatFollowingTail(true);
+    setUnreadMessageCount(0);
+    setMessagesBelowScroll(0);
+    previousVisibleMessageCountRef.current = transcriptMessageIds.length;
+  }, [activeTranscriptKey, transcriptMessageIds.length]);
+
+  // Stale last-chat / empty project: ensure effect is creating or redirecting — don't paint a blank chat.
+  if (needsDefaultSession || staleUrlFallbackSessionId !== null) {
+    return <BootLoading />;
+  }
 
   return (
     <div className="app-page h-full">
@@ -2760,14 +2964,14 @@ export const ProjectChatPage: FC<{
           ) : null}
         </Suspense>
       )}
-      {sessionId === null ? null : (
+      {selectedSession === null ? null : (
         <Suspense fallback={null}>
           <SessionMessagesHydrator
-            key={sessionId}
+            key={selectedSession.sessionId}
             onBeforeFetchRemaining={handleBeforeFetchRemainingMessages}
             onHydrated={handleMessagesHydrated}
             onFetchNextPageReady={handleFetchNextPageReady}
-            sessionId={sessionId}
+            sessionId={selectedSession.sessionId}
           />
         </Suspense>
       )}
@@ -2918,8 +3122,8 @@ export const ProjectChatPage: FC<{
                     </div>
                   ) : null}
                   {!isTranscriptHydrating &&
-                  transcript.length > 0 &&
-                  visibleTranscript.length === 0 &&
+                  hasHydratedTranscriptSession &&
+                  transcriptMessageIds.length === 0 &&
                   !shouldShowThinking ? (
                     <div className="mx-auto max-w-md rounded-lg border border-dashed border-border/60 bg-card/50 px-6 py-8 text-center text-sm text-muted-foreground">
                       表示できるメッセージがありません（内部メタのみの可能性）
@@ -2934,72 +3138,23 @@ export const ProjectChatPage: FC<{
                       セッションを読み込み中...
                     </div>
                   ) : null}
-                  {visibleTranscript.map((message, index) => {
-                    const isUser = message.role === 'user';
-                    const displayEvents = filterDisplayableRawEvents(message.rawEvents);
-                    const isToolOnly = isToolOnlyTranscriptMessage(message, displayEvents);
-                    const previousMessage = visibleTranscript[index - 1];
-                    const previousDisplayEvents =
-                      previousMessage === undefined
-                        ? []
-                        : filterDisplayableRawEvents(previousMessage.rawEvents);
-                    const isAfterToolOnly =
-                      previousMessage !== undefined &&
-                      isToolOnlyTranscriptMessage(previousMessage, previousDisplayEvents);
-                    return (
-                      <div
-                        className={cn(
-                          'group/message flex w-full [content-visibility:auto] [contain-intrinsic-size:auto_180px]',
-                          isUser ? 'justify-end' : 'justify-start',
-                          isToolOnly && isAfterToolOnly ? '-mt-3 md:-mt-4' : '',
-                        )}
-                        data-message-id={message.id}
-                        key={message.id}
-                      >
-                        <div
-                          className={cn(
-                            'flex min-w-0 flex-col gap-1',
-                            CONVERSATION_COLUMN_CLASS,
-                            isUser ? 'items-stretch' : 'items-stretch',
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              'flex w-full items-center gap-1',
-                              isUser ? 'justify-end' : 'justify-start',
-                              isToolOnly ? 'sr-only' : '',
-                            )}
-                          >
-                            <time
-                              className="select-none text-xs tabular-nums text-muted-foreground"
-                              dateTime={message.createdAt}
-                            >
-                              {formatDateTime(message.createdAt)}
-                            </time>
-                            {shouldShowMessageCopyButton(message) ? (
-                              <CopyBlockButton
-                                className="size-6 text-muted-foreground/80 opacity-80 hover:opacity-100"
-                                text={chatMessageClipboardText(message)}
-                              />
-                            ) : null}
-                          </div>
-                          {isUser ? (
-                            <div className="app-user-message w-full rounded-lg border px-3 py-3 text-foreground shadow-sm">
-                              <TranscriptMessageBody cwd={activeTranscriptCwd} message={message} />
-                            </div>
-                          ) : (
-                            <div className="w-full min-w-0 text-card-foreground">
-                              <TranscriptMessageBody cwd={activeTranscriptCwd} message={message} />
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                  <ChatTranscriptThread
+                    followTail={isChatFollowingTail}
+                    renderMessageBody={(message) => (
+                      <TranscriptMessageBody
+                        cwd={activeTranscriptCwd}
+                        message={message}
+                        transcriptKey={activeTranscriptKey}
+                      />
+                    )}
+                    shouldShowThinking={shouldShowThinking}
+                    thinkingLabel={thinkingModelLabel}
+                    transcriptKey={activeTranscriptKey}
+                  />
 
-                  {activePermissionRequests.length > 0 ? (
+                  {visiblePermissionRequests.length > 0 ? (
                     <div className="space-y-1">
-                      {activePermissionRequests.map((request) => (
+                      {visiblePermissionRequests.map((request) => (
                         <PermissionRequestPanel
                           disabled={resolvePermissionMutation.isPending}
                           key={request.id}
@@ -3011,29 +3166,6 @@ export const ProjectChatPage: FC<{
                       ))}
                     </div>
                   ) : null}
-
-                  {shouldShowThinking ? (
-                    <div
-                      className={cn(
-                        'flex w-full min-w-0 flex-col',
-                        CONVERSATION_COLUMN_CLASS,
-                        'pl-0.5',
-                      )}
-                      role="status"
-                    >
-                      <div className="flex w-full items-center gap-2.5 rounded-lg border border-dashed border-border/60 bg-card/70 px-4 py-3 text-sm text-muted-foreground shadow-sm">
-                        <Loader2
-                          aria-hidden
-                          className="size-4 shrink-0 animate-spin text-muted-foreground"
-                        />
-                        <span>
-                          <span className="font-medium text-foreground">{thinkingModelLabel}</span>
-                          <span> が考えています…</span>
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-                  <div aria-hidden ref={scrollAnchorRef} />
                 </div>
               </div>
               {shouldShowScrollBanner ? (
@@ -3053,15 +3185,7 @@ export const ProjectChatPage: FC<{
 
             <div className="bg-transparent px-1 pt-0 pb-0.5 md:px-2 md:pb-1">
               <div className="overflow-visible">
-                {latestUsage === null ? null : (
-                  <div className="mb-1">
-                    <UsageProgress
-                      cost={latestUsage.cost}
-                      size={latestUsage.size}
-                      used={latestUsage.used}
-                    />
-                  </div>
-                )}
+                <ChatUsageBadge transcriptKey={activeTranscriptKey} />
                 {attachedFiles.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-1.5 border-b bg-muted/15 px-3 py-2">
                     {attachedFiles.map((attachment) => (
@@ -3085,6 +3209,48 @@ export const ProjectChatPage: FC<{
                           <X className="size-3" />
                         </button>
                       </span>
+                    ))}
+                  </div>
+                ) : null}
+
+                {queuedFollowUps.length > 0 ? (
+                  <div className="flex flex-col gap-1.5 border-b bg-muted/15 px-3 py-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {t('chat.queuedFollowUps')}
+                    </p>
+                    {queuedFollowUps.map((item) => (
+                      <div
+                        className="flex min-w-0 items-center gap-1 rounded-md border bg-background text-xs text-foreground"
+                        key={item.id}
+                      >
+                        <button
+                          aria-label={t('chat.runQueuedFollowUpNow')}
+                          className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left transition-colors hover:bg-muted/60 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          onClick={() => {
+                            handleRunQueuedFollowUpNow(item.id);
+                          }}
+                          title={t('chat.runQueuedFollowUpNow')}
+                          type="button"
+                        >
+                          <History className="size-3 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 flex-1 truncate">{item.prompt}</span>
+                          {item.attachments.length > 0 ? (
+                            <span className="shrink-0 text-muted-foreground">
+                              +{item.attachments.length.toString()}
+                            </span>
+                          ) : null}
+                        </button>
+                        <button
+                          aria-label={t('chat.removeQueuedFollowUp')}
+                          className="mr-1 inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                          onClick={() => {
+                            setQueuedFollowUps((current) => removeFollowUpPrompt(current, item.id));
+                          }}
+                          type="button"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 ) : null}
@@ -3204,61 +3370,27 @@ export const ProjectChatPage: FC<{
                   ref={attachFileInputRef}
                   type="file"
                 />
-                <RichPromptEditor
+                <ChatPromptComposer
+                  ref={composerRef}
                   disabled={isEditorDisabled}
-                  toolbarTrailing={
-                    <>
-                      <ReviewDialogButton
-                        cwd={activeTranscriptCwd}
-                        disabled={isEditorDisabled}
-                        onInsertReview={handleInsertReviewPrompt}
-                        projectId={projectId}
-                        reviewSessionId={reviewSessionId}
-                      />
-                      <Button
-                        aria-label="Attach files"
-                        disabled={isEditorDisabled || uploadAttachmentsMutation.isPending}
-                        onClick={handleOpenAttachFilePicker}
-                        size="icon-sm"
-                        title="Attach files"
-                        type="button"
-                        variant="ghost"
-                      >
-                        {uploadAttachmentsMutation.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Paperclip className="size-4" />
-                        )}
-                      </Button>
-                      <Button
-                        aria-label={isListeningToSpeech ? 'Stop voice input' : 'Start voice input'}
-                        className={cn(
-                          isListeningToSpeech
-                            ? 'bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive'
-                            : '',
-                        )}
-                        disabled={isEditorDisabled}
-                        onClick={handleToggleSpeechInput}
-                        size="icon-sm"
-                        title={
-                          isListeningToSpeech ? t('chat.voiceInputStop') : t('chat.voiceInputStart')
-                        }
-                        type="button"
-                        variant="ghost"
-                      >
-                        <Mic className="size-4" />
-                      </Button>
-                    </>
-                  }
-                  externalValue={promptExternalValue}
+                  isUploadingAttachments={uploadAttachmentsMutation.isPending}
+                  onAttachClick={handleOpenAttachFilePicker}
                   onSubmit={(value) => {
                     if (canSendPrompt(value)) {
                       void handleSendPrompt(value);
                     }
                   }}
-                  onValueReaderReady={handlePromptValueReaderReady}
                   placeholder={shouldUseDraftSession ? 'Start a new session...' : 'Reply...'}
                   projectId={projectId}
+                  reviewTrailing={
+                    <ReviewDialogButton
+                      cwd={activeTranscriptCwd}
+                      disabled={isEditorDisabled}
+                      onInsertReview={handleInsertReviewPrompt}
+                      projectId={projectId}
+                      reviewSessionId={reviewSessionId}
+                    />
+                  }
                   slashCommands={effectiveSlashCommands}
                   submitKeyBinding={appSettings.submitKeyBinding}
                 />
@@ -3423,6 +3555,35 @@ export const ProjectChatPage: FC<{
                               </SelectContent>
                             </Select>
                           </FieldControl>
+                          <FieldControl
+                            className={FORM_SELECT_FIELD_CLASS}
+                            htmlFor="draft-permission-handling-select"
+                            label={t('chat.permissionHandling')}
+                          >
+                            <Select
+                              onValueChange={(value) => {
+                                if (isPermissionHandlingMode(value)) {
+                                  setPermissionHandlingMode(value);
+                                }
+                              }}
+                              value={permissionHandlingMode}
+                            >
+                              <SelectTrigger
+                                className={FORM_SELECT_TRIGGER_CLASS}
+                                id="draft-permission-handling-select"
+                              >
+                                <SelectValue placeholder={t('chat.permissionHandling')} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ask">
+                                  {t('chat.permissionHandlingAsk')}
+                                </SelectItem>
+                                <SelectItem value="allow_all">
+                                  {t('chat.permissionHandlingAllowAll')}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FieldControl>
                         </>
                       ) : selectedSession !== null ? (
                         <>
@@ -3529,6 +3690,35 @@ export const ProjectChatPage: FC<{
                               </Select>
                             </FieldControl>
                           ) : null}
+                          <FieldControl
+                            className={FORM_SELECT_FIELD_CLASS}
+                            htmlFor="session-permission-handling-select"
+                            label={t('chat.permissionHandling')}
+                          >
+                            <Select
+                              onValueChange={(value) => {
+                                if (isPermissionHandlingMode(value)) {
+                                  setPermissionHandlingMode(value);
+                                }
+                              }}
+                              value={permissionHandlingMode}
+                            >
+                              <SelectTrigger
+                                className={FORM_SELECT_TRIGGER_CLASS}
+                                id="session-permission-handling-select"
+                              >
+                                <SelectValue placeholder={t('chat.permissionHandling')} />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="ask">
+                                  {t('chat.permissionHandlingAsk')}
+                                </SelectItem>
+                                <SelectItem value="allow_all">
+                                  {t('chat.permissionHandlingAllowAll')}
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </FieldControl>
                           {selectedSession.configOptions.map((option) => {
                             const valueInfo = genericConfigOptionValueInfo(
                               option,
@@ -3584,37 +3774,50 @@ export const ProjectChatPage: FC<{
                       ) : null}
                     </div>
 
-                    {isSelectedSessionRunning && sessionId !== null ? (
-                      <Button
-                        aria-label="Cancel running turn"
-                        className="ml-auto shrink-0"
-                        disabled={cancelSessionMutation.isPending}
-                        onClick={() => {
-                          void handleCancelSession(sessionId);
-                        }}
-                        size="icon"
-                        title="Cancel"
-                        type="button"
-                        variant="destructive"
-                      >
-                        {cancelSessionMutation.isPending ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Square className="size-4" />
-                        )}
-                      </Button>
-                    ) : (
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5">
+                      {isSelectedSessionRunning && sessionId !== null ? (
+                        <Button
+                          aria-label="Cancel running turn"
+                          disabled={cancelSessionMutation.isPending}
+                          onClick={() => {
+                            void handleCancelSession(sessionId);
+                          }}
+                          size="icon"
+                          title={t('chat.cancel')}
+                          type="button"
+                          variant="destructive"
+                        >
+                          {cancelSessionMutation.isPending ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Square className="size-4" />
+                          )}
+                        </Button>
+                      ) : null}
                       <Button
                         aria-label={
-                          isSending ? 'Sending' : shouldUseDraftSession ? 'Start session' : 'Send'
+                          willQueueFollowUp
+                            ? t('chat.queueFollowUp')
+                            : isSending
+                              ? 'Sending'
+                              : shouldUseDraftSession
+                                ? 'Start session'
+                                : t('chat.send')
                         }
-                        className="ml-auto shrink-0"
                         disabled={!canSend}
                         onClick={() => {
                           void handleSendPrompt();
                         }}
                         size="icon"
-                        title={isSending ? 'Sending...' : shouldUseDraftSession ? 'Start' : 'Send'}
+                        title={
+                          willQueueFollowUp
+                            ? t('chat.queueFollowUp')
+                            : isSending
+                              ? 'Sending...'
+                              : shouldUseDraftSession
+                                ? 'Start'
+                                : t('chat.send')
+                        }
                         type="button"
                       >
                         {isSending ? (
@@ -3623,7 +3826,7 @@ export const ProjectChatPage: FC<{
                           <Send className="size-4" />
                         )}
                       </Button>
-                    )}
+                    </div>
                   </div>
 
                   {shouldUseDraftSession &&

@@ -7,12 +7,7 @@ import type {
   SessionMessagesResponse,
 } from '../../../shared/acp.ts';
 
-import {
-  applySessionMessageEventToMessages,
-  newPermissionRequests,
-  runningSessionIdsForCatchUp,
-  shouldCatchUpSessionMessagesOnStatusChange,
-} from './acp-sse-cache.pure.ts';
+import { applySessionMessageEventToMessages, newPermissionRequests } from './acp-sse-cache.pure.ts';
 
 const baseTextDelta = {
   type: 'message-delta',
@@ -269,51 +264,5 @@ describe('newPermissionRequests', () => {
     expect(
       newPermissionRequests({ current: [request], knownRequestIds: new Set(['request-1']) }),
     ).toEqual([]);
-  });
-});
-
-describe('shouldCatchUpSessionMessagesOnStatusChange', () => {
-  test('catches up when a running session becomes paused', () => {
-    expect(
-      shouldCatchUpSessionMessagesOnStatusChange({
-        previousStatus: 'running',
-        nextStatus: 'paused',
-      }),
-    ).toBe(true);
-  });
-
-  test('does not catch up for unrelated transitions', () => {
-    expect(
-      shouldCatchUpSessionMessagesOnStatusChange({
-        previousStatus: 'paused',
-        nextStatus: 'running',
-      }),
-    ).toBe(false);
-    expect(
-      shouldCatchUpSessionMessagesOnStatusChange({
-        previousStatus: 'running',
-        nextStatus: undefined,
-      }),
-    ).toBe(false);
-    expect(
-      shouldCatchUpSessionMessagesOnStatusChange({
-        previousStatus: null,
-        nextStatus: 'paused',
-      }),
-    ).toBe(false);
-  });
-});
-
-describe('runningSessionIdsForCatchUp', () => {
-  test('returns only running session ids', () => {
-    expect(
-      runningSessionIdsForCatchUp(
-        new Map([
-          ['a', 'running'],
-          ['b', 'paused'],
-          ['c', 'running'],
-        ]),
-      ),
-    ).toEqual(['a', 'c']);
   });
 });

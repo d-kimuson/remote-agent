@@ -258,7 +258,7 @@ describe('chat-state.pure', () => {
       shouldShowStartNewChat({
         isDraftSession: true,
         isTranscriptHydrating: false,
-        transcript: [],
+        transcriptLength: 0,
         shouldShowThinking: false,
       }),
     ).toBe(true);
@@ -267,7 +267,7 @@ describe('chat-state.pure', () => {
       shouldShowStartNewChat({
         isDraftSession: false,
         isTranscriptHydrating: false,
-        transcript: [],
+        transcriptLength: 0,
         shouldShowThinking: false,
       }),
     ).toBe(false);
@@ -276,7 +276,7 @@ describe('chat-state.pure', () => {
       shouldShowStartNewChat({
         isDraftSession: true,
         isTranscriptHydrating: false,
-        transcript: [createChatMessage('user', 'hello')],
+        transcriptLength: 1,
         shouldShowThinking: false,
       }),
     ).toBe(false);

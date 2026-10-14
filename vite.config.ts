@@ -38,7 +38,9 @@ const pwaManifest = {
 export default defineConfig({
   build: {
     outDir: 'dist/client',
-    emptyOutDir: false,
+    // Only empties dist/client (not server chunks). Stale hashed files + PWA precache
+    // of old+new bundles cause blank screens after rebuild.
+    emptyOutDir: true,
   },
   plugins: [
     tanstackRouter({

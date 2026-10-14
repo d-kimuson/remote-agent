@@ -474,16 +474,22 @@ export const sendPromptRequest = async (
     readonly attachmentIds: readonly string[];
     readonly modelId?: string | null;
     readonly modeId?: string | null;
+    readonly idempotencyKey?: string;
   },
 ): Promise<MessageResponse> => {
-  const response = await honoClient.acp.sessions[':sessionId'].messages.$post({
-    param: { sessionId },
-    json: {
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (request.idempotencyKey !== undefined && request.idempotencyKey.length > 0) {
+    headers.set('Idempotency-Key', request.idempotencyKey);
+  }
+  const response = await apiFetch(`/api/acp/sessions/${encodeURIComponent(sessionId)}/messages`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
       prompt: request.prompt,
       attachmentIds: [...request.attachmentIds],
       ...(request.modelId !== undefined ? { modelId: request.modelId } : {}),
       ...(request.modeId !== undefined ? { modeId: request.modeId } : {}),
-    },
+    }),
   });
   return parse(messageResponseSchema, await response.json());
 };
@@ -495,17 +501,26 @@ export const sendPreparedPromptRequest = async (
     readonly attachmentIds: readonly string[];
     readonly modelId?: string | null;
     readonly modeId?: string | null;
+    readonly idempotencyKey?: string;
   },
 ): Promise<MessageResponse> => {
-  const response = await honoClient.acp.sessions.prepared[':prepareId'].messages.$post({
-    param: { prepareId },
-    json: {
-      prompt: request.prompt,
-      attachmentIds: [...request.attachmentIds],
-      ...(request.modelId !== undefined ? { modelId: request.modelId } : {}),
-      ...(request.modeId !== undefined ? { modeId: request.modeId } : {}),
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (request.idempotencyKey !== undefined && request.idempotencyKey.length > 0) {
+    headers.set('Idempotency-Key', request.idempotencyKey);
+  }
+  const response = await apiFetch(
+    `/api/acp/sessions/prepared/${encodeURIComponent(prepareId)}/messages`,
+    {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        prompt: request.prompt,
+        attachmentIds: [...request.attachmentIds],
+        ...(request.modelId !== undefined ? { modelId: request.modelId } : {}),
+        ...(request.modeId !== undefined ? { modeId: request.modeId } : {}),
+      }),
     },
-  });
+  );
   return parse(messageResponseSchema, await response.json());
 };
 

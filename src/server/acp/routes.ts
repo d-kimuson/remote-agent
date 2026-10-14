@@ -41,6 +41,7 @@ import {
 } from '../projects/project-store.ts';
 import { parseArgsText } from './args.pure.ts';
 import { agentPresets } from './presets.ts';
+import { getPromptIdempotencyStore } from './repositories/prompt-idempotency-store.ts';
 import {
   getProviderCatalog,
   createCustomProvider,
@@ -74,6 +75,27 @@ import {
 } from './services/session-store.ts';
 import { subscribeAcpSse } from './services/sse-broadcast.ts';
 import { excludeManagedResumableSessions } from './session-resume.pure.ts';
+
+const sendPromptWithIdempotency = async (
+  sessionId: string,
+  request: Parameters<typeof sendPrompt>[1],
+  idempotencyKeyHeader: string | undefined,
+) => {
+  const store = getPromptIdempotencyStore();
+  const idempotencyKey = store.normalizeIdempotencyKey(idempotencyKeyHeader);
+  if (idempotencyKey !== null) {
+    const cached = await store.getCachedResponse(idempotencyKey);
+    if (cached !== null) {
+      return cached;
+    }
+  }
+
+  const response = await sendPrompt(sessionId, request);
+  if (idempotencyKey !== null) {
+    await store.saveResponse(idempotencyKey, sessionId, response);
+  }
+  return response;
+};
 
 const deleteSessionResponseSchema = object({
   ok: boolean(),
@@ -826,7 +848,14 @@ export const acpRoutes = new Hono()
         }
         const session = await sessionPromise;
         const request = c.req.valid('json');
-        const response = parse(messageResponseSchema, await sendPrompt(session.sessionId, request));
+        const response = parse(
+          messageResponseSchema,
+          await sendPromptWithIdempotency(
+            session.sessionId,
+            request,
+            c.req.header('idempotency-key'),
+          ),
+        );
         await markProjectSessionPreferencesUsed(response.session);
         return c.json(response);
       } catch (error) {
@@ -937,7 +966,10 @@ export const acpRoutes = new Hono()
       try {
         const request = c.req.valid('json');
         const sessionId = c.req.param('sessionId');
-        const response = parse(messageResponseSchema, await sendPrompt(sessionId, request));
+        const response = parse(
+          messageResponseSchema,
+          await sendPromptWithIdempotency(sessionId, request, c.req.header('idempotency-key')),
+        );
         await markProjectSessionPreferencesUsed(response.session);
         return c.json(response);
       } catch (error) {

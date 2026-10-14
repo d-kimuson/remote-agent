@@ -176,3 +176,23 @@ export const sessionMessagesTable = sqliteTable(
     index('idx_session_messages_session_kind').on(table.sessionId, table.kind),
   ],
 );
+
+/** Caches successful prompt POST responses so client retries are idempotent. */
+export const promptIdempotencyKeysTable = sqliteTable(
+  'prompt_idempotency_keys',
+  {
+    key: text('key').primaryKey(),
+    sessionId: text('session_id')
+      .notNull()
+      .references(() => sessionsTable.sessionId, {
+        onDelete: 'cascade',
+        onUpdate: 'cascade',
+      }),
+    responseJson: text('response_json').notNull(),
+    createdAt: text('created_at').notNull(),
+  },
+  (table) => [
+    index('idx_prompt_idempotency_keys_session_id').on(table.sessionId),
+    index('idx_prompt_idempotency_keys_created_at').on(table.createdAt),
+  ],
+);

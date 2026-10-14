@@ -165,3 +165,6 @@ docs/tmp/*
 data/.ra-dir/data.sql
 data/.ra-dir/data.sql-shm
 data/.ra-dir/data.sql-wal
+
+# Local VPS agent handoff (do not publish)
+AGENT_STATUS.md

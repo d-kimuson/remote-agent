@@ -485,7 +485,9 @@ const RoutinePromptField: FC<{
       disabled={disabled}
       externalValue={externalValue}
       onSubmit={() => undefined}
-      onValueReaderReady={onPromptReady}
+      onEditorApiReady={(api) => {
+        onPromptReady(api.readValue);
+      }}
       placeholder="Send to the agent when this routine runs."
       slashCommands={slashCommandData.commands}
       toolbarTrailing={toolbarTrailing}

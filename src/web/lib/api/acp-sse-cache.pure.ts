@@ -3,7 +3,6 @@ import type {
   AcpSseEvent,
   ChatMessage,
   SessionMessagesResponse,
-  SessionStatus,
 } from '../../../shared/acp.ts';
 
 type MessageAddEvent = Extract<AcpSseEvent, { type: 'message-add' }>;
@@ -151,23 +150,3 @@ export const newPermissionRequests = ({
   readonly knownRequestIds: ReadonlySet<string>;
 }): readonly AcpPermissionRequest[] =>
   current.filter((request) => !knownRequestIds.has(request.id));
-
-/**
- * Turn end: live SSE deltas may have been missed while the DB already has the
- * final transcript. Refetch messages once when a session leaves `running`.
- */
-export const shouldCatchUpSessionMessagesOnStatusChange = ({
-  previousStatus,
-  nextStatus,
-}: {
-  readonly previousStatus: SessionStatus | null;
-  readonly nextStatus: SessionStatus | undefined;
-}): boolean => previousStatus === 'running' && nextStatus === 'paused';
-
-/** Sessions that were mid-turn when the SSE connection dropped. */
-export const runningSessionIdsForCatchUp = (
-  statuses: ReadonlyMap<string, SessionStatus>,
-): readonly string[] =>
-  [...statuses.entries()]
-    .filter(([, status]) => status === 'running')
-    .map(([sessionId]) => sessionId);

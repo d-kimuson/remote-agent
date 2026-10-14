@@ -52,6 +52,12 @@ const toolbarItems = [
   { format: 'quote', label: 'Quote', icon: <Quote className="size-4" /> },
 ] satisfies readonly ToolbarItem[];
 
+export type RichPromptEditorApi = {
+  readonly readValue: () => string;
+  /** Writes the textarea immediately — does not wait for a React commit. */
+  readonly replaceValue: (value: string) => void;
+};
+
 export const RichPromptEditor: FC<{
   readonly className?: string;
   readonly disabled?: boolean;
@@ -60,7 +66,7 @@ export const RichPromptEditor: FC<{
     readonly value: string;
   };
   readonly onSubmit: (value: string) => void;
-  readonly onValueReaderReady: (readValue: () => string) => void;
+  readonly onEditorApiReady: (api: RichPromptEditorApi) => void;
   readonly placeholder: string;
   readonly projectId?: string;
   readonly slashCommands?: readonly SlashCommand[];
@@ -71,7 +77,7 @@ export const RichPromptEditor: FC<{
   disabled = false,
   externalValue,
   onSubmit,
-  onValueReaderReady,
+  onEditorApiReady,
   placeholder,
   projectId,
   slashCommands = [],
@@ -197,9 +203,25 @@ export const RichPromptEditor: FC<{
     return editor?.value ?? valueRef.current;
   }, []);
 
+  const replaceCurrentValue = useCallback((value: string) => {
+    valueRef.current = value;
+    const editor = editorRef.current;
+    if (editor !== null && editor.value !== value) {
+      editor.value = value;
+    }
+    setSlashCommandQuery(null);
+    setSelectedCommandIndex(0);
+    setFileCompletionQuery(null);
+    setFileCompletionData(null);
+    setSelectedFileIndex(0);
+  }, []);
+
   useLayoutEffect(() => {
-    onValueReaderReady(readCurrentValue);
-  }, [onValueReaderReady, readCurrentValue]);
+    onEditorApiReady({
+      readValue: readCurrentValue,
+      replaceValue: replaceCurrentValue,
+    });
+  }, [onEditorApiReady, readCurrentValue, replaceCurrentValue]);
 
   const readCurrentSelection = useCallback((): RichPromptSelection => {
     const editor = editorRef.current;
@@ -363,7 +385,10 @@ export const RichPromptEditor: FC<{
       })
     ) {
       event.preventDefault();
-      onSubmit(readCurrentValue());
+      const submitted = readCurrentValue();
+      // Local-first: clear before parent work so the field never waits on React.
+      replaceCurrentValue('');
+      onSubmit(submitted);
       return;
     }
 
